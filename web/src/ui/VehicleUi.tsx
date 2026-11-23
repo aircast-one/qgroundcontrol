@@ -266,6 +266,8 @@ const useTelemetryReadings = () => {
     setStyling(null);
   };
 
+  const removal = (it: Instrument): (() => void) | undefined => (chosen.some((path) => selectionId(path) === it.id) ? () => keep(chosen.filter((path) => selectionId(path) !== it.id)) : undefined);
+
   const styledIndex = styling === null ? -1 : chosen.findIndex((it) => selectionId(it) === styling.id);
   const index = styledIndex >= 0 ? styledIndex : null;
 
@@ -330,7 +332,7 @@ const useTelemetryReadings = () => {
     </>
   );
 
-  return { flyScreen, shown, displays, silent, stale, valueSize, sheets, setStyling };
+  return { flyScreen, shown, displays, silent, stale, valueSize, sheets, setStyling, removal };
 };
 
 export const TelemetryRow = ({
@@ -496,7 +498,7 @@ const HudReading = ({ instrument, display, silent, scale, act }: { instrument: I
 export const hudStartTop = (top: CSSProperties['top'], below: number): CSSProperties['top'] => (below > 0 ? `max(${String(top)}, ${below}px)` : top);
 
 export const HudReadings = ({ style, startInset, startBelow = 0, endLift = 0 }: { style: CSSProperties; startInset: number; startBelow?: number; endLift?: number }) => {
-  const { flyScreen, shown, displays, silent, stale, valueSize, sheets } = useTelemetryReadings();
+  const { flyScreen, shown, displays, silent, stale, valueSize, sheets, removal } = useTelemetryReadings();
   const offsets = useValue(flyScreen.layout.offsets);
   const editing = useValue(flyScreen.layout.editing);
   const docked = useValue(flyScreen.layout.docked);
@@ -544,7 +546,7 @@ export const HudReadings = ({ style, startInset, startBelow = 0, endLift = 0 }: 
         <div className="relative shrink-0" style={{ height: Math.max(0, stacked * pitch - HUD_READING_GAP + lift) }}>
           {readings.map((it) => (
             <div key={instrumentKey(it)} className={`absolute bottom-0 w-max ${side === 'start' ? 'start-0' : 'end-0'}`}>
-              <LayoutWidget widgetKey={instrumentKey(it)} home={[0, -(rows.get(instrumentKey(it)) ?? 0) * pitch - lift]} badgeBeside={side === 'start' ? 'end' : 'start'} onBar={dock(it)}>
+              <LayoutWidget widgetKey={instrumentKey(it)} home={[0, -(rows.get(instrumentKey(it)) ?? 0) * pitch - lift]} badgeBeside={side === 'start' ? 'end' : 'start'} onBar={dock(it)} onRemove={removal(it)} resizable>
                 <HudReading instrument={it} display={displayFor(displays, it)} silent={silent} scale={valueSize.scale} act={actFor(it)} />
               </LayoutWidget>
             </div>

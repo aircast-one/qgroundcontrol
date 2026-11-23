@@ -535,6 +535,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
               <div key={key} className="pointer-events-auto absolute start-0 top-0 w-max" style={{ opacity: live ? 1 : 0.45 }}>
                 <LayoutWidget
                   widgetKey={`indicator-${key}`}
+                  resizable
                   onBar={(x) => {
                     layout.saveFloated(floated.filter((it) => it !== key));
                     layout.saveIndicatorOrder(barOrderWith(key, x));

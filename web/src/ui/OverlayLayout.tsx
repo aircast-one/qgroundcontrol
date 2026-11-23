@@ -17,6 +17,7 @@ import { LocalFlyOsd, OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 const LAYOUT_STORE = 'fly-overlay-layout';
 const HIDDEN_PREFIX = 'OverlayRigHidden-';
 const OFFSET_PREFIX = 'OverlayRigOffset-';
+const SIZE_PREFIX = 'OverlayRigSize-';
 const LANDSCAPE_SUFFIX = '@landscape';
 const HIDDEN_ALPHA = 0.35;
 const JIGGLE_DEGREES = 1.2;
@@ -70,6 +71,7 @@ export class OverlayLayoutState {
   readonly offsets: MutableState<ReadonlyMap<string, Offset>>;
   readonly docked: MutableState<readonly string[]>;
   readonly floated: MutableState<readonly string[]>;
+  readonly sizes: MutableState<ReadonlyMap<string, number>>;
   carry: Carry | null = null;
   landing: Landing | null = null;
 
@@ -80,6 +82,13 @@ export class OverlayLayoutState {
     this.offsets = mutableStateOf(storedOffsets(stored));
     this.docked = mutableStateOf(storedKeys(stored, DOCKED_READINGS));
     this.floated = mutableStateOf(storedKeys(stored, FLOATED_INDICATORS));
+    this.sizes = mutableStateOf(storedSizes(stored));
+  }
+
+  resize(key: string): void {
+    const next = nextItemSize(this.sizes.value.get(key) ?? 1);
+    this.prefs.putString(SIZE_PREFIX + key, String(next));
+    this.sizes.value = new Map(this.sizes.value).set(key, next);
   }
 
   saveDocked(keys: readonly string[]): void {
@@ -114,7 +123,8 @@ export class OverlayLayoutState {
 
   forget(keys: readonly string[]): void {
     const placed = keys.flatMap((key) => [key, orientedKey(key, true)]);
-    placed.flatMap((key) => [OFFSET_PREFIX + key, HIDDEN_PREFIX + key]).forEach((name) => this.prefs.remove(name));
+    [...placed.flatMap((key) => [OFFSET_PREFIX + key, HIDDEN_PREFIX + key]), ...keys.map((key) => SIZE_PREFIX + key)].forEach((name) => this.prefs.remove(name));
+    this.sizes.value = new Map([...this.sizes.value].filter(([key]) => !keys.includes(key)));
     this.offsets.value = new Map([...this.offsets.value].filter(([key]) => !placed.includes(key)));
     this.hidden.value = new Set([...this.hidden.value].filter((key) => !keys.includes(key)));
     if (this.docked.value.some((key) => keys.includes(key))) this.saveDocked(this.docked.value.filter((key) => !keys.includes(key)));
@@ -132,6 +142,7 @@ export class OverlayLayoutState {
     this.offsets.value = new Map();
     this.docked.value = [];
     this.floated.value = [];
+    this.sizes.value = new Map();
   }
 }
 
@@ -261,6 +272,20 @@ export const hiddenKeys = (stored: Readonly<Record<string, unknown>>): Set<strin
       .filter(([key, value]) => key.startsWith(HIDDEN_PREFIX) && value === true)
       .map(([key]) => key.slice(HIDDEN_PREFIX.length)),
   ]);
+
+export const ITEM_SIZES: readonly number[] = [1, 1.25, 1.5, 2];
+
+export const nextItemSize = (size: number): number => ITEM_SIZES[(ITEM_SIZES.indexOf(size) + 1) % ITEM_SIZES.length] ?? 1;
+
+export const resizeLabel = (size: number): string => (nextItemSize(size) > size ? 'Make bigger' : 'Back to normal size');
+
+export const storedSizes = (stored: Readonly<Record<string, unknown>>): Map<string, number> =>
+  new Map(
+    Object.entries(stored).flatMap(([key, value]): [string, number][] => {
+      const size = key.startsWith(SIZE_PREFIX) && typeof value === 'string' ? toDoubleOrNull(value) : null;
+      return size === null || !ITEM_SIZES.includes(size) ? [] : [[key.slice(SIZE_PREFIX.length), size]];
+    }),
+  );
 
 export const withHidden = (hidden: ReadonlySet<string>, key: string, hide: boolean): Set<string> =>
   hide ? new Set([...hidden, key]) : new Set([...hidden].filter((it) => it !== key));
@@ -580,12 +605,17 @@ const BESIDE_BADGE = "absolute grid place-items-center after:absolute after:-ins
 
 const BADGE_GAP = 4;
 
-const besidePlace = (side: 'start' | 'end'): CSSProperties => ({
+const OUTER_BADGE = {
+  start: "absolute grid place-items-center after:absolute after:-inset-y-[3px] after:end-0 after:-start-[13px] after:content-['']",
+  end: "absolute grid place-items-center after:absolute after:-inset-y-[3px] after:start-0 after:-end-[13px] after:content-['']",
+} as const;
+
+const besidePlace = (side: 'start' | 'end', nth = 0): CSSProperties => ({
   width: BADGE_SIZE,
   height: BADGE_SIZE,
   top: '50%',
   marginTop: -BADGE_SIZE / 2,
-  [side === 'start' ? 'insetInlineStart' : 'insetInlineEnd']: -(BADGE_SIZE + BADGE_GAP),
+  [side === 'start' ? 'insetInlineStart' : 'insetInlineEnd']: -(BADGE_SIZE + BADGE_GAP) * (nth + 1),
 });
 
 export const badgeRoom = (editing: boolean, leading: boolean): CSSProperties =>
@@ -618,7 +648,7 @@ export const LayoutGroup = ({ widgetKey, className, children }: { widgetKey: str
   );
 };
 
-export const badgeLabel = (hidden: boolean, name: string | undefined): string => [hidden ? 'Show' : 'Hide', ...(name === undefined ? [] : [name.toLowerCase()])].join(' ');
+export const badgeLabel = (hidden: boolean, name: string | undefined, removes = false): string => [hidden ? 'Show' : removes ? 'Remove' : 'Hide', ...(name === undefined ? [] : [name.toLowerCase()])].join(' ');
 
 export const LayoutWidget = ({
   widgetKey,
@@ -629,6 +659,8 @@ export const LayoutWidget = ({
   live = false,
   dragsWith,
   onBar,
+  onRemove,
+  resizable = false,
   name,
   className,
   children,
@@ -642,11 +674,14 @@ export const LayoutWidget = ({
   live?: boolean;
   dragsWith?: string;
   onBar?: (x: number) => void;
+  onRemove?: () => void;
+  resizable?: boolean;
   className?: string;
   children?: ReactNode;
 }) => {
   const layout = useContext(LocalFlyScreenState).layout;
   const editing = useValue(layout.editing);
+  const scale = useValue(layout.sizes).get(widgetKey) ?? 1;
   const hidden = useValue(layout.hidden).has(widgetKey);
   const offsets = useValue(layout.offsets);
   const avoided = useContext(LocalAvoidedByVideoMessage);
@@ -701,7 +736,7 @@ export const LayoutWidget = ({
           ref={sized}
           data-layout-item
           className={osd ? osdShadow() : undefined}
-          style={{ opacity: hidden ? HIDDEN_ALPHA : 1 }}
+          style={{ opacity: hidden ? HIDDEN_ALPHA : 1, zoom: resizable ? scale : undefined }}
         >
           <LocalLayoutParent.Provider value={setNested}>{children}</LocalLayoutParent.Provider>
         </div>
@@ -728,17 +763,31 @@ export const LayoutWidget = ({
         ) : null}
         {decorated && hideable ? (
           <Surface
-            onClick={() => layout.setHidden(widgetKey, !hidden)}
+            onClick={() => (onRemove !== undefined && !hidden ? onRemove() : layout.setHidden(widgetKey, !hidden))}
             className={name !== undefined ? NAMED_BADGE : badgeBeside !== undefined ? BESIDE_BADGE : BADGE}
             style={name !== undefined ? { ...BADGE_PLACE, width: 'auto' } : badgeBeside !== undefined ? besidePlace(badgeBeside) : BADGE_PLACE}
             shape="full"
             color={hidden ? md('primary') : md('inverseSurface')}
             contentColor={hidden ? md('onPrimary') : md('inverseOnSurface')}
             shadow
-            label={badgeLabel(hidden, name)}
+            label={badgeLabel(hidden, name, onRemove !== undefined)}
           >
             <MaterialIcon name={hidden ? 'add' : 'close'} filled size={BADGE_SIZE - 6} className="mx-[3px]" />
             {name === undefined ? null : <span aria-hidden>{name}</span>}
+          </Surface>
+        ) : null}
+        {decorated && resizable && !hidden ? (
+          <Surface
+            onClick={() => layout.resize(widgetKey)}
+            className={badgeBeside !== undefined ? OUTER_BADGE[badgeBeside] : BADGE}
+            style={badgeBeside !== undefined ? besidePlace(badgeBeside, 1) : { ...BADGE_PLACE, insetInlineStart: undefined, insetInlineEnd: -BADGE_SIZE / 2 }}
+            shape="full"
+            color={md('inverseSurface')}
+            contentColor={md('inverseOnSurface')}
+            shadow
+            label={resizeLabel(scale)}
+          >
+            <MaterialIcon name={nextItemSize(scale) > scale ? 'open_in_full' : 'close_fullscreen'} size={BADGE_SIZE - 6} className="mx-[3px]" />
           </Surface>
         ) : null}
       </div>

@@ -635,6 +635,8 @@ const finishEditing = async (page: Page) => {
   await expect(editBar(page)).toBeHidden();
 };
 
+const removeBadgeOf = (target: Locator) => target.locator('xpath=ancestor::*[@data-layout-item][1]/..').getByRole('button', { name: 'Remove', exact: true });
+
 const showBadgeOf = (target: Locator) => target.locator('xpath=ancestor::*[@data-layout-item][1]/..').getByRole('button', { name: 'Show', exact: true });
 
 const topStart = async (target: Locator): Promise<readonly [number, number]> => {
@@ -754,24 +756,27 @@ test('a bar item pulled down stands over the picture where it was let go, keeps 
   await finishEditing(vehicle);
 });
 
-test('a reading hides with its own badge and comes back from it, and the arrow keys move it', async ({ vehicle }) => {
+test('a reading leaves with its own badge and no dimmed copy stays behind, and the arrow keys move one', async ({ vehicle }) => {
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
   const speed = telemetry(vehicle, 'H.S');
-  const climb = telemetry(vehicle, 'V.S');
+  const height = telemetry(vehicle, 'H');
   await expect(speed).toBeVisible({ timeout: 30_000 });
   const [x, y] = await centre(speed);
   await editLayout(vehicle);
-  await hideBadgeOf(speed).click();
-  await finishEditing(vehicle);
-  await expect(speed).toBeHidden();
-  await expect(climb).toBeVisible();
-  await editLayout(vehicle);
-  await showBadgeOf(speed).click();
+  await removeBadgeOf(height).click();
+  await expect(height, 'gone while the layout is still being edited').toHaveCount(0);
   const move = speed.locator('xpath=ancestor::*[@data-layout-item][1]/..').getByRole('button', { name: 'Move', exact: true });
   await move.focus();
   await vehicle.keyboard.press('ArrowLeft');
   await vehicle.keyboard.press('Shift+ArrowLeft');
   await vehicle.keyboard.press('ArrowDown');
+  await finishEditing(vehicle);
+  await expect(height).toHaveCount(0);
+  await editLayout(vehicle);
+  await vehicle.getByRole('button', { name: 'Add reading' }).click();
+  const chooser = vehicle.getByRole('dialog', { name: 'Choose readings' });
+  await expect(chooser.getByRole('checkbox', { checked: true }), 'the removed reading is no longer chosen').toHaveCount(3);
+  await vehicle.keyboard.press('Escape');
   await finishEditing(vehicle);
   await expect(speed).toBeVisible();
   const [movedX, movedY] = await centre(speed);
@@ -795,7 +800,7 @@ test('from Add reading on the editing bar a reading is added where nothing else 
   const heading = vehicle.getByText('HDG', { exact: true }).locator('..');
   await expect(heading).toBeVisible();
   await expect(readings[2]!, 'the ground speed reading left with its choice').toHaveCount(0);
-  await expect(hideBadgeOf(heading)).toHaveCount(1);
+  await expect(removeBadgeOf(heading)).toHaveCount(1);
   await expect.poll(async () => overlaps(await boxesOf([heading, readings[0]!, readings[1]!, readings[3]!])), { message: 'no reading on another' }).toEqual([]);
 });
 
@@ -842,20 +847,31 @@ test('a search in Choose readings narrows the list to what was typed, by reading
   await expect(vehicle.locator('[data-layout-item] [role=img][aria-label=vibration]'), 'the reading found by search was added').toBeVisible();
 });
 
-test('reset in the layout options puts moved and hidden readings back', async ({ vehicle }) => {
+test('a reading is made bigger from its own badge and stays so after a reload, and reset in the layout options puts moved and resized readings back', async ({ vehicle }) => {
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
   const distance = telemetry(vehicle, 'D');
   const climb = telemetry(vehicle, 'V.S');
   await expect(distance).toBeVisible({ timeout: 30_000 });
   const placed = await topStart(distance);
+  const tall = async () => (await climb.boundingBox())!.height;
+  const normal = await tall();
   await editLayout(vehicle);
   await dragBy(vehicle, distance, 200, 100);
-  await hideBadgeOf(climb).click();
+  const item = climb.locator('xpath=ancestor::*[@data-layout-item][1]/..');
+  await item.getByRole('button', { name: 'Make bigger', exact: true }).click();
+  await item.getByRole('button', { name: 'Make bigger', exact: true }).click();
+  await expect.poll(tall).toBeCloseTo(normal * 1.5, 0);
+  await finishEditing(vehicle);
+  await vehicle.reload();
+  await connectMock(vehicle);
+  await expect(climb).toBeVisible({ timeout: 30_000 });
+  await expect.poll(tall, { message: 'kept after a reload' }).toBeCloseTo(normal * 1.5, 0);
+  await editLayout(vehicle);
   await editBar(vehicle).click();
   await vehicle.getByRole('menuitem', { name: 'Reset positions and hidden items' }).click();
   await vehicle.getByRole('menuitem', { name: /again to reset$/ }).click();
   await finishEditing(vehicle);
-  await expect(climb).toBeVisible();
+  await expect.poll(tall).toBeCloseTo(normal, 0);
   expect(await topStart(distance)).toEqual(placed);
 });
 
@@ -1051,7 +1067,7 @@ test('over the map the chosen readings, the payload strip and the map buttons ea
   await expect(payload).toBeVisible();
   await expect(telemetry(vehicle, 'D'), 'one reading each, not a block').toBeVisible();
   await editLayout(vehicle);
-  await expect(hideBadgeOf(height)).toHaveCount(1);
+  await expect(removeBadgeOf(height)).toHaveCount(1);
   const moved = async (target: Locator, dx: number, dy: number) => {
     const [x, y] = await centre(target);
     await dragBy(vehicle, target, dx, dy);

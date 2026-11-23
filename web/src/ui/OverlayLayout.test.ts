@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SharedPreferences } from '@/kotlin/Platform';
-import { ARROW_STEP_PX, OverlayLayoutState, RESET_ARM_MILLIS, ResetTap, arrowStep, clampedInto, droppedIntoBar, homeRows, intersected, liftedBounds, rowsCovered, droppedOrder, hiddenKeys, jiggleDegrees, movedAmongShown, movedKey, onScreenCorrection, orderedKeys, orientedKey, resetPillText, resetTap, shownCorrection, storedIndicatorOrder, storedOffsets, visibleArea, withHidden } from './OverlayLayout';
+import { ARROW_STEP_PX, OverlayLayoutState, RESET_ARM_MILLIS, ResetTap, arrowStep, clampedInto, droppedIntoBar, homeRows, intersected, liftedBounds, rowsCovered, droppedOrder, hiddenKeys, jiggleDegrees, movedAmongShown, movedKey, nextItemSize, onScreenCorrection, orderedKeys, orientedKey, resetPillText, resetTap, resizeLabel, shownCorrection, storedIndicatorOrder, storedOffsets, storedSizes, visibleArea, withHidden } from './OverlayLayout';
 
 const rect = (left: number, top: number, right: number, bottom: number) => ({ left, top, right, bottom });
 
@@ -163,6 +163,24 @@ describe('LayoutStateTest', () => {
     expect(prefs.names()).toEqual(['OverlayRigOffset-orbit']);
     expect([...layout.offsets.value.keys()]).toEqual(['orbit']);
     expect(layout.hidden.value.has('reading:vehicle/distanceToHome')).toBe(false);
+  });
+
+  it('an item steps up through the sizes and back to normal, its size is stored, and forgetting it or a reset drops the size', () => {
+    const prefs = memoryPrefs();
+    const layout = new OverlayLayoutState(prefs);
+    expect([1, 1.25, 1.5, 2, 7].map(nextItemSize)).toEqual([1.25, 1.5, 2, 1, 1]);
+    expect([1, 2].map(resizeLabel)).toEqual(['Make bigger', 'Back to normal size']);
+    layout.resize('reading:vehicle/distanceToHome');
+    layout.resize('reading:vehicle/distanceToHome');
+    layout.resize('headingTape');
+    expect([...layout.sizes.value]).toEqual([['reading:vehicle/distanceToHome', 1.5], ['headingTape', 1.25]]);
+    expect(prefs.names()).toEqual(['OverlayRigSize-headingTape', 'OverlayRigSize-reading:vehicle/distanceToHome']);
+    expect([...storedSizes({ 'OverlayRigSize-headingTape': '1.25', 'OverlayRigSize-orbit': '9', 'OverlayRigOffset-orbit': '1,1' })]).toEqual([['headingTape', 1.25]]);
+    layout.forget(['reading:vehicle/distanceToHome']);
+    expect(prefs.names()).toEqual(['OverlayRigSize-headingTape']);
+    expect([...layout.sizes.value.keys()]).toEqual(['headingTape']);
+    layout.reset();
+    expect(layout.sizes.value).toEqual(new Map());
   });
 
   it('reset forgets every reading placement with the rest of the layout', () => {
