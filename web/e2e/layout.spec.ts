@@ -691,7 +691,7 @@ test('a reading dropped on the top bar joins its items, and pulled down from the
   await expect
     .poll(async () => {
       const first = await centre(flightTime);
-      await vehicle.waitForTimeout(300);
+      await vehicle.waitForTimeout(1000);
       return (await centre(flightTime))[0] - first[0];
     }, { message: 'the bar has settled' })
     .toBe(0);
@@ -743,6 +743,10 @@ test('a bar item pulled down stands over the picture where it was let go, keeps 
   await expect(inBar).toHaveCount(0);
   await editLayout(vehicle);
   const row = (await strip.boundingBox())!;
+  const [fromX, fromY] = await centre(timer);
+  await dragBy(vehicle, timer, barX - fromX, row.y + row.height + 6 - fromY);
+  await expect(inBar, 'let go short of the bar it stays over the picture').toHaveCount(0);
+  expect((await timer.boundingBox())!.y, 'and drops clear of the bar instead of lying across it').toBeGreaterThanOrEqual(row.y + row.height - 1);
   const [x, y] = await centre(timer);
   await vehicle.mouse.move(x, y);
   await vehicle.mouse.down();

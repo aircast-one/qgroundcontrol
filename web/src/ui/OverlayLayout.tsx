@@ -388,6 +388,11 @@ export const overStatusRow = (x: number, y: number): boolean => {
   return row !== undefined && within(row, x, y);
 };
 
+const belowStatusRow = (area: Bounds): Bounds => {
+  const row = document.querySelector('[data-status-row]')?.getBoundingClientRect();
+  return row === undefined ? area : { ...area, top: Math.max(area.top, row.bottom) };
+};
+
 const overLayoutItem = (x: number, y: number): boolean => Array.from(document.querySelectorAll(`[${LAYOUT_ITEM}]`)).some((item) => within(item.getBoundingClientRect(), x, y));
 
 const itemUnder = (target: Element, x: number, y: number): Element | null => {
@@ -548,7 +553,12 @@ export const LayoutDragArea = ({
     const middle = box === undefined ? null : ([(box.left + box.right) / 2, (box.top + box.bottom) / 2] as const);
     const onto = overStatusRow(event.clientX, event.clientY) ? event.clientX : middle !== null && overStatusRow(middle[0], middle[1]) ? middle[0] : null;
     if (held.dragging && onBar !== undefined && event.type === 'pointerup' && onto !== null) onBar(onto);
-    else if (held.dragging) layout.saveOffset(placedKey);
+    else if (held.dragging) {
+      const placed = frame.current;
+      const [dx, dy] = onBar === undefined || placed === null ? NO_OFFSET : clampedInto(placed.getBoundingClientRect(), belowStatusRow(area()), 0, 0);
+      layout.nudge(placedKey, dx, dy, home);
+      layout.saveOffset(placedKey);
+    }
   };
   return (
     <div
