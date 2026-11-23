@@ -720,7 +720,7 @@ test('a reading dropped on the top bar joins its items, and pulled down from the
   await finishEditing(vehicle);
 });
 
-test('a bar item pulled down stands over the picture where it was let go, keeps its place, and dropped on the bar it joins it again', async ({ vehicle }) => {
+test('a bar item pulled down stands over the picture where it was let go, keeps its place, and let go over the bar it joins it again even when the pointer ran on past it', async ({ vehicle }) => {
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
   await expect(telemetry(vehicle, 'D')).toBeVisible({ timeout: 30_000 });
   await editLayout(vehicle);
@@ -748,6 +748,7 @@ test('a bar item pulled down stands over the picture where it was let go, keeps 
   await vehicle.mouse.down();
   await vehicle.mouse.move(barX, row.y + row.height / 2, { steps: 12 });
   expect(Math.abs((await centre(timer))[1] - (row.y + row.height / 2)), 'it follows the pointer into the bar').toBeLessThan(12);
+  await vehicle.mouse.move(barX, 1, { steps: 4 });
   await vehicle.mouse.up();
   await expect(inBar, 'back among the bar items').toHaveCount(1);
   const home = (await inBar.boundingBox())!;

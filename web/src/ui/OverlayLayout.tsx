@@ -544,7 +544,10 @@ export const LayoutDragArea = ({
     if (held === null || held.id !== event.pointerId) return;
     drag.current = null;
     onLift(false);
-    if (held.dragging && onBar !== undefined && event.type === 'pointerup' && overStatusRow(event.clientX, event.clientY)) onBar(event.clientX);
+    const box = item.current?.getBoundingClientRect();
+    const middle = box === undefined ? null : ([(box.left + box.right) / 2, (box.top + box.bottom) / 2] as const);
+    const onto = overStatusRow(event.clientX, event.clientY) ? event.clientX : middle !== null && overStatusRow(middle[0], middle[1]) ? middle[0] : null;
+    if (held.dragging && onBar !== undefined && event.type === 'pointerup' && onto !== null) onBar(onto);
     else if (held.dragging) layout.saveOffset(placedKey);
   };
   return (
