@@ -178,7 +178,7 @@ _ALLOWED_CONTROL_KEYS = frozenset({
     "enumValues", "dialogButton", "actionButton", "warning", "raw", "bitMask",
     "firstEntryIsAll", "toggleCheckbox", "indent", "smallFont", "description",
     "sliderFrom", "sliderTo", "majorTickStepSize", "decimalPlaces", "linkedParams",
-    "component", "heading",
+    "component", "heading", "units",
 })
 _ALLOWED_REPEAT_KEYS = frozenset({
     "comment", "paramPrefix", "probePostfix", "startIndex", "firstIndexOmitsNumber",
