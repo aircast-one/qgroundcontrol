@@ -88,6 +88,7 @@ test('with a gimbal set to Click to point, a click on the synthetic view turns t
     await Qgc.set('settings.gimbalControllerSettings.enableOnScreenControl', true);
   }, '/src/bridge/Qgc.ts');
   await expect.poll(() => gimbalYaw(app), { timeout: 30_000 }).not.toBeNull();
+  await expect(app.getByRole('button', { name: 'Video gimbal mode, Click to point' })).toBeVisible();
   const before = (await gimbalYaw(app)) as number;
   const canvas = app.locator('[data-gesture=gimbal] canvas');
   await expect(canvas).toBeVisible();

@@ -104,7 +104,14 @@ const steadyBox = async (page: Page, target: Locator) => {
   return target.boundingBox();
 };
 
-export const slideAcross = async (page: Page, target: Locator) => {
+const MOUSE_POINTER = 1;
+
+const ANYWAY = ' anyway';
+
+const warnedMidSlide = (pressed: string | null, released: string | null): boolean =>
+  pressed !== null && released !== null && pressed !== released && pressed.replace(ANYWAY, '') === released.replace(ANYWAY, '');
+
+export const slideAcross = async (page: Page, target: Locator): Promise<void> => {
   await expect(target).toBeEnabled();
   await target.hover();
   const box = await steadyBox(page, target);
@@ -112,8 +119,12 @@ export const slideAcross = async (page: Page, target: Locator) => {
   const y = box.y + box.height / 2;
   await page.mouse.move(box.x + 10, y);
   await page.mouse.down();
+  const caught = await target.evaluate((slide, pointer) => slide.hasPointerCapture(pointer), MOUSE_POINTER, { timeout: 1_000 }).catch(() => true);
+  const pressed = await target.getAttribute('aria-label', { timeout: 1_000 }).catch(() => null);
   await page.mouse.move(box.x + box.width - 4, y, { steps: 20 });
   await page.mouse.up();
+  const released = await target.getAttribute('aria-label', { timeout: 1_000 }).catch(() => null);
+  return !caught || warnedMidSlide(pressed, released) ? slideAcross(page, target) : undefined;
 };
 
 export const flyNow = async (page: Page) => {
