@@ -85,6 +85,7 @@ pub struct Target {
     pub locked: bool,
     pub nose: f64,
     pub aircraft: bool,
+    pub unsure: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -210,6 +211,10 @@ impl Target {
                 == Some(true),
             nose: number("nose")?,
             aircraft: true,
+            unsure: view
+                .get("positionUnsure")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true),
         })
     }
 
@@ -238,6 +243,7 @@ impl Target {
             locked: false,
             nose: 0.0,
             aircraft: false,
+            unsure: false,
         }
     }
 
@@ -555,6 +561,7 @@ pub struct Frame {
     pub orbit: Option<OrbitPicture>,
     pub nose: f64,
     pub aircraft: bool,
+    pub unsure: bool,
 }
 
 pub struct OrbitPicture {
@@ -735,6 +742,7 @@ impl Frame {
                 self.nose,
                 self.under_ground.or(self.home_ground),
                 &camera,
+                self.unsure,
             ),
             false => Vec::new(),
         };
@@ -2011,6 +2019,7 @@ impl Session {
             }),
             nose: (pose.heading - wrapped(target.heading - target.nose)).rem_euclid(360.0),
             aircraft: target.aircraft,
+            unsure: target.unsure,
         })
     }
 }
@@ -2070,6 +2079,7 @@ mod tests {
             locked: false,
             nose: 90.0,
             aircraft: true,
+            unsure: false,
         }
     }
 
@@ -2135,6 +2145,7 @@ mod tests {
             orbit: None,
             nose: 90.0,
             aircraft: true,
+            unsure: false,
         };
         let tracked = overlays.tracked.clone().unwrap();
         let later = tracked.seen + Duration::from_millis(400);
@@ -2428,6 +2439,7 @@ mod tests {
             }),
             nose: 0.0,
             aircraft,
+            unsure: false,
         }
     }
 

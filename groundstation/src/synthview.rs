@@ -23,6 +23,13 @@ pub const DEPS: &[&str] = &[
     crate::cameras::ACTIVE_PATH,
     "video.activeVideoSource",
     "vehicle.bottles",
+    "vehicle.gps",
+    "vehicle.gps.lock",
+    "vehicle.gpsAggregate.jammingState",
+    "vehicle.gpsAggregate.spoofingState",
+    "vehicle.gpsAggregate.authenticationState",
+    "vehicle.estimatorStatus",
+    "vehicle.estimatorStatus.goodHorizPosAbsEstimate",
     SYNTHETIC_CHANGED,
 ];
 
@@ -74,6 +81,9 @@ static TERRAIN: Mutex<Option<(Terrain, u64)>> = Mutex::new(None);
 #[cfg(test)]
 pub(crate) static TEST_GROUND: Mutex<()> = Mutex::new(());
 const GROUND_KEPT_MS: u64 = 2_000;
+const GPS_3D_FIX: f64 = 3.0;
+const INTERFERENCE_DETECTED: f64 = 3.0;
+const AUTHENTICATION_FAILED: f64 = 2.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Draw {
@@ -314,6 +324,37 @@ fn tracked_from_home(backend: &dyn Backend) -> Option<(f64, f64, f64)> {
     ))
 }
 
+fn fact_reading(backend: &dyn Backend, path: &str) -> Option<f64> {
+    let fact = backend.value(path);
+    match fact.get("rawValue").or(fact.get("value"))? {
+        Value::Bool(set) => Some(f64::from(u8::from(*set))),
+        other => other.as_f64(),
+    }
+}
+
+fn reporting(backend: &dyn Backend, group: &str) -> bool {
+    flag(&backend.value(group), "telemetryAvailable")
+}
+
+pub fn position_unsure(backend: &dyn Backend) -> bool {
+    let interfered = ["jammingState", "spoofingState"].iter().any(|state| {
+        fact_reading(backend, &format!("vehicle.gpsAggregate.{state}"))
+            == Some(INTERFERENCE_DETECTED)
+    });
+    let forged = fact_reading(backend, "vehicle.gpsAggregate.authenticationState")
+        == Some(AUTHENTICATION_FAILED);
+    let lost = match reporting(backend, "vehicle.estimatorStatus") {
+        true => {
+            fact_reading(backend, "vehicle.estimatorStatus.goodHorizPosAbsEstimate") == Some(0.0)
+        }
+        false => {
+            reporting(backend, "vehicle.gps")
+                && fact_reading(backend, "vehicle.gps.lock").is_some_and(|lock| lock < GPS_3D_FIX)
+        }
+    };
+    interfered || forged || lost
+}
+
 pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Value {
     let placed = point(backend, "vehicle.coordinate")
         .zip(point(backend, "vehicle.homePosition"))
@@ -402,6 +443,7 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         "software": software(),
         "bottles": backend.value_fields("vehicle", "bottles").get("bottles").cloned().unwrap_or_else(|| json!([])),
         "beam": beam((latitude, longitude), above_home, heading, pitch, CAMERA_FOV_DEG).iter().map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>(),
+        "positionUnsure": position_unsure(backend),
     })
 }
 
@@ -776,6 +818,82 @@ mod tests {
 
     fn no_gimbal() -> Value {
         json!({ "gimbals": [] })
+    }
+
+    fn reporting(telemetry: bool) -> Value {
+        json!({ "kind": "object", "telemetryAvailable": telemetry })
+    }
+
+    #[test]
+    fn the_position_is_unreliable_once_the_estimator_loses_its_absolute_fix_and_not_before_it_reports()
+     {
+        let estimator = |good: bool| {
+            flying(&[
+                ("vehicle.estimatorStatus", reporting(true)),
+                (
+                    "vehicle.estimatorStatus.goodHorizPosAbsEstimate",
+                    json!(good),
+                ),
+            ])
+        };
+        assert!(!position_unsure(&estimator(true)));
+        assert!(position_unsure(&estimator(false)));
+        assert!(
+            !position_unsure(&flying(&[
+                ("vehicle.estimatorStatus", reporting(false)),
+                ("vehicle.estimatorStatus.goodHorizPosAbsEstimate", json!(0)),
+            ])),
+            "an estimator that has not reported yet reads as zeros, which is no verdict"
+        );
+    }
+
+    #[test]
+    fn without_estimator_reports_a_gps_below_a_3d_fix_is_unreliable_but_an_aircraft_without_gps_telemetry_is_not_judged()
+     {
+        let gps = |telemetry: bool, lock: u8| {
+            flying(&[
+                ("vehicle.gps", reporting(telemetry)),
+                ("vehicle.gps.lock", json!(lock)),
+            ])
+        };
+        assert!(!position_unsure(&gps(true, 3)));
+        assert!(position_unsure(&gps(true, 1)), "no fix");
+        assert!(!position_unsure(&gps(false, 0)));
+    }
+
+    #[test]
+    fn detected_jamming_or_spoofing_or_failed_authentication_makes_the_position_unreliable_while_mitigated_does_not()
+     {
+        let state = |name: &'static str, value: u8| flying(&[(name, json!(value))]);
+        assert!(position_unsure(&state(
+            "vehicle.gpsAggregate.jammingState",
+            3
+        )));
+        assert!(position_unsure(&state(
+            "vehicle.gpsAggregate.spoofingState",
+            3
+        )));
+        assert!(position_unsure(&state(
+            "vehicle.gpsAggregate.authenticationState",
+            2
+        )));
+        assert!(
+            !position_unsure(&state("vehicle.gpsAggregate.jammingState", 2)),
+            "mitigated"
+        );
+        assert!(
+            !position_unsure(&state("vehicle.gpsAggregate.spoofingState", 1)),
+            "ok"
+        );
+        assert_eq!(
+            synthetic(
+                &state("vehicle.gpsAggregate.spoofingState", 3),
+                &no_gimbal(),
+                DEFAULT_AIM
+            )["positionUnsure"],
+            true,
+            "and the view says so"
+        );
     }
 
     #[test]

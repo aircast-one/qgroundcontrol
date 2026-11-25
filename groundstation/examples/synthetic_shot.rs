@@ -47,6 +47,7 @@ fn main() {
         locked: false,
         nose: number("--heading", 200.0),
         aircraft: true,
+        unsure: std::env::args().any(|arg| arg == "--unsure"),
     };
     let orbit = arg("--orbit-range").map(|_| groundstation::map3d::Orbit {
         heading: number("--orbit-heading", 0.0),

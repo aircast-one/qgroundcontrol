@@ -95,6 +95,7 @@ const IMPACT_PX: f64 = 32.0;
 const LEAD_PX: f64 = 22.0;
 const LEAD_LINE_PX: f64 = 2.0;
 const AIRCRAFT: [u8; 4] = [0xFF, 0x3D, 0x00, 255];
+const UNSURE: [u8; 4] = [0x9E, 0x9E, 0x9E, 255];
 const AIRCRAFT_PX: f64 = 22.0;
 const AIRCRAFT_LABEL_PX: f64 = 40.0;
 const NOSE_PX: f64 = 34.0;
@@ -114,7 +115,8 @@ const TYRE_ROW: usize = CAR_PAINTS.len() + 1;
 const BRACKET_TEXELS: u32 = 10;
 const BRACKET_THICKNESS: u32 = 3;
 const LABEL_FONT: &[u8] = include_bytes!("../../../resources/fonts/Geist-SemiBold.ttf");
-const GLYPHS: &str = "0123456789Hm ";
+const GLYPHS: &str = "0123456789Hm Pabeilnorstu";
+const UNSURE_LABEL: &str = "Position unreliable";
 const GLYPH_PX: f32 = 72.0;
 const HALO_PX: i32 = 8;
 const HALO_ALPHA: f32 = 0.75;
@@ -863,7 +865,9 @@ pub fn aircraft(
     heading: f64,
     ground: Option<f64>,
     camera: &Camera,
+    unsure: bool,
 ) -> Vec<Arc<Mesh>> {
+    let colour = if unsure { UNSURE } else { AIRCRAFT };
     let frame = Frame::at(at.0, at.1);
     let body = ecef(at.0, at.1, at.2);
     let unit = metres_per_px(camera, body);
@@ -874,20 +878,23 @@ pub fn aircraft(
             * NOSE_PX
             * unit;
     let foot = ground.map(|height| ecef(at.0, at.1, height));
-    let above = ground.map(|height| format!("{:.0} m", (at.2 - height).max(0.0)));
+    let above = match unsure {
+        true => Some(UNSURE_LABEL.to_string()),
+        false => ground.map(|height| format!("{:.0} m", (at.2 - height).max(0.0))),
+    };
     let over_marker = body + camera.up * AIRCRAFT_PX / 2.0 * unit;
     [
         quads(
             &frame,
             foot.map(|foot| (ribbon(camera, body, foot, DROP_LINE_PX), FULL_UV))
                 .into_iter(),
-            solid(AIRCRAFT),
+            solid(colour),
             Layer::Opaque,
         ),
         quads(
             &frame,
             std::iter::once((ribbon(camera, body, nose, NOSE_LINE_PX), FULL_UV)),
-            solid(AIRCRAFT),
+            solid(colour),
             Layer::OnTop,
         ),
         quads(
@@ -896,7 +903,7 @@ pub fn aircraft(
                 billboard(camera, body, 0.0, AIRCRAFT_PX, AIRCRAFT_PX),
                 FULL_UV,
             )),
-            disc(AIRCRAFT),
+            disc(colour),
             Layer::OnTop,
         ),
         quads(
@@ -1200,6 +1207,38 @@ mod tests {
     }
 
     #[test]
+    fn an_aircraft_whose_position_is_unreliable_is_drawn_grey_and_says_so_instead_of_a_height() {
+        let camera = camera();
+        let at = (-35.364, 149.164, 680.0);
+        let sure = aircraft(at, 90.0, Some(600.0), &camera, false);
+        let unsure = aircraft(at, 90.0, Some(600.0), &camera, true);
+        let colours = |meshes: &[Arc<Mesh>]| {
+            meshes[..3]
+                .iter()
+                .map(|mesh| {
+                    mesh.take_texture().and_then(|mips| {
+                        mips.first()
+                            .map(|t| t.get_pixel(t.width() / 2, t.height() / 2).0)
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+        assert!(
+            colours(&sure).iter().all(|c| *c == Some(AIRCRAFT)),
+            "the marker, nose and drop line are orange"
+        );
+        assert!(
+            colours(&unsure).iter().all(|c| *c == Some(UNSURE)),
+            "and grey when the position is unreliable"
+        );
+        assert_eq!(
+            unsure[3].indices.len(),
+            UNSURE_LABEL.len() * 6,
+            "the label reads the warning, a letter per quad"
+        );
+    }
+
+    #[test]
     fn the_route_hangs_a_curtain_and_each_waypoint_a_stem_down_past_the_ground_so_the_terrain_cuts_them_where_they_meet_it()
      {
         let overlays = Overlays::from_view(&view()).unwrap();
@@ -1304,7 +1343,7 @@ mod tests {
             720,
         );
         let at = (SPOT.0, SPOT.1, GROUND + 249.0);
-        let marked = aircraft(at, 90.0, Some(GROUND), &camera);
+        let marked = aircraft(at, 90.0, Some(GROUND), &camera, false);
         assert_eq!(marked.len(), 4, "drop line, nose, marker and label");
         assert_eq!(
             marked[3].indices.len(),
@@ -1312,7 +1351,7 @@ mod tests {
             "one quad per character of the height, spaced from its unit"
         );
         assert_eq!(
-            aircraft(at, 90.0, None, &camera).len(),
+            aircraft(at, 90.0, None, &camera, false).len(),
             2,
             "with the ground unknown there is no drop line and no height to give"
         );
