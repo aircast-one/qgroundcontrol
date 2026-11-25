@@ -1,7 +1,8 @@
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 use web_time::Instant;
 
+use ab_glyph::{Font, FontRef, PxScale, ScaleFont, point};
 use glam::{DMat3, DMat4, DVec3};
 use serde_json::Value;
 
@@ -71,11 +72,14 @@ impl Bottle {
 
 const ROUTE_PX: f64 = 3.0;
 const MARK_PX: f64 = 14.0;
-const LABEL_PX: f64 = 18.0;
+const LABEL_PX: f64 = 22.0;
 const WALL_FOOT_M: f64 = 100.0;
+const CURTAIN_FOOT_M: f64 = 1_000.0;
+const STEM_PX: f64 = 2.0;
 const CIRCLE_STEPS: usize = 64;
 const EARTH_RADIUS_M: f64 = 6_371_000.0;
 const ROUTE: [u8; 4] = [0xFF, 0xE9, 0xA6, 255];
+const CURTAIN: [u8; 4] = [0xFF, 0xE9, 0xA6, 48];
 const HOME: [u8; 4] = [0x4C, 0xAF, 0x50, 255];
 const WAYPOINT: [u8; 4] = [255, 255, 255, 255];
 const INCLUSION: [u8; 4] = [0xFF, 0x8A, 0x65, 64];
@@ -109,23 +113,12 @@ const GLASS_ROW: usize = CAR_PAINTS.len();
 const TYRE_ROW: usize = CAR_PAINTS.len() + 1;
 const BRACKET_TEXELS: u32 = 10;
 const BRACKET_THICKNESS: u32 = 3;
-const GLYPHS: &str = "0123456789Hm";
-const GLYPH_SCALE: u32 = 4;
-const GLYPH_CELL: (u32, u32) = (5, 7);
-const FONT: [[u8; 5]; 12] = [
-    [0b111, 0b101, 0b101, 0b101, 0b111],
-    [0b010, 0b110, 0b010, 0b010, 0b111],
-    [0b111, 0b001, 0b111, 0b100, 0b111],
-    [0b111, 0b001, 0b111, 0b001, 0b111],
-    [0b101, 0b101, 0b111, 0b001, 0b001],
-    [0b111, 0b100, 0b111, 0b001, 0b111],
-    [0b111, 0b100, 0b111, 0b101, 0b111],
-    [0b111, 0b001, 0b001, 0b001, 0b001],
-    [0b111, 0b101, 0b111, 0b101, 0b111],
-    [0b111, 0b101, 0b111, 0b001, 0b111],
-    [0b101, 0b101, 0b111, 0b101, 0b101],
-    [0b000, 0b111, 0b111, 0b101, 0b101],
-];
+const LABEL_FONT: &[u8] = include_bytes!("../../../resources/fonts/Geist-SemiBold.ttf");
+const GLYPHS: &str = "0123456789Hm ";
+const GLYPH_PX: f32 = 72.0;
+const HALO_PX: i32 = 8;
+const HALO_ALPHA: f32 = 0.75;
+const HALO_SOLID: f32 = 0.4;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Spot {
@@ -550,43 +543,117 @@ pub fn cars(cars: &[Tracked], home_ground: f64, now: Instant) -> Vec<Arc<Mesh>> 
         .collect()
 }
 
-fn glyph_lit(glyph: usize, column: i32, row: i32) -> bool {
-    (0..3).contains(&column)
-        && (0..5).contains(&row)
-        && FONT[glyph][row as usize] & (0b100 >> column) != 0
+struct Glyph {
+    character: char,
+    left: u32,
+    width: u32,
+    advance: f32,
+}
+
+struct Glyphs {
+    atlas: image::RgbaImage,
+    glyphs: Vec<Glyph>,
+    text_px: f32,
+}
+
+static LABEL_GLYPHS: LazyLock<Glyphs> = LazyLock::new(rasterised);
+
+fn coverage(font: &FontRef, character: char, width: u32, height: u32, baseline: f32) -> Vec<f32> {
+    let id = font
+        .glyph_id(character)
+        .with_scale_and_position(PxScale::from(GLYPH_PX), point(HALO_PX as f32, baseline));
+    let mut cells = vec![0.0; (width * height) as usize];
+    if let Some(outline) = font.outline_glyph(id) {
+        let bounds = outline.px_bounds();
+        outline.draw(|x, y, value| {
+            let (x, y) = (
+                x as i32 + bounds.min.x as i32,
+                y as i32 + bounds.min.y as i32,
+            );
+            if (0..width as i32).contains(&x) && (0..height as i32).contains(&y) {
+                cells[(y as u32 * width + x as u32) as usize] = value;
+            }
+        });
+    }
+    cells
+}
+
+fn halo(cells: &[f32], width: u32, height: u32, x: i32, y: i32) -> f32 {
+    let reach = HALO_PX as f32;
+    (-HALO_PX..=HALO_PX)
+        .flat_map(|dy| (-HALO_PX..=HALO_PX).map(move |dx| (dx, dy)))
+        .filter(|&(dx, dy)| {
+            (0..width as i32).contains(&(x + dx)) && (0..height as i32).contains(&(y + dy))
+        })
+        .map(|(dx, dy)| {
+            let fade = (1.0 - ((dx * dx + dy * dy) as f32).sqrt() / reach) / (1.0 - HALO_SOLID);
+            cells[((y + dy) as u32 * width + (x + dx) as u32) as usize] * fade.clamp(0.0, 1.0)
+        })
+        .fold(0.0, f32::max)
+}
+
+fn lettered(cells: &[f32], width: u32, height: u32, x: u32, y: u32) -> image::Rgba<u8> {
+    let ink = cells[(y * width + x) as usize];
+    let shadow = halo(cells, width, height, x as i32, y as i32) * HALO_ALPHA;
+    let alpha = ink + shadow * (1.0 - ink);
+    let white = if alpha > 0.0 { ink / alpha } else { 0.0 };
+    let byte = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    image::Rgba([byte(white), byte(white), byte(white), byte(alpha)])
+}
+
+fn rasterised() -> Glyphs {
+    let font =
+        FontRef::try_from_slice(LABEL_FONT).expect("the label font is a valid TrueType font");
+    let scaled = font.as_scaled(PxScale::from(GLYPH_PX));
+    let text_px = scaled.ascent() - scaled.descent();
+    let height = text_px.ceil() as u32 + 2 * HALO_PX as u32;
+    let baseline = HALO_PX as f32 + scaled.ascent();
+    let drawn: Vec<(char, f32, u32, Vec<f32>)> = GLYPHS
+        .chars()
+        .map(|character| {
+            let advance = scaled.h_advance(font.glyph_id(character));
+            let width = advance.ceil() as u32 + 2 * HALO_PX as u32;
+            (
+                character,
+                advance,
+                width,
+                coverage(&font, character, width, height, baseline),
+            )
+        })
+        .collect();
+    let lefts = drawn.iter().scan(0, |left, (_, _, width, _)| {
+        let at = *left;
+        *left += width;
+        Some(at)
+    });
+    let glyphs: Vec<Glyph> = drawn
+        .iter()
+        .zip(lefts)
+        .map(|((character, advance, width, _), left)| Glyph {
+            character: *character,
+            left,
+            width: *width,
+            advance: *advance,
+        })
+        .collect();
+    let total = glyphs.iter().map(|glyph| glyph.width).sum::<u32>();
+    let atlas = image::RgbaImage::from_fn(total, height, |x, y| {
+        glyphs
+            .iter()
+            .zip(&drawn)
+            .find(|(glyph, _)| (glyph.left..glyph.left + glyph.width).contains(&x))
+            .map(|(glyph, (_, _, width, cells))| lettered(cells, *width, height, x - glyph.left, y))
+            .unwrap_or(image::Rgba([0, 0, 0, 0]))
+    });
+    Glyphs {
+        atlas,
+        glyphs,
+        text_px,
+    }
 }
 
 pub fn atlas() -> image::RgbaImage {
-    let (cell_w, cell_h) = GLYPH_CELL;
-    image::RgbaImage::from_fn(
-        cell_w * GLYPHS.len() as u32 * GLYPH_SCALE,
-        cell_h * GLYPH_SCALE,
-        |x, y| {
-            let (glyph, column, row) = (
-                (x / GLYPH_SCALE / cell_w) as usize,
-                (x / GLYPH_SCALE % cell_w) as i32 - 1,
-                (y / GLYPH_SCALE) as i32 - 1,
-            );
-            let lit = glyph_lit(glyph, column, row);
-            let edge = (-1..=1)
-                .flat_map(|dy| (-1..=1).map(move |dx| (dx, dy)))
-                .any(|(dx, dy)| glyph_lit(glyph, column + dx, row + dy));
-            image::Rgba(if lit {
-                [255, 255, 255, 255]
-            } else if edge {
-                [0, 0, 0, 255]
-            } else {
-                [0, 0, 0, 0]
-            })
-        },
-    )
-}
-
-fn glyph_uv(character: char) -> Option<[[f32; 2]; 4]> {
-    let index = GLYPHS.find(character)? as f32;
-    let width = 1.0 / GLYPHS.len() as f32;
-    let (left, right) = (index * width, (index + 1.0) * width);
-    Some([[left, 1.0], [right, 1.0], [right, 0.0], [left, 0.0]])
+    LABEL_GLYPHS.atlas.clone()
 }
 
 fn label(
@@ -595,16 +662,43 @@ fn label(
     text: &str,
     height_px: f64,
 ) -> Vec<([DVec3; 4], [[f32; 2]; 4])> {
-    let (cell_w, cell_h) = GLYPH_CELL;
-    let char_w = height_px * f64::from(cell_w) / f64::from(cell_h);
+    let set = &*LABEL_GLYPHS;
+    let scale = height_px / f64::from(set.text_px);
+    let (atlas_w, atlas_h) = set.atlas.dimensions();
+    let glyphs: Vec<&Glyph> = text
+        .chars()
+        .filter_map(|character| set.glyphs.iter().find(|glyph| glyph.character == character))
+        .collect();
+    let span = glyphs
+        .iter()
+        .map(|glyph| f64::from(glyph.advance))
+        .sum::<f64>()
+        * scale;
     let right = camera.forward.cross(camera.up).normalize() * metres_per_px(camera, at);
-    let start = -(text.chars().count() as f64 - 1.0) / 2.0 * char_w;
-    text.chars()
-        .enumerate()
-        .filter_map(|(index, character)| {
-            let uv = glyph_uv(character)?;
-            let shifted = at + right * (start + index as f64 * char_w);
-            Some((billboard(camera, shifted, height_px, char_w, height_px), uv))
+    glyphs
+        .iter()
+        .scan(-span / 2.0, |pen, glyph| {
+            let advance = f64::from(glyph.advance) * scale;
+            let centre = *pen + advance / 2.0;
+            *pen += advance;
+            Some((glyph, centre))
+        })
+        .map(|(glyph, centre)| {
+            let (left, right_uv) = (
+                glyph.left as f32 / atlas_w as f32,
+                (glyph.left + glyph.width) as f32 / atlas_w as f32,
+            );
+            let quad = billboard(
+                camera,
+                at + right * centre,
+                height_px,
+                f64::from(glyph.width) * scale,
+                f64::from(atlas_h) * scale,
+            );
+            (
+                quad,
+                [[left, 1.0], [right_uv, 1.0], [right_uv, 0.0], [left, 0.0]],
+            )
         })
         .collect()
 }
@@ -643,6 +737,22 @@ pub fn meshes(overlays: &Overlays, home_ground: f64, camera: &Camera) -> Vec<Arc
             FULL_UV,
         )
     });
+    let foot = |s: &Spot| ecef(s.latitude, s.longitude, home_ground - CURTAIN_FOOT_M);
+    let curtain = overlays.route.windows(2).map(|pair| {
+        (
+            [
+                lifted(&pair[0]),
+                lifted(&pair[1]),
+                foot(&pair[1]),
+                foot(&pair[0]),
+            ],
+            FULL_UV,
+        )
+    });
+    let stems = overlays
+        .waypoints
+        .iter()
+        .map(|(s, _)| (ribbon(camera, lifted(s), foot(s), STEM_PX), FULL_UV));
     let marks = overlays
         .waypoints
         .iter()
@@ -682,6 +792,8 @@ pub fn meshes(overlays: &Overlays, home_ground: f64, camera: &Camera) -> Vec<Arc
     };
     [
         quads(&frame, route, solid(ROUTE), Layer::Opaque),
+        quads(&frame, stems, solid(ROUTE), Layer::Opaque),
+        quads(&frame, curtain, solid(CURTAIN), Layer::Translucent),
         quads(&frame, walls(true), solid(INCLUSION), Layer::Translucent),
         quads(&frame, walls(false), solid(EXCLUSION), Layer::Translucent),
         quads(&frame, marks, disc(WAYPOINT), Layer::OnTop),
@@ -762,7 +874,7 @@ pub fn aircraft(
             * NOSE_PX
             * unit;
     let foot = ground.map(|height| ecef(at.0, at.1, height));
-    let above = ground.map(|height| format!("{:.0}m", (at.2 - height).max(0.0)));
+    let above = ground.map(|height| format!("{:.0} m", (at.2 - height).max(0.0)));
     let over_marker = body + camera.up * AIRCRAFT_PX / 2.0 * unit;
     [
         quads(
@@ -946,13 +1058,15 @@ mod tests {
             layers,
             vec![
                 (Layer::Opaque, 2),
+                (Layer::Opaque, 1),
+                (Layer::Translucent, 2),
                 (Layer::Translucent, CIRCLE_STEPS),
                 (Layer::Translucent, 3),
                 (Layer::OnTop, 1),
                 (Layer::OnTop, 1),
                 (Layer::OnTop, 3)
             ],
-            "two route legs, the inclusion circle, the exclusion triangle, one waypoint, home, and '12' plus 'H'"
+            "two route legs, the waypoint's stem, the curtain under both legs, the inclusion circle, the exclusion triangle, one waypoint, home, and '12' plus 'H'"
         );
         assert!(meshes.iter().all(|mesh| {
             mesh.indices
@@ -1086,24 +1200,89 @@ mod tests {
     }
 
     #[test]
-    fn the_glyph_atlas_draws_digits_white_inside_a_black_outline() {
-        let atlas = atlas();
-        assert_eq!(
-            atlas.dimensions(),
-            (5 * GLYPHS.len() as u32 * GLYPH_SCALE, 7 * GLYPH_SCALE)
-        );
-        let pixel = |glyph: u32, column: u32, row: u32| {
-            atlas
-                .get_pixel((glyph * 5 + column) * GLYPH_SCALE, row * GLYPH_SCALE)
-                .0
+    fn the_route_hangs_a_curtain_and_each_waypoint_a_stem_down_past_the_ground_so_the_terrain_cuts_them_where_they_meet_it()
+     {
+        let overlays = Overlays::from_view(&view()).unwrap();
+        let drawn = meshes(&overlays, GROUND, &camera());
+        let lowest = |layer: Layer| {
+            drawn
+                .iter()
+                .filter(|mesh| mesh.layer == layer)
+                .flat_map(|mesh| {
+                    mesh.positions.iter().map(|p| {
+                        let at = mesh.to_ecef.transform_point3(DVec3::new(
+                            f64::from(p[0]),
+                            f64::from(p[1]),
+                            f64::from(p[2]),
+                        ));
+                        at.length() - ecef(SPOT.0, SPOT.1, 0.0).length()
+                    })
+                })
+                .fold(f64::MAX, f64::min)
         };
-        assert_eq!(
-            pixel(1, 2, 1),
-            [255, 255, 255, 255],
-            "the top of the '1' stroke"
+        assert!(
+            lowest(Layer::Translucent) < GROUND - CURTAIN_FOOT_M / 2.0,
+            "the curtain reaches well below the home ground"
         );
-        assert_eq!(pixel(1, 1, 1), [0, 0, 0, 255], "its outline");
-        assert_eq!(pixel(1, 4, 0), [0, 0, 0, 0], "clear around it");
+        assert!(
+            lowest(Layer::Opaque) < GROUND - CURTAIN_FOOT_M / 2.0,
+            "and so do the stems"
+        );
+    }
+
+    #[test]
+    fn label_glyphs_are_white_letters_on_a_soft_dark_halo_that_fades_out() {
+        let set = &*LABEL_GLYPHS;
+        let one = set
+            .glyphs
+            .iter()
+            .find(|glyph| glyph.character == '1')
+            .expect("a '1'");
+        let column = |x: u32| {
+            (0..set.atlas.height())
+                .map(|y| set.atlas.get_pixel(one.left + x, y).0)
+                .collect::<Vec<_>>()
+        };
+        let pixels: Vec<[u8; 4]> = (0..one.width).flat_map(column).collect();
+        assert!(
+            pixels.iter().any(|p| *p == [255, 255, 255, 255]),
+            "solid white stroke"
+        );
+        assert!(
+            pixels
+                .iter()
+                .any(|p| p[0] < 40 && (60..200).contains(&p[3])),
+            "a dark, partly see-through halo around it"
+        );
+        assert_eq!(
+            set.atlas.get_pixel(one.left, 0).0[3],
+            0,
+            "clear at the cell's corner"
+        );
+    }
+
+    #[test]
+    fn a_label_spaces_its_letters_by_their_own_widths_and_centres_on_its_point() {
+        let camera = camera();
+        let at = camera.eye + camera.forward * 100.0;
+        let right = camera.forward.cross(camera.up).normalize();
+        let along = |quad: &[DVec3; 4]| (quad.iter().sum::<DVec3>() / 4.0 - at).dot(right);
+        let quads = label(&camera, at, "1 m", LABEL_PX);
+        assert_eq!(quads.len(), 3, "a quad per letter, the space included");
+        let width = |quad: &[DVec3; 4]| (quad[1] - quad[0]).length();
+        assert!(
+            width(&quads[2].0) > width(&quads[0].0),
+            "an 'm' is wider than a '1'"
+        );
+        let (first, last) = (along(&quads[0].0), along(&quads[2].0));
+        assert!(
+            first < 0.0 && last > 0.0,
+            "the text runs left to right across its point"
+        );
+        assert!(
+            (first + last).abs() < width(&quads[2].0),
+            "and sits around it"
+        );
     }
 
     const SPOT: (f64, f64) = (-35.363, 149.165);
@@ -1129,8 +1308,8 @@ mod tests {
         assert_eq!(marked.len(), 4, "drop line, nose, marker and label");
         assert_eq!(
             marked[3].indices.len(),
-            "249m".len() * 6,
-            "one quad per character of the height"
+            "249 m".len() * 6,
+            "one quad per character of the height, spaced from its unit"
         );
         assert_eq!(
             aircraft(at, 90.0, None, &camera).len(),
