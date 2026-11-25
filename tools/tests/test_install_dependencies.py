@@ -29,6 +29,7 @@ from setup.install_dependencies import (
     get_macos_packages,
     install_just_debian,
     parse_args,
+    print_packages,
     resolve_package_alternatives,
     run_apt_install_with_retry,
     validate_extra_packages,
@@ -139,6 +140,18 @@ def test_resolve_package_alternatives_drops_when_none_available() -> None:
         assert resolve_package_alternatives(["cmake", "libgstreamer-plugins-good1.0-dev"]) == [
             "cmake"
         ]
+
+
+def test_print_packages_swaps_a_replaced_debian_package_for_its_alternative(capsys) -> None:
+    with patch(
+        "setup.install_dependencies._common.check_apt_package_available",
+        side_effect=lambda pkg: pkg != "libgstreamer-plugins-good1.0-dev",
+    ):
+        print_packages("debian")
+    printed = capsys.readouterr().out.splitlines()
+    assert len(printed) == 1, "one machine-readable line, the swap notice goes to stderr"
+    assert "libgstreamer-plugins-good1.0-dev" not in printed[0].split()
+    assert "libgstreamer-plugins-extra1.0-dev" in printed[0].split()
 
 
 def test_get_macos_packages() -> None:

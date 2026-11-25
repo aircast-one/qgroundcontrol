@@ -131,7 +131,8 @@ def detect_python_version() -> None:
 
 
 def print_packages() -> None:
-    """Resolve the debian apt package list and emit it as a GITHUB_OUTPUT value."""
+    """Resolve the debian apt package list against fresh apt lists and emit it as a GITHUB_OUTPUT value."""
+    _sudo(["apt-get", *APT_OPTS, "update", "-qq"], check=False)
     result = run_captured(
         [
             sys.executable,
