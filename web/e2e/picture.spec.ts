@@ -101,7 +101,7 @@ test('with the shutter button turned off, the camera joystick still shows and on
   await expect(app.getByRole('button', { name: 'Start recording' })).toHaveCount(0);
 });
 
-test('with camera RC channels set, the camera joystick turns the camera on them and gives them back when let go', async ({ app }) => {
+test('with camera RC channels set, the camera joystick turns the camera on them and, with no radio to take them back, holds them at centre', async ({ app }) => {
   await connectMock(app, ['Enable gimbal'], 'APM ArduCopter Vehicle');
   await flyNow(app);
   await app.evaluate(async (module) => {
@@ -119,7 +119,9 @@ test('with camera RC channels set, the camera joystick turns the camera on them 
   await app.mouse.move(pad.x + pad.width + 40, pad.y + pad.height / 2, { steps: 12 });
   await expect.poll(async () => (await held())['13'] ?? 0, { message: 'full right is the pan channel at top speed', timeout: 20_000 }).toBeGreaterThan(1900);
   await app.mouse.up();
-  await expect.poll(async () => Object.keys(await held()), { message: 'a centred stick hands both channels back', timeout: 20_000 }).toEqual([]);
+  await expect
+    .poll(held, { message: 'letting go of overrides on an aircraft with no working receiver trips its radio failsafe a second later', timeout: 20_000 })
+    .toEqual({ '13': 1500, '14': 1500 });
 });
 
 test('with a gimbal and no camera picture, the gimbal mode still switches', async ({ app }) => {

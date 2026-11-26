@@ -1657,6 +1657,7 @@ mod deps_cover_reads {
         ("radio", include_str!("radio.rs")),
         ("radiocamera", include_str!("radiocamera.rs")),
         ("rallyedit", include_str!("rallyedit.rs")),
+        ("rcgimbal", include_str!("rcgimbal.rs")),
         ("rcoverride", include_str!("rcoverride.rs")),
         ("builtinsticks", include_str!("builtinsticks.rs")),
         ("umbus", include_str!("umbus.rs")),

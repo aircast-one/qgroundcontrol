@@ -248,6 +248,7 @@ pub mod radio;
 pub mod radiocamera;
 pub mod rallyedit;
 pub mod rccal;
+pub mod rcgimbal;
 pub mod rcoverride;
 pub mod rctoparam;
 pub mod read;
