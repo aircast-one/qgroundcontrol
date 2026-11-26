@@ -108,6 +108,7 @@ const calls = {
   linksStart: core.linksStart,
   settingsOpen: openSettings,
   settingsAdopt: adoptSettings,
+  settingsMerged: core.settingsMerged,
   setMockLinksAvailable: core.setMockLinksAvailable,
   setSerialPorts: core.setSerialPorts,
   serialReceived: core.serialReceived,

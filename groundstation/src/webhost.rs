@@ -126,6 +126,11 @@ pub fn settings_adopt(text: &str) -> bool {
     adopted
 }
 
+#[wasm_bindgen(js_name = settingsMerged)]
+pub fn settings_merged(base: &str, mine: &str, theirs: &str) -> String {
+    crate::settingsini::merged(base, mine, theirs)
+}
+
 #[wasm_bindgen(js_name = settingsText)]
 pub fn settings_text() -> String {
     crate::settingsstore::text().unwrap_or_default()

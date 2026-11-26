@@ -99,19 +99,32 @@ const store = (text: string) => {
   }
 };
 
-const device = { keepsSettings: false, save: latestWins(sendDeviceSettings, DEVICE_RETRY_MS) };
+const device = { keepsSettings: false, base: '' };
+
+const saveOnDevice = latestWins(async (mine: string): Promise<boolean> => {
+  const theirs = await readDeviceSettings();
+  if (theirs === null) return false;
+  const merged = theirs === device.base || theirs === '' ? mine : await call<string>('settingsMerged', device.base, mine, theirs);
+  if (merged !== theirs && !(await sendDeviceSettings(merged))) return false;
+  device.base = merged;
+  if (merged === mine) return true;
+  store(merged);
+  await call('settingsAdopt', merged);
+  return true;
+}, DEVICE_RETRY_MS);
 
 const keep = (text: string) => {
   store(text);
-  if (device.keepsSettings) void device.save(text);
+  if (device.keepsSettings) void saveOnDevice(text);
 };
 
 const openSettings = async (): Promise<void> => {
   const kept = await readDeviceSettings();
   device.keepsSettings = kept !== null;
+  device.base = kept ?? '';
   const text = kept || stored();
   await call('settingsOpen', text);
-  if (kept === '' && text !== '') void device.save(text);
+  if (kept === '' && text !== '') void saveOnDevice(text);
 };
 
 export const webSerialAvailable = (): boolean => !__DESKTOP__ && typeof navigator !== 'undefined' && 'serial' in navigator;

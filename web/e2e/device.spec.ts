@@ -442,6 +442,26 @@ base('a device in fight mode records nothing, not even in the browser', async ({
   await expect(page.getByRole('button', { name: 'Stop recording' })).toHaveCount(0);
 });
 
+test('two apps open on one device keep each other’s settings: a save carries only its own changes', async ({ device, browser }) => {
+  const deviceText = async () => ((await (await fetch(`${DEVICE}/fly/settings`)).json()) as { text: string }).text;
+  const elsewhere = await browser.newContext();
+  const other = await elsewhere.newPage();
+  await other.goto(`${DEVICE.replace('localhost', '127.0.0.1')}/`);
+  await expect(mapOrMapButton(other)).toBeVisible({ timeout: 60_000 });
+  await openMenu(device, 'Settings');
+  await device.getByRole('textbox', { name: 'Search settings' }).fill('ADS-B');
+  await device.getByRole('switch', { name: 'Show nearby aircraft (ADS-B)' }).click();
+  await expect.poll(deviceText, { timeout: 10_000 }).toContain('adsbServerConnectEnabled="true"');
+  await openMenu(other, 'Settings');
+  await other.getByRole('textbox', { name: 'Search settings' }).fill('sticks');
+  await other.getByRole('switch', { name: 'Enabled' }).click();
+  await expect.poll(deviceText, { message: 'the second app saved its sticks', timeout: 10_000 }).toContain('virtualJoystick="true"');
+  expect(await deviceText(), 'owel-red-01 lost a switch each time an app opened before it saved its whole copy over it').toContain('adsbServerConnectEnabled="true"');
+  await other.getByRole('textbox', { name: 'Search settings' }).fill('ADS-B');
+  await expect(other.getByRole('switch', { name: 'Show nearby aircraft (ADS-B)' }), 'and the second app took the first one’s switch on board').toBeChecked();
+  await elsewhere.close();
+});
+
 test('settings live on the device, so another address or browser for it opens with them', async ({ device, browser }) => {
   await openMenu(device, 'Settings');
   await device.getByRole('textbox', { name: 'Search settings' }).fill('ADS-B');

@@ -315,9 +315,45 @@ pub fn write(settings: &BTreeMap<String, Setting>) -> String {
         .join("\n")
 }
 
+pub fn merged(base: &str, mine: &str, theirs: &str) -> String {
+    let (base, mine) = (read(base), read(mine));
+    let removed: Vec<&String> = base.keys().filter(|key| !mine.contains_key(*key)).collect();
+    let changed = mine
+        .iter()
+        .filter(|(key, setting)| base.get(*key) != Some(*setting))
+        .map(|(key, setting)| (key.clone(), setting.clone()));
+    write(
+        &read(theirs)
+            .into_iter()
+            .filter(|(key, _)| !removed.contains(&key))
+            .chain(changed)
+            .collect(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_save_lays_only_this_apps_own_changes_over_what_the_device_holds_now() {
+        let base = "[General]\nvirtualJoystick=\"false\"\naudioMuted=\"true\"\n\n[FlyView]\nshowPhotoVideoControl=\"true\"\n";
+        let mine =
+            "[General]\nvirtualJoystick=\"false\"\n\n[FlyView]\nshowPhotoVideoControl=\"false\"\n";
+        let theirs = "[General]\nvirtualJoystick=\"true\"\naudioMuted=\"true\"\n\n[FlyView]\nshowPhotoVideoControl=\"true\"\ngimbalPanChannel=\"13\"\n";
+        assert_eq!(
+            read(&merged(base, mine, theirs)),
+            read(
+                "[General]\nvirtualJoystick=\"true\"\n\n[FlyView]\nshowPhotoVideoControl=\"false\"\ngimbalPanChannel=\"13\"\n"
+            ),
+            "owel-red-01's settings are one file every open app rewrote whole, so an app opened before someone turned the on-screen sticks on turned them off again on its next save"
+        );
+        assert_eq!(
+            read(&merged("", mine, "")),
+            read(mine),
+            "the first save is the app's own text"
+        );
+    }
 
     const SAMPLE: &str = "[General]\nofflineEditingCruiseSpeed=15\nlastKnownHome=\"47.6, -122.1\"\nsavedFile=@Invalid()\n\n[Units]\nverticalDistanceUnits=1\n\n[Video]\nrtspUrl=\"rtsp://host:8554/live\"\n\n[Branding]\nuserBrandImageIndoor=\"/Users/me/Desktop/My%20Logo.png\"\n\n[LinkConfigurations]\nLink0\\name=\"UDP Link\"\nLink0\\hostList=host1:14550, \"host two:14551\"\ncount=1\nblob=@ByteArray(abc)\nvariant=@Variant(\\0\\0\\0\\x7f)\nescaped=\"line\\nnext \\\"q\\\" \\x41\"\nwinpath=C:\\\\logs\\\\flight.tlog\nat=@@handle\nsingle=1, 2\n";
 
