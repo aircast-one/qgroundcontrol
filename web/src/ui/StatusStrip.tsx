@@ -41,6 +41,7 @@ import {
   silenceText,
   totalCurrent,
   totalDraw,
+  voltageProblem,
 } from '@/ui/InstrumentDetail';
 import { JoystickIndicatorCell } from '@/ui/JoystickIndicator';
 import { USB_RADIO_VIEW, usbRadioBadge, usbRadioTone } from '@/ui/UsbRadioIndicator';
@@ -337,11 +338,15 @@ const limitingBattery = (batteries: readonly BatteryReading[]): BatteryReading |
     null,
   );
 
+const extraSaid = (value: string, meaning: string, voltageWrong: string | null): string =>
+  meaning === BATTERY_VOLTAGE && voltageWrong !== null ? `${value} ${meaning}. ${voltageWrong}` : `${value} ${meaning}`;
+
 const BatteryCells = ({
   batteries,
   headline,
   live,
   voltage,
+  voltageWrong,
   timeLeft,
   current,
   onOpen,
@@ -350,6 +355,7 @@ const BatteryCells = ({
   headline: BatteryHeadline | null;
   live: boolean;
   voltage: string;
+  voltageWrong: string | null;
   timeLeft: string;
   current: string;
   onOpen: () => void;
@@ -372,14 +378,14 @@ const BatteryCells = ({
         );
       })}
       {extras.map(([value, meaning]) => (
-        <Tooltipped key={meaning} tooltip={`${value} ${meaning}`}>
+        <Tooltipped key={meaning} tooltip={extraSaid(value, meaning, voltageWrong)}>
           <button
             type="button"
-            aria-label={`${value} ${meaning}`}
+            aria-label={extraSaid(value, meaning, voltageWrong)}
             aria-description="Battery"
             onClick={onOpen}
             className="flex min-h-8 items-center gap-0.5 text-label-large tabular-nums"
-            style={{ color: live ? aircast('outdoorForeground') : md('outline') }}
+            style={{ color: !live ? md('outline') : meaning === BATTERY_VOLTAGE && voltageWrong !== null ? aircast('warning') : aircast('outdoorForeground') }}
           >
             {meaning === TIME_LEFT ? <MaterialIcon name="hourglass_bottom" size={16} /> : null}
             {value}
@@ -403,6 +409,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
   const timeLeft = durationText(useSmoothedSeconds(headline?.secondsLeft ?? null));
   const current = useMemo(() => totalCurrent(batteryJson) ?? '', [batteryJson]);
   const voltage = useMemo(() => lowestVoltage(batteryJson) ?? '', [batteryJson]);
+  const voltageWrong = useMemo(() => voltageProblem(batteryJson), [batteryJson]);
   const linksJson = useQgcPath(VEHICLE_LINKS);
   const links = useMemo(() => linkCell(vehicleLinks(linksJson)), [linksJson]);
   const gpsJson = useQgcPath(GPS_VIEW);
@@ -442,7 +449,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
   };
 
   const cells: readonly (readonly [string, ReactNode])[] = [
-    ['battery', <BatteryCells batteries={batteries} headline={headline} live={live} voltage={voltage} timeLeft={timeLeft} current={current} onOpen={open(StripDetail.Battery)} />],
+    ['battery', <BatteryCells batteries={batteries} headline={headline} live={live} voltage={voltage} voltageWrong={voltageWrong} timeLeft={timeLeft} current={current} onOpen={open(StripDetail.Battery)} />],
     ['flightTime', <FlightTimeSlot />],
     ['gps', gps === null ? null : <InlineCell text={fix === null ? NO_COUNT : satsText(fix, satellites)} colour={fix === null ? null : gpsColour(fix)} icon="ic_satellite_alt" onClick={open(StripDetail.Gps)} />],
     ['health', osdCell('health', StripDetail.Health)],
@@ -879,6 +886,7 @@ export const batteryPercent = (text: string): number | null => {
 };
 
 export const TIME_LEFT = 'flight time left';
+export const BATTERY_VOLTAGE = 'battery voltage';
 
 const TIME_LEFT_RISE_SECONDS = 60;
 const TIME_LEFT_FALL_SECONDS = 5;
@@ -919,7 +927,7 @@ export const durationText = (seconds: number | null): string => {
 export const batteryExtras = (batteries: readonly BatteryReading[], voltage: string, timeLeft: string, current: string): readonly (readonly [string, string])[] =>
   (
     [
-      [batteries.some((it) => batteryPercent(it.text) !== null) ? voltage : '', 'battery voltage'],
+      [batteries.some((it) => batteryPercent(it.text) !== null) ? voltage : '', BATTERY_VOLTAGE],
       [timeLeft, TIME_LEFT],
       [current, 'current draw'],
     ] as const

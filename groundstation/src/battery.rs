@@ -261,6 +261,53 @@ pub struct PopupPack {
     pub capacity_mah: Option<f64>,
     pub temperature: Option<String>,
     pub function: Option<String>,
+    pub voltage_problem: Option<String>,
+}
+
+const FULLEST_CELL_VOLTS: f64 = 4.35;
+const EMPTIEST_CELL_VOLTS: f64 = 2.5;
+const MOST_CELLS: f64 = 30.0;
+const CALIBRATE_VOLTAGE: &str =
+    "Calibrate the voltage sensor in Power setup; until then the voltage failsafes can't trigger.";
+
+pub fn voltage_problem(voltage: Option<f64>, set_for: Option<f64>) -> Option<String> {
+    let ceiling = set_for.map_or(MOST_CELLS * FULLEST_CELL_VOLTS, |volts| {
+        volts / EMPTIEST_CELL_VOLTS * FULLEST_CELL_VOLTS
+    });
+    voltage.filter(|v| *v > ceiling).map(|_| match set_for {
+        Some(volts) => {
+            format!("No pack set up for {volts:.1} V reads that high. {CALIBRATE_VOLTAGE}")
+        }
+        None => format!("More than any drone pack holds. {CALIBRATE_VOLTAGE}"),
+    })
+}
+
+fn set_for_volts(backend: &dyn Backend, index: usize, stages: &[FailsafeStage]) -> Option<f64> {
+    let arm = parameter_value(backend, &format!("{}_ARM_VOLT", apm_prefix(index)), "value");
+    stages
+        .iter()
+        .filter(|stage| stage.action != APM_WARN_ONLY)
+        .filter_map(|stage| stage.volts)
+        .chain(arm)
+        .filter(|volts| *volts > 0.0)
+        .reduce(f64::max)
+}
+
+pub fn unreal_voltage(backend: &dyn Backend) -> Option<String> {
+    (0..pack_count(backend)).find_map(|index| {
+        let voltage = value_number(&backend.value(&pack_fact_path(index, "voltage")));
+        let set_for = set_for_volts(backend, index, &apm_stages(backend, index));
+        voltage_problem(voltage, set_for).and(voltage).map(|volts| {
+            format!("Battery reads {volts:.1} V, which can't be real. Calibrate its voltage sensor in Power setup.")
+        })
+    })
+}
+
+fn worse(shown: &'static str, floor: &'static str) -> &'static str {
+    match rank(floor) < rank(shown) {
+        true => floor,
+        false => shown,
+    }
 }
 
 const CHARGE_UNKNOWN: &str = "Charge unknown";
@@ -599,7 +646,10 @@ pub fn popup_rows(pack: &PopupPack) -> Vec<Value> {
         )),
         Some(pack.voltage.clone().map_or_else(
             || unreported("Voltage"),
-            |v| row("Voltage", format!("{v} V"), SECONDARY),
+            |v| match &pack.voltage_problem {
+                Some(problem) => with_hint(row("Voltage", format!("{v} V"), CAUTION), problem),
+                None => row("Voltage", format!("{v} V"), SECONDARY),
+            },
         )),
         pack.consumed_mah
             .map(|c| consumed_row(c, pack.capacity_mah)),
@@ -661,6 +711,7 @@ fn popup_pack(fact: &dyn Fn(&str) -> Value) -> PopupPack {
             format!("{t} {units}").trim_end().to_string()
         }),
         function,
+        voltage_problem: None,
     }
 }
 
@@ -716,11 +767,20 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .map(|index| remembered(backend, index))
         .collect();
     let packs: Vec<Pack> = readers.iter().map(|read| pack(read)).collect();
+    let stages: Vec<Vec<FailsafeStage>> = (0..packs.len())
+        .map(|index| apm_stages(backend, index))
+        .collect();
+    let problems: Vec<Option<String>> = packs
+        .iter()
+        .enumerate()
+        .map(|(index, p)| voltage_problem(p.voltage, set_for_volts(backend, index, &stages[index])))
+        .collect();
     let popup_packs: Vec<PopupPack> = readers
         .iter()
         .enumerate()
         .map(|(index, read)| PopupPack {
             capacity_mah: capacity_mah(backend, index),
+            voltage_problem: problems[index].clone(),
             ..popup_pack(read)
         })
         .collect();
@@ -741,7 +801,11 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "percent": p.percent,
                 "chargeState": p.charge_state,
                 "chargeLabel": p.charge_label,
-                "level": level(p.charge_state, p.percent, threshold1, threshold2),
+                "level": worse(
+                    level(p.charge_state, p.percent, threshold1, threshold2),
+                    problems[index].as_ref().map_or("normal", |_| "caution"),
+                ),
+                "voltageProblem": problems[index],
                 "text": text(p),
                 "secondaryText": secondary_text(p),
                 "indicatorLabel": numbered.then(|| format!("B{}", index + 1)),
@@ -766,7 +830,7 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "text": described.first().map(|p| p["text"].clone()).unwrap_or(Value::String(String::new())),
         "indicatorPacks": indicator_packs(&described, backend.value(COMBINE_PACKS).get("value").and_then(Value::as_bool).unwrap_or(COMBINE_PACKS_UNSET)),
         "packs": described,
-        "headline": headline(&popup_packs).map(|shown| limiting_pack_extras(backend, shown, &popup_packs, &packs, &described)),
+        "headline": headline(&popup_packs).map(|shown| limiting_pack_extras(backend, shown, &popup_packs, &packs, &described, &stages)),
     })
 }
 
@@ -858,6 +922,7 @@ fn limiting_pack_extras(
     popup_packs: &[PopupPack],
     packs: &[Pack],
     described: &[Value],
+    stages: &[Vec<FailsafeStage>],
 ) -> Value {
     let index = shown["index"].as_u64().unwrap_or(0) as usize;
     let limiting = &popup_packs[index];
@@ -882,8 +947,11 @@ fn limiting_pack_extras(
     )
     .or_else(|| {
         apm_margin_text(
-            &apm_stages(backend, index),
-            packs.get(index).and_then(|pack| pack.voltage),
+            stages.get(index).map_or(&[][..], Vec::as_slice),
+            packs
+                .get(index)
+                .and_then(|pack| pack.voltage)
+                .filter(|_| limiting.voltage_problem.is_none()),
             limiting
                 .capacity_mah
                 .zip(limiting.consumed_mah)
@@ -998,6 +1066,7 @@ mod tests {
             capacity_mah: None,
             temperature: None,
             function: None,
+            voltage_problem: None,
         }
     }
 
@@ -1872,5 +1941,144 @@ mod tests {
         let view = battery_view(&Empty, &[]);
         assert_eq!(view["available"], false);
         assert_eq!(view["level"], "normal");
+    }
+
+    #[test]
+    fn a_pack_voltage_no_battery_could_give_is_named_against_what_the_pack_is_set_up_for() {
+        assert_eq!(
+            voltage_problem(Some(351.6), Some(43.5)),
+            Some(format!(
+                "No pack set up for 43.5 V reads that high. {CALIBRATE_VOLTAGE}"
+            )),
+            "BATT_VOLT_MULT 2631 made a 12S pack armed at 43.5 V read 351.6 V, and the low-voltage failsafe could never trip"
+        );
+        assert_eq!(
+            voltage_problem(Some(52.2), Some(43.5)),
+            None,
+            "a full high-voltage 12S pack is real"
+        );
+        assert_eq!(
+            voltage_problem(Some(50.4), Some(30.0)),
+            None,
+            "a Li-ion pack whose critical failsafe sits at 2.5 V a cell is real when full"
+        );
+        assert_eq!(
+            voltage_problem(Some(100.0), Some(43.5)),
+            Some(format!(
+                "No pack set up for 43.5 V reads that high. {CALIBRATE_VOLTAGE}"
+            )),
+            "a multiplier twice too high is caught too"
+        );
+        assert_eq!(
+            voltage_problem(Some(351.6), None),
+            Some(format!(
+                "More than any drone pack holds. {CALIBRATE_VOLTAGE}"
+            )),
+            "with no voltage set up the reading is held against the largest packs that fly"
+        );
+        assert_eq!(
+            voltage_problem(Some(100.0), None),
+            None,
+            "a 24S pack is real"
+        );
+        assert_eq!(voltage_problem(None, Some(43.5)), None);
+    }
+
+    #[test]
+    fn a_pack_is_set_up_for_its_arming_voltage_and_the_voltage_failsafes_that_act() {
+        let apm = Params(vec![
+            ("BATT_ARM_VOLT", 43.5),
+            ("BATT_FS_LOW_ACT", 2.0),
+            ("BATT_LOW_VOLT", 40.0),
+            ("BATT_FS_CRT_ACT", 1.0),
+            ("BATT_CRT_VOLT", 37.0),
+        ]);
+        assert_eq!(set_for_volts(&apm, 0, &apm_stages(&apm, 0)), Some(43.5));
+        let warn_only = Params(vec![("BATT_FS_LOW_ACT", 0.0), ("BATT_LOW_VOLT", 10.5)]);
+        assert_eq!(
+            set_for_volts(&warn_only, 0, &apm_stages(&warn_only, 0)),
+            None,
+            "ArduPilot's 10.5 V default stays on every pack that never set a failsafe, so a warn-only stage says nothing about the pack"
+        );
+        let second = Params(vec![("BATT2_FS_LOW_ACT", 2.0), ("BATT2_LOW_VOLT", 21.0)]);
+        assert_eq!(
+            set_for_volts(&second, 1, &apm_stages(&second, 1)),
+            Some(21.0)
+        );
+        assert_eq!(set_for_volts(&second, 0, &apm_stages(&second, 0)), None);
+    }
+
+    #[test]
+    fn a_pack_reading_an_impossible_voltage_turns_caution_and_its_voltage_row_says_how_to_fix_it() {
+        struct Miscalibrated;
+        impl Backend for Miscalibrated {
+            fn get(&self, path: &str) -> String {
+                let volts = json!({ "kind": "fact", "name": "voltage", "value": 351.6, "valueString": "351.60", "units": "V" });
+                let facts: Vec<(String, Value)> = pack_facts(Some(98.0), CHARGE_OK, "OK")
+                    .into_iter()
+                    .map(|(name, fact)| match name.as_str() {
+                        "voltage" => (name, volts.clone()),
+                        _ => (name, fact),
+                    })
+                    .collect();
+                let fact = path
+                    .strip_prefix("vehicle.batteries.0.")
+                    .and_then(|name| facts.iter().find(|(n, _)| n == name))
+                    .map(|(_, f)| f.to_string());
+                match (path, fact) {
+                    (_, Some(fact)) => fact,
+                    ("vehicle.batteries.count", _) => {
+                        json!({ "kind": "value", "value": 1 }).to_string()
+                    }
+                    (parameter, _) if parameter.starts_with("vehicle.parameterManager.") => {
+                        Params(vec![
+                            ("BATT_ARM_VOLT", 43.5),
+                            ("BATT_FS_LOW_ACT", 2.0),
+                            ("BATT_LOW_VOLT", 40.0),
+                        ])
+                        .get(parameter)
+                    }
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                self.get(p)
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let view = battery_view(&Miscalibrated, &[]);
+        let problem = format!("No pack set up for 43.5 V reads that high. {CALIBRATE_VOLTAGE}");
+        assert_eq!(
+            view["packs"][0]["level"], "caution",
+            "98% is no comfort when the voltage the failsafes read is impossible"
+        );
+        assert_eq!(view["packs"][0]["voltageProblem"], problem);
+        assert_eq!(
+            view["headline"]["margin"], "Failsafe at 40.0 V",
+            "the gap to the failsafe is not counted from a voltage that can't be real; it said 311.6 V to go"
+        );
+        let voltage = view["packs"][0]["rows"]
+            .as_array()
+            .and_then(|rows| rows.iter().find(|row| row["label"] == "Voltage"))
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(
+            (
+                voltage["value"].clone(),
+                voltage["severity"].clone(),
+                voltage["hint"].clone()
+            ),
+            (json!("351.60 V"), json!(CAUTION), json!(problem))
+        );
+        assert_eq!(
+            unreal_voltage(&Miscalibrated),
+            Some("Battery reads 351.6 V, which can't be real. Calibrate its voltage sensor in Power setup.".to_string())
+        );
     }
 }

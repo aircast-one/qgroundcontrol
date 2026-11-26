@@ -238,13 +238,18 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     );
     let health = health(backend);
     let ready = state == State::Disarmed && disarmed_ready(backend);
-    let low_battery = (state == State::Disarmed)
-        .then(|| crate::battery::low_charge(backend))
+    let battery = (state == State::Disarmed)
+        .then(|| {
+            crate::battery::unreal_voltage(backend).or_else(|| {
+                crate::battery::low_charge(backend)
+                    .map(|low| format!("{low} Charge or swap it before flight."))
+            })
+        })
         .flatten();
     let payload = (state == State::Disarmed)
         .then(|| payload_problem(backend, &vehicle))
         .flatten();
-    let nominal = health.nominal() && low_battery.is_none() && payload.is_none();
+    let nominal = health.nominal() && battery.is_none() && payload.is_none();
     let setup_left = (state == State::Disarmed && !ready).then(|| not_ready_reason(backend));
     let payload_text = |problem: &Value| {
         problem
@@ -258,7 +263,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
             flag(&vehicle, "flying") || flag(&vehicle, "landing"),
             health.check_issues,
             &health.sensors,
-            low_battery.as_deref(),
+            battery.as_deref(),
             payload.as_ref().and_then(payload_text).as_deref(),
             setup_left.as_deref(),
         )
@@ -449,7 +454,7 @@ pub fn summary_detail(
     in_air: bool,
     check_issues: usize,
     sensors: &[(String, bool, bool)],
-    low_battery: Option<&str>,
+    battery: Option<&str>,
     payload: Option<&str>,
     setup_left: Option<&str>,
 ) -> String {
@@ -481,7 +486,7 @@ pub fn summary_detail(
         _ if !faults.is_empty() => {
             format!("{faults} not working. Position modes and Return to Launch may not work.")
         }
-        _ if let Some(low) = low_battery => format!("{low} Charge or swap it before flight."),
+        _ if let Some(battery) = battery => battery.to_string(),
         _ if let Some(problem) = payload => problem.to_string(),
         _ if let Some(setup) = setup_left => setup.to_string(),
         _ if !disabled.is_empty() => {
@@ -756,7 +761,7 @@ mod tests {
                 false,
                 0,
                 &sensors(&[("Mag", false, false)]),
-                Some("Battery at 0%."),
+                Some("Battery at 0%. Charge or swap it before flight."),
                 None,
                 None
             ),
@@ -769,7 +774,7 @@ mod tests {
                 false,
                 0,
                 &sensors(&[("GPS", true, false)]),
-                Some("Battery at 0%."),
+                Some("Battery at 0%. Charge or swap it before flight."),
                 None,
                 None
             ),
@@ -777,12 +782,28 @@ mod tests {
             "a fault keeps the line it shares with the red chip"
         );
         assert_eq!(
-            summary_detail(false, false, 1, &[], Some("Battery at 0%."), None, None),
+            summary_detail(
+                false,
+                false,
+                1,
+                &[],
+                Some("Battery at 0%. Charge or swap it before flight."),
+                None,
+                None
+            ),
             "1 check(s) need attention before arming.",
             "the refusal to arm stays attached to the checks that cause it"
         );
         assert_eq!(
-            summary_detail(true, false, 0, &[], Some("Battery at 0%."), None, None),
+            summary_detail(
+                true,
+                false,
+                0,
+                &[],
+                Some("Battery at 0%. Charge or swap it before flight."),
+                None,
+                None
+            ),
             "Motors are armed. Keep clear of the propellers."
         );
         assert_eq!(
@@ -804,7 +825,7 @@ mod tests {
                 false,
                 0,
                 &[],
-                Some("Battery at 0%."),
+                Some("Battery at 0%. Charge or swap it before flight."),
                 Some("The gripper stays open."),
                 None
             ),
@@ -885,6 +906,29 @@ mod tests {
                 .all(|dep| !dep.ends_with(".voltage") && dep != "vehicle.distanceToHome"),
             "and not on every voltage or position tick"
         );
+    }
+
+    #[test]
+    fn a_parked_pack_reading_an_impossible_voltage_holds_readiness_until_its_sensor_is_calibrated()
+    {
+        let pack = |armed: bool| {
+            let mut vehicle = aloft(armed, false, false);
+            vehicle["batteries"] = json!({
+                "count": { "kind": "fact", "name": "count", "value": 1 },
+                "0.chargeState": { "kind": "fact", "name": "chargeState", "value": 1 },
+                "0.percentRemaining": { "kind": "fact", "name": "percentRemaining", "value": 0.0 },
+                "0.voltage": { "kind": "fact", "name": "voltage", "value": 351.6 },
+            });
+            read(vehicle, false)
+        };
+        let parked = pack(false);
+        assert_eq!(
+            parked["summaryDetail"],
+            "Battery reads 351.6 V, which can't be real. Calibrate its voltage sensor in Power setup.",
+            "a voltage no pack gives means the voltage failsafes are blind, which outranks the charge it reports"
+        );
+        assert_eq!(parked["nominal"], false);
+        assert_eq!(pack(true)["nominal"], true);
     }
 
     #[test]

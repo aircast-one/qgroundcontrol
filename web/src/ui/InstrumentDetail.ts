@@ -172,6 +172,11 @@ export const lowestVoltage = (view: Json | null): string | null => {
   return values === null ? null : withUnit(format('%.1f', Math.min(...values)), 'V');
 };
 
+export const voltageProblem = (view: Json | null): string | null =>
+  jsonObjects(optJSONArray(availableView(view), 'packs'))
+    .map((pack) => optText(pack, 'voltageProblem'))
+    .find((it) => it !== '') ?? null;
+
 export const totalCurrent = (view: Json | null): string | null => {
   const total = packFactTotal(view, 'current');
   return total === null ? null : withUnit(format('%.1f', total), 'A');

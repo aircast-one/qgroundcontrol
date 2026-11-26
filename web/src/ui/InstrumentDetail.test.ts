@@ -20,6 +20,7 @@ import {
   totalCurrent,
   totalDraw,
   usableDop,
+  voltageProblem,
 } from './InstrumentDetail';
 import { BarTone, BatteryLevel, FixLevel, barTone, batteryBarDescription, fixLevel, rcDetail, statusPillShown } from './StatusStrip';
 import { LossFailsafe, VehicleLink, VehicleLinks } from './VehicleLinks';
@@ -207,5 +208,12 @@ describe('BatteryReturnTest', () => {
     expect(lowestVoltage(packs('25.2', '24.94'))).toBe('24.9 V');
     expect(lowestVoltage(packs('25.2', 'null'))).toBeNull();
     expect(lowestVoltage(null)).toBeNull();
+  });
+
+  it('the strip knows when a pack voltage cannot be real', () => {
+    const packs = (...problems: string[]) => json(`{"available":true,"packs":[${problems.map((p) => `{"voltageProblem":${p}}`).join(',')}]}`);
+    expect(voltageProblem(packs('null', '"Calibrate it"'))).toBe('Calibrate it');
+    expect(voltageProblem(packs('null'))).toBeNull();
+    expect(voltageProblem(null)).toBeNull();
   });
 });

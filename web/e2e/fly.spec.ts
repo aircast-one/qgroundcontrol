@@ -354,6 +354,51 @@ test.describe('against an ArduPilot that comes back as another aircraft', () => 
   });
 });
 
+test.describe('against an ArduPilot whose voltage multiplier is far too high', () => {
+  const sitl: { running: Sitl | null } = { running: null };
+
+  test.describe.configure({ mode: 'serial' });
+
+  test.beforeAll(async () => {
+    test.setTimeout(120_000);
+    const running = startSitl();
+    sitl.running = running;
+    await expect.poll(() => running.heard.heartbeat, { timeout: 90_000 }).toBe(true);
+  });
+
+  test.afterAll(() => sitl.running?.stop());
+
+  test('a pack reading a voltage no battery gives shows it amber, says how to fix it and holds readiness', async ({ app }) => {
+    test.setTimeout(300_000);
+    const multiplier = 'vehicle.parameterManager.getParameter(-1,BATT_VOLT_MULT)';
+    await app.addLocatorHandler(app.getByText(/ before this vehicle can fly\.$/), () => app.getByRole('button', { name: 'Later', exact: true }).click());
+    await connectSitl(app, sitl.running?.ws ?? '');
+    await expect.poll(async () => (await core(app, 'vehicle.parameterManager.parametersReady')).value, { timeout: 180_000 }).toBe(true);
+    const stock = Number((await core(app, multiplier)).value);
+    await expect
+      .poll(
+        async () => {
+          await core(app, ARM_VOLTAGE, 15);
+          await core(app, multiplier, stock * 21);
+          return [(await core(app, ARM_VOLTAGE)).value, Math.round(Number((await core(app, multiplier)).value))];
+        },
+        { timeout: 60_000 },
+      )
+      .toEqual([15, Math.round(stock * 21)]);
+    const fix = 'Calibrate the voltage sensor in Power setup';
+    const reading = app.getByRole('button', { name: new RegExp(`^\\d+\\.\\d V battery voltage\\. No pack set up for 15\\.0 V reads that high\\. ${fix}`) });
+    await expect(reading, 'the 16.8 V pack now reads 352.8 V, like the client aircraft').toBeVisible({ timeout: 60_000 });
+    await app.screenshot({ path: test.info().outputPath('strip.png') });
+    const sheet = await vehicleStatus(app);
+    await expect(sheet.getByText(/^Battery reads \d+\.\d V, which can't be real\. Calibrate its voltage sensor in Power setup\.$/)).toBeVisible();
+    await app.keyboard.press('Escape');
+    await reading.click();
+    await expect(app.getByRole('dialog').getByText(new RegExp(`^No pack set up for 15\\.0 V reads that high\\. ${fix}`))).toBeVisible();
+    await expect(app.getByRole('dialog').getByText(/V to go/), 'no distance to the failsafe is counted from the impossible voltage').toHaveCount(0);
+    await app.screenshot({ path: test.info().outputPath('battery.png') });
+  });
+});
+
 test('in flight a tap on the height reading opens the altitude change, so it is found where the height is shown', async ({ vehicle }) => {
   await takeOff(vehicle, '5 m');
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
