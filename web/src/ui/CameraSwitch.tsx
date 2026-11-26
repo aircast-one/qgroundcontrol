@@ -10,9 +10,12 @@ import { Drawable, MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
 import { CAMERA_VIEW, trackingCanAim, trackingReading } from '@/ui/CameraControl';
 import { CAMERA_SHEET } from '@/ui/CameraControlLayer';
-import { CAMERAS_VIEW, type CameraEntry, CameraStatus, CamerasReading, camerasReading } from '@/ui/Cameras';
+import { LocalAppNavigation } from '@/ui/AppNavigation';
+import { CAMERAS_VIEW, type CameraEntry, CameraStatus, CamerasReading, VIDEO_SOURCES_PAGE, camerasReading } from '@/ui/Cameras';
+import { useDeviceStatus } from '@/ui/DeviceStatus';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { GIMBAL_INDICATOR_PATH, onScreenGimbal } from '@/ui/GimbalIndicator';
+import { openCameraSetup } from '@/ui/NoVideoPanel';
 import { OSD_CONTROL_SIZE, OSD_SCRIM, useOsdBackdrop } from '@/ui/Osd';
 import { GIMBAL_SHEET } from '@/ui/RcCameraControls';
 import { shownCameraStatus, useSyntheticPage } from '@/ui/SyntheticView';
@@ -95,11 +98,13 @@ export const CameraSwitch = ({ splitRoom, className }: { splitRoom: boolean; cla
   const flyScreen = useContext(LocalFlyScreenState);
   const offered = useValue(flyScreen.offeredSheets);
   const settings = cameraMenuSheets().filter(([sheet]) => offered.includes(sheet));
+  const navigation = useContext(LocalAppNavigation);
+  const onDevice = useDeviceStatus() !== null;
   const [open, setOpen] = useState(false);
   const white = aircast('outdoorForeground');
   const backdrop = useOsdBackdrop(OSD_SCRIM);
   const page = useSyntheticPage();
-  const hidden = (switchState === null && splitTo === null && settings.length === 0) || shown === null;
+  const hidden = shown === null;
   if (hidden && open) setOpen(false);
   if (hidden) return null;
   return (
@@ -157,7 +162,7 @@ export const CameraSwitch = ({ splitRoom, className }: { splitRoom: boolean; cla
             />
           </>
         ) : null}
-        {settings.length > 0 && (switchState !== null || splitTo !== null) ? <HorizontalDivider /> : null}
+        {switchState !== null || splitTo !== null ? <HorizontalDivider /> : null}
         {settings.map(([sheet, label]) => (
           <DropdownMenuItem
             key={sheet}
@@ -169,6 +174,14 @@ export const CameraSwitch = ({ splitRoom, className }: { splitRoom: boolean; cla
             }}
           />
         ))}
+        <DropdownMenuItem
+          text={VIDEO_SOURCES_PAGE}
+          leadingIcon={<Drawable name="ic_videocam" size={CHIP_GLYPH} />}
+          onClick={() => {
+            setOpen(false);
+            openCameraSetup(onDevice, navigation);
+          }}
+        />
       </DropdownMenu>
     </div>
   );

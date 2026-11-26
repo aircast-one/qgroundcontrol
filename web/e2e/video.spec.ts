@@ -18,6 +18,13 @@ test('a WHEP camera plays in the Fly view', async ({ app }) => {
   await expect(app.getByText(/^Detections:/)).toHaveCount(0);
 });
 
+test('the camera chip on the picture opens Video sources in one tap', async ({ app }) => {
+  await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  await app.getByRole('button', { name: /^Cameras, showing/ }).click();
+  await app.getByRole('menuitem', { name: 'Video sources' }).click();
+  await expect(app.getByRole('button', { name: 'Add a video source' })).toBeVisible();
+});
+
 test('the status bar shows a video cell only while a stream plays: its bitrate, and a tap lists its frame rate and loss rates', async ({ vehicle }) => {
   const bar = vehicle.locator('[data-status-row]');
   await expect(bar.getByRole('button', { name: /^(EKF variance|Vibration|HDOP) / }).first(), 'the health cell is there from the start').toBeVisible({ timeout: 30_000 });
