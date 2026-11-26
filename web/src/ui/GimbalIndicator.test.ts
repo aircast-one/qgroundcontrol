@@ -23,8 +23,8 @@ describe('GimbalIndicatorTest', () => {
   });
 
   it('a gimbal is three-axis only when the core says it has a yaw axis', () => {
-    expect(gimbalIndicator(parseJson('{"shown":true,"yawAxis":true}'))!.yawAxis).toBe(true);
-    expect(gimbalIndicator(parseJson('{"shown":true}'))!.yawAxis).toBe(false);
+    expect(gimbalIndicator(parseJson('{"shown":true,"panAxis":true}'))!.panAxis).toBe(true);
+    expect(gimbalIndicator(parseJson('{"shown":true}'))!.panAxis).toBe(false);
   });
 
   it("a tap maps to QGC's cooked screen fractions", () => {

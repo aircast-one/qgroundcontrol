@@ -493,7 +493,7 @@ const RcCameraControlsShown = ({
       slider={tiltSlider}
       onTilt={(it) => aimSynthetic(it, syntheticPan ?? 0.0)}
     />
-  ) : gimbal !== null && sticks && gimbal.yawAxis ? (
+  ) : gimbal !== null && sticks && gimbal.panAxis ? (
     <AimStick pitch={gimbal.pitchDegrees} onRecenter={onRecenter(RecenterTarget.Gimbal)} slider={tiltSlider} />
   ) : gimbal !== null && sticks ? (
     <AimSliders pitch={gimbal.pitchDegrees} yaw={null} onRecenter={onRecenter(RecenterTarget.Gimbal)} slider={tiltSlider} onTilt={sendTilt} />

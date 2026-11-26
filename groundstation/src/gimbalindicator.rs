@@ -9,6 +9,7 @@ pub const DEPS: &[&str] = &[
     "settings.gimbalControllerSettings.enableOnScreenControl",
     "settings.gimbalControllerSettings.clickAndDrag",
     "settings.gimbalControllerSettings.onScreenStick",
+    PAN_CHANNEL,
     "vehicle.homePosition",
     crate::gimbal::GIMBAL_CHANGED,
 ];
@@ -27,6 +28,57 @@ pub const GIMBAL_YAW: &str = "gimbal.yaw";
 pub const GIMBAL_AIM: &str = "gimbal.aim";
 pub const GIMBAL_STICK: &str = "gimbal.stick";
 const STICK_SPEED_DEFAULT: f64 = 30.0;
+const PAN_CHANNEL: &str = "settings.flyViewSettings.gimbalPanChannel";
+const TILT_CHANNEL: &str = "settings.flyViewSettings.gimbalTiltChannel";
+
+fn rc_channel(backend: &dyn Backend, path: &str) -> Option<i64> {
+    crate::read::value_number(&backend.value(&format!("{path}.rawValue")))
+        .map(|channel| channel as i64)
+        .filter(|channel| *channel > 0)
+}
+
+fn curve(deflection: f64) -> f64 {
+    let held = deflection.clamp(-1.0, 1.0);
+    held * held.abs()
+}
+
+pub fn rc_stick_pwms(pan: Option<i64>, tilt: Option<i64>, x: f64, y: f64) -> Vec<(i64, i64)> {
+    let centre = f64::from(crate::joystick::PWM_CENTER);
+    let span = f64::from(crate::joystick::PWM_HALF_SPAN);
+    [(pan.filter(|pan| Some(*pan) != tilt), x), (tilt, -y)]
+        .into_iter()
+        .filter_map(|(channel, deflection)| {
+            channel.map(|channel| (channel, (centre + curve(deflection) * span).round() as i64))
+        })
+        .collect()
+}
+
+fn rc_stick(backend: &dyn Backend, x: f64, y: f64) -> Option<Value> {
+    let centre = f64::from(crate::joystick::PWM_CENTER) as i64;
+    let pwms = rc_stick_pwms(
+        rc_channel(backend, PAN_CHANNEL),
+        rc_channel(backend, TILT_CHANNEL),
+        x,
+        y,
+    );
+    (!pwms.is_empty()).then(|| {
+        pwms.iter()
+            .map(|(channel, pwm)| match *pwm == centre {
+                true => crate::rcoverride::release(
+                    backend,
+                    crate::rcoverride::RELEASE_CHANNEL,
+                    &json!([channel]).to_string(),
+                ),
+                false => crate::rcoverride::set(
+                    backend,
+                    crate::rcoverride::SET,
+                    &json!([channel, pwm]).to_string(),
+                ),
+            })
+            .find(|sent| !flag(sent, "ok"))
+            .unwrap_or_else(|| json!({ "ok": true }))
+    })
+}
 
 fn setting(backend: &dyn Backend, name: &str) -> bool {
     let fact = backend.value(&format!("settings.gimbalControllerSettings.{name}"));
@@ -71,11 +123,7 @@ fn held_pitch(snapshot: &Value) -> f64 {
 }
 
 pub fn stick_rates(x: f64, y: f64, speed: f64) -> (f64, f64) {
-    let curve = |deflection: f64| {
-        let held = deflection.clamp(-1.0, 1.0);
-        held * held.abs() * speed
-    };
-    (curve(y), curve(x))
+    (curve(y) * speed, curve(x) * speed)
 }
 
 fn yaw_range(gimbal: &Value) -> [f32; 2] {
@@ -112,7 +160,7 @@ pub fn indicator(
         "pitchDegrees": active["pitch"].as_f64(),
         "bodyYawDegrees": active["bodyYaw"].as_f64(),
         "yawRange": yaw_range(&active),
-        "yawAxis": active["capabilityFlags"].as_u64().is_some_and(|flags| flags & u64::from(crate::gimbal::CAP_HAS_YAW_AXIS) != 0),
+        "panAxis": active["capabilityFlags"].as_u64().is_some_and(|flags| flags & u64::from(crate::gimbal::CAP_HAS_YAW_AXIS) != 0),
         "yawText": yaw,
         "yawLockLabel": if flag(&active, "yawLock") { "Yaw Follow" } else { "Yaw Lock" },
         "yawLocked": flag(&active, "yawLock"),
@@ -164,6 +212,7 @@ pub fn indicator_view(backend: &dyn Backend, _args: &[String]) -> Value {
             setting(backend, "onScreenStick"),
         ),
     );
+    shown["panAxis"] = json!(flag(&shown, "panAxis") || rc_channel(backend, PAN_CHANNEL).is_some());
     shown["askSerial"] = json!(crate::gimbal::asked());
     shown["gimbals"] = named(&shown["gimbals"], &cameras);
     shown
@@ -319,7 +368,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
                     .filter(|v| v.is_finite() && (-1.0..=1.0).contains(v))
             };
             match (deflection(0), deflection(1)) {
-                (Some(x), Some(y)) => {
+                (Some(x), Some(y)) => rc_stick(backend, x, y).unwrap_or_else(|| {
                     let speed = number_setting(backend, "cameraSlideSpeed")
                         .filter(|speed| speed.is_finite() && *speed > 0.0)
                         .unwrap_or(STICK_SPEED_DEFAULT);
@@ -331,7 +380,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
                         &qt_path("sendRate"),
                         "[]",
                     )
-                }
+                }),
                 _ => {
                     json!({ "ok": false, "refusal": "badStick", "reason": "A stick is how far it is pushed right and up, from -1 to 1." })
                 }
@@ -519,7 +568,7 @@ mod tests {
                 false,
                 false,
                 (true, false, false),
-            )["yawAxis"]
+            )["panAxis"]
                 .clone()
         };
         assert_eq!(yaw_axis(json!(256 | 32 | 4)), json!(true));
@@ -642,6 +691,102 @@ mod tests {
             )["shown"],
             false,
             "no gimbal, no indicator"
+        );
+    }
+
+    #[test]
+    fn a_stick_on_rc_camera_channels_holds_their_speed_and_centres_back_to_stop() {
+        assert_eq!(
+            rc_stick_pwms(Some(13), Some(14), 1.0, 0.0),
+            vec![(13, 2000), (14, 1500)],
+            "right at full stick is the pan channel's top speed"
+        );
+        assert_eq!(
+            rc_stick_pwms(Some(13), Some(14), 0.0, 1.0),
+            vec![(13, 1500), (14, 1000)],
+            "up is the low end: owel-red-01's Viewpro tilts down at 1900"
+        );
+        assert_eq!(
+            rc_stick_pwms(Some(13), Some(14), 0.5, -0.5),
+            vec![(13, 1625), (14, 1625)],
+            "halfway is a quarter of the speed, like the gimbal's own stick"
+        );
+        assert_eq!(
+            rc_stick_pwms(Some(14), Some(14), 1.0, 1.0),
+            vec![(14, 1000)],
+            "a pan set on the tilt channel is ignored, as the camera rail ignores it"
+        );
+        assert_eq!(rc_stick_pwms(None, None, 1.0, 1.0), vec![]);
+    }
+
+    #[test]
+    fn with_rc_camera_channels_set_the_gimbal_stick_overrides_them_instead_of_asking_the_gimbal() {
+        struct Rc(std::cell::RefCell<Vec<(String, String)>>, Option<i64>);
+        impl Backend for Rc {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "settings.flyViewSettings.gimbalPanChannel.rawValue" => {
+                        json!({ "kind": "value", "value": self.1 })
+                    }
+                    "settings.flyViewSettings.gimbalTiltChannel.rawValue" => {
+                        json!({ "kind": "value", "value": 14 })
+                    }
+                    "settings.flyViewSettings.rcControls.rawValue" => {
+                        json!({ "kind": "value", "value": "[]" })
+                    }
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicle" => json!({ "kind": "object", "id": 1 }),
+                    "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, path: &str, args: &str) -> String {
+                self.0
+                    .borrow_mut()
+                    .push((path.to_string(), args.to_string()));
+                json!({ "ok": true }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let rig = Rc(std::cell::RefCell::default(), Some(13));
+        assert_eq!(run(&rig, GIMBAL_STICK, "[1, 0]")["ok"], true);
+        assert_eq!(run(&rig, GIMBAL_STICK, "[0, 0]")["ok"], true);
+        assert_eq!(
+            rig.0.take(),
+            vec![
+                (crate::rcoverride::SET.to_string(), "[13,2000]".to_string()),
+                (
+                    crate::rcoverride::RELEASE_CHANNEL.to_string(),
+                    "[14]".to_string()
+                ),
+                (
+                    crate::rcoverride::RELEASE_CHANNEL.to_string(),
+                    "[13]".to_string()
+                ),
+                (
+                    crate::rcoverride::RELEASE_CHANNEL.to_string(),
+                    "[14]".to_string()
+                ),
+            ],
+            "a centred axis gives its channel back, so a radio steers again and a drone with none stops at its trim"
+        );
+        assert!(
+            run(
+                &Rc(std::cell::RefCell::default(), None),
+                GIMBAL_STICK,
+                "[1, 0]"
+            )["ok"]
+                == true,
+            "a tilt channel alone still takes the stick"
         );
     }
 }

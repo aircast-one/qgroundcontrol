@@ -101,6 +101,27 @@ test('with the shutter button turned off, the camera joystick still shows and on
   await expect(app.getByRole('button', { name: 'Start recording' })).toHaveCount(0);
 });
 
+test('with camera RC channels set, the camera joystick turns the camera on them and gives them back when let go', async ({ app }) => {
+  await connectMock(app, ['Enable gimbal'], 'APM ArduCopter Vehicle');
+  await flyNow(app);
+  await app.evaluate(async (module) => {
+    const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
+    await Qgc.set('settings.flyViewSettings.gimbalPanChannel', 13);
+    await Qgc.set('settings.flyViewSettings.gimbalTiltChannel', 14);
+    await Qgc.set('settings.gimbalControllerSettings.onScreenStick', true);
+  }, '/src/bridge/Qgc.ts');
+  const held = async () => ((await read(app, 'vehicle.rcChannelOverrides')) as { value?: Record<string, number> }).value ?? {};
+  const stick = app.getByRole('img', { name: 'Camera joystick' });
+  await expect(stick).toBeVisible({ timeout: 30_000 });
+  const pad = (await stick.boundingBox())!;
+  await app.mouse.move(pad.x + pad.width / 2, pad.y + pad.height / 2);
+  await app.mouse.down();
+  await app.mouse.move(pad.x + pad.width + 40, pad.y + pad.height / 2, { steps: 12 });
+  await expect.poll(async () => (await held())['13'] ?? 0, { message: 'full right is the pan channel at top speed', timeout: 20_000 }).toBeGreaterThan(1900);
+  await app.mouse.up();
+  await expect.poll(async () => Object.keys(await held()), { message: 'a centred stick hands both channels back', timeout: 20_000 }).toEqual([]);
+});
+
 test('with a gimbal and no camera picture, the gimbal mode still switches', async ({ app }) => {
   await connectMock(app, ['Enable gimbal'], 'APM ArduCopter Vehicle');
   await flyNow(app);

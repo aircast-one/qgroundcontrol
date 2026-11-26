@@ -3,6 +3,8 @@ use serde_json::{Value, json};
 use crate::read::{flag, object};
 use crate::router::Backend;
 
+pub const SET: &str = "vehicle.setRcChannelOverride";
+pub const RELEASE_CHANNEL: &str = "vehicle.releaseRcChannelOverride";
 const CONTROLS: &str = "settings.flyViewSettings.rcControls.rawValue";
 const CHANNELS: std::ops::RangeInclusive<i64> = 1..=18;
 const PWM: std::ops::RangeInclusive<i64> = 800..=2200;

@@ -95,9 +95,9 @@ fn pursuit_unavailable() -> Value {
 const THERMAL_MODE: &str = "vehicle.cameraManager.currentCameraInstance.thermalMode";
 const THERMAL_OPACITY: &str = "vehicle.cameraManager.currentCameraInstance.thermalOpacity";
 const TRACKING_ENABLED: &str = "vehicle.cameraManager.currentCameraInstance.trackingEnabled";
-const RC_OVERRIDE: &str = "vehicle.setRcChannelOverride";
+const RC_OVERRIDE: &str = crate::rcoverride::SET;
 const RC_OVERRIDE_RELEASE: &str = "vehicle.clearRcChannelOverrides";
-const RC_OVERRIDE_RELEASE_CHANNEL: &str = "vehicle.releaseRcChannelOverride";
+const RC_OVERRIDE_RELEASE_CHANNEL: &str = crate::rcoverride::RELEASE_CHANNEL;
 const CREATE_AND_CONNECT: &str = "links.createAndConnectLink";
 const CREATE_SERIAL: &str = "links.createSerialConfiguration";
 const CREATE_REPLAY: &str = "links.createLogReplayConfiguration";

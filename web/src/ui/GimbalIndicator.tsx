@@ -55,7 +55,7 @@ export type GimbalIndicatorState = {
   gimbals: readonly GimbalChoice[];
   pitchDegrees: number | null;
   yawDegrees: number | null;
-  yawAxis: boolean;
+  panAxis: boolean;
 };
 
 const finiteOrNull = (value: number): number | null => (Number.isFinite(value) ? value : null);
@@ -75,7 +75,7 @@ export const gimbalIndicator = (view: Json | null): GimbalIndicatorState | null 
         haveControl: optBoolean(view, 'haveControl'),
         pitchDegrees: finiteOrNull(optDouble(view, 'pitchDegrees', NaN)),
         yawDegrees: finiteOrNull(optDouble(view, 'bodyYawDegrees', NaN)),
-        yawAxis: optBoolean(view, 'yawAxis'),
+        panAxis: optBoolean(view, 'panAxis'),
         gimbals: jsonObjects(optJSONArray(view, 'gimbals')).map((g) => ({
           name: optText(g, 'name'),
           managerCompid: optInt(g, 'managerCompid'),
