@@ -140,7 +140,12 @@ export const CameraControlLayer = ({ className, shutters = true }: { className?:
   const editing = useValue(layout.editing);
   const shutterHidden = useValue(layout.hidden).has(CAMERA_SHUTTER_KEY);
 
-  if (!shown) return null;
+  if (!shown)
+    return (
+      <div className={`flex items-center ${className ?? ''}`}>
+        <RcCameraControls tiltSlider={shutters} />
+      </div>
+    );
 
   const panel = camera !== null && hasVehicle && camera.panel?.visible === true ? camera.panel : null;
   if (camera === null || panel === null) {

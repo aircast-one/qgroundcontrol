@@ -115,6 +115,8 @@ struct CameraControlLayer: View {
                         if shutters { cameraElement(CAMERA_SHUTTER_KEY) { StreamShutter() } }
                     }
                 }
+            } else {
+                cameraElement("cameraGimbal") { RcCameraControls() }
             }
         }
         .background(OpenOnRequest(name: "camera") { state.details = true })

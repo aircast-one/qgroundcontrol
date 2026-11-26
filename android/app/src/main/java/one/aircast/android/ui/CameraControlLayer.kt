@@ -125,6 +125,9 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
     }
 
     if (!shown) {
+        Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+            CameraElement("cameraGimbal") { RcCameraControls(tiltSlider = shutters) }
+        }
         return
     }
 

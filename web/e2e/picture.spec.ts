@@ -89,6 +89,18 @@ test('a click on the picture teaches the right-click, and a right-click on the s
   await expect(app.getByRole('button', { name: 'Go to location' })).toHaveCount(0);
 });
 
+test('with the shutter button turned off, the camera joystick still shows and only the shutter goes', async ({ app }) => {
+  await connectMock(app, ['Enable gimbal'], 'APM ArduCopter Vehicle');
+  await flyNow(app);
+  await app.evaluate(async (module) => {
+    const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
+    await Qgc.set('settings.flyViewSettings.showPhotoVideoControl', false);
+    await Qgc.set('settings.gimbalControllerSettings.onScreenStick', true);
+  }, '/src/bridge/Qgc.ts');
+  await expect(app.getByRole('img', { name: 'Camera joystick' }), 'owel-red-01 had Show the shutter button off, and that hid the whole camera rail with its joystick').toBeVisible({ timeout: 30_000 });
+  await expect(app.getByRole('button', { name: 'Start recording' })).toHaveCount(0);
+});
+
 test('with a gimbal and no camera picture, the gimbal mode still switches', async ({ app }) => {
   await connectMock(app, ['Enable gimbal'], 'APM ArduCopter Vehicle');
   await flyNow(app);
