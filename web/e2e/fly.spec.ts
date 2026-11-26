@@ -395,6 +395,7 @@ test.describe('against an ArduPilot whose voltage multiplier is far too high', (
     await reading.click();
     await expect(app.getByRole('dialog').getByText(new RegExp(`^No pack set up for 15\\.0 V reads that high\\. ${fix}`))).toBeVisible();
     await expect(app.getByRole('dialog').getByText(/V to go/), 'no distance to the failsafe is counted from the impossible voltage').toHaveCount(0);
+    await expect(app.getByRole('dialog').getByText(/^\d+ W$/), 'nor a draw in watts multiplied out of it').toHaveCount(0);
     await app.screenshot({ path: test.info().outputPath('battery.png') });
   });
 });

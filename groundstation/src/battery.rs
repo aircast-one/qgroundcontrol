@@ -229,6 +229,18 @@ fn detail_facts(read: &dyn Fn(&str) -> Value) -> Value {
         .collect()
 }
 
+fn counted_facts(facts: Value, unreal_voltage: bool) -> Value {
+    match (unreal_voltage, facts) {
+        (true, Value::Array(facts)) => Value::Array(
+            facts
+                .into_iter()
+                .filter(|fact| fact["name"] != "instantPower")
+                .collect(),
+        ),
+        (_, facts) => facts,
+    }
+}
+
 pub fn severity(charge_state: i64) -> i64 {
     match charge_state {
         4..=6 => 3,
@@ -813,7 +825,7 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "voltageText": p.voltage_text,
                 "currentText": p.current_text,
                 "percentText": p.percent_text,
-                "facts": detail_facts(&readers[index]),
+                "facts": counted_facts(detail_facts(&readers[index]), problems[index].is_some()),
                 "rows": popup_rows(&popup_packs[index]),
             })
         })
@@ -2059,6 +2071,17 @@ mod tests {
             "98% is no comfort when the voltage the failsafes read is impossible"
         );
         assert_eq!(view["packs"][0]["voltageProblem"], problem);
+        assert!(
+            view["packs"][0]["facts"]
+                .as_array()
+                .is_some_and(|facts| facts.iter().all(|fact| fact["name"] != "instantPower")),
+            "the vehicle's watts are that voltage times the current, so the draw falls back to amps: it said 130 W at 0.37 A"
+        );
+        assert!(
+            view["packs"][0]["facts"]
+                .as_array()
+                .is_some_and(|facts| facts.iter().any(|fact| fact["name"] == "current"))
+        );
         assert_eq!(
             view["headline"]["margin"], "Failsafe at 40.0 V",
             "the gap to the failsafe is not counted from a voltage that can't be real; it said 311.6 V to go"
