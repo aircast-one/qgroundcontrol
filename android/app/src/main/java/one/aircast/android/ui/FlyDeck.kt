@@ -267,6 +267,8 @@ internal fun RailDeckButton(entry: DeckEntry, primary: Boolean, labelled: Boolea
 private const val MORE_COLUMNS = 4
 private val MORE_TILE_HEIGHT = 80.dp
 
+internal class MoreSection(val title: String, val tiles: List<MoreTile>)
+
 internal class MoreTile(
     val label: String,
     @DrawableRes val icon: Int,
@@ -290,7 +292,7 @@ internal fun guidedIcon(id: String): Int = when (id) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun MoreActionsSheet(tiles: List<MoreTile>, onDismiss: () -> Unit, footer: @Composable () -> Unit) {
+internal fun MoreActionsSheet(sections: List<MoreSection>, onDismiss: () -> Unit, footer: @Composable () -> Unit) {
     AircastSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier
@@ -302,7 +304,9 @@ internal fun MoreActionsSheet(tiles: List<MoreTile>, onDismiss: () -> Unit, foot
                 Text("More actions", style = MaterialTheme.typography.titleLarge)
                 Text("Everything that changes what the drone does", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            tiles.chunked(MORE_COLUMNS).map { row ->
+            sections.filter { it.tiles.isNotEmpty() }.map { section ->
+                Text(section.title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = AircastSpace.s2))
+                section.tiles.chunked(MORE_COLUMNS).map { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s3)) {
                     row.map { tile ->
                         Surface(
@@ -327,6 +331,7 @@ internal fun MoreActionsSheet(tiles: List<MoreTile>, onDismiss: () -> Unit, foot
                         }
                     }
                     repeat(MORE_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
+                }
                 }
             }
             footer()

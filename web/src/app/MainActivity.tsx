@@ -46,7 +46,7 @@ import { BetaDiagnosticsDialog } from '@/ui/BetaDiagnosticsDialog';
 import { HandoffDialog } from '@/ui/HandoffDialog';
 import { FirstRunDialog } from '@/ui/FirstRunDialog';
 import { trackFocus } from '@/ui/FocusReturn';
-import { type FlyDeckLayout, LocalFlyDestinations, MenuTile } from '@/ui/FlyDeck';
+import { type FlyDeckLayout, type FlyDestinations, LocalFlyDestinations, MenuTile } from '@/ui/FlyDeck';
 import { FlyPortrait } from '@/ui/FlyPortrait';
 import { FlyScreenState, LocalFlyScreenState, REQUESTABLE_SHEETS, TRAFFIC_SHEET } from '@/ui/FlyScreenState';
 import { FleetCard, FlyMenuButton, FlyScreen, FlyView, MAP_LAYERS_CLEARANCE, type ModifierProps, flyViewShown, flyViewSwapped, loadFlyView, saveFlyView, useFlyIsPortrait } from '@/ui/FlyShell';
@@ -609,10 +609,13 @@ export const AircastShell = () => {
     { key: 'settings', label: 'Settings', icon: 'ic_settings', selected: settingsOpen && !setupShowing, onClick: openSettings },
   ];
   const fullScreenTiles = browserFullScreenSupported() ? [MenuTile({ label: browserFullScreen ? 'Exit full screen' : 'Full screen', icon: 'ic_fullscreen', enabled: true, onClick: () => void toggleBrowserFullScreen().catch(() => undefined) })] : [];
-  const flyDestinations: readonly MenuTile[] = [
-    ...(railShown ? [] : destinations.filter((it) => it.key !== Tab.Fly.name).map((it) => MenuTile({ label: it.label, icon: it.icon, enabled: true, onClick: it.onClick }))),
-    ...fullScreenTiles,
-  ];
+  const menuTiles = (keys: readonly string[]): readonly MenuTile[] =>
+    railShown ? [] : keys.flatMap((key) => destinations.filter((it) => it.key === key).map((it) => MenuTile({ label: it.label, icon: it.icon, enabled: true, onClick: it.onClick })));
+  const flyDestinations: FlyDestinations = {
+    plan: menuTiles([Tab.Plan.name]),
+    aircraft: menuTiles(['setup', Tab.Analyze.name]),
+    app: [...fullScreenTiles, ...menuTiles(['settings'])],
+  };
   const linkLost = useValue(lostVehicle) !== null;
   const flightBar = (armedNow || linkLost) && (!onFly || settingsOpen) ? <ArmedFlightBar onFly={backToFly} /> : null;
   const sheetCovers = settingsOpen && !desktop;

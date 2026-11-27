@@ -46,3 +46,19 @@ func guidedCommand(_ id: String, _ resumeFrom: Int?) -> (() async -> String?)? {
     default: nil
     }
 }
+
+let AIRCRAFT_SECTION = "Aircraft"
+let SCREEN_SECTION = "Screen"
+let CALIBRATE = "Calibrate"
+let AUX_SWITCHES_VIEW = "view.auxSwitches"
+let AUX_SWITCH = "vehicle.auxSwitch"
+
+struct AuxSwitch: Equatable {
+    let id: String
+    let label: String
+    let on: Bool
+}
+
+func auxSwitchReadings(_ view: JSON?) -> [AuxSwitch] {
+    (view?["switches"].objects ?? []).map { AuxSwitch(id: $0["id"].string, label: $0["label"].string, on: $0["on"].bool) }
+}

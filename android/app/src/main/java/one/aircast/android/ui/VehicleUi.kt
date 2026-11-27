@@ -435,6 +435,10 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     val scope = rememberCoroutineScope()
     var guidedValue by remember(activeId) { mutableStateOf<OpenGuidedValue?>(null) }
     var showMore by remember { mutableStateOf(false) }
+    val navigation = LocalAppNavigation.current
+    val sensorsPage = hasSetupPage(SENSORS)
+    val auxSwitchesJson by qgcPath(AUX_SWITCHES_VIEW)
+    val auxSwitches = remember(auxSwitchesJson) { auxSwitchReadings(auxSwitchesJson) }
     var showGripper by remember { mutableStateOf(false) }
     var deckRest by remember { mutableStateOf<List<DeckEntry>>(emptyList()) }
     var editingLoiter by remember { mutableStateOf<LoiterOffer?>(null) }
@@ -694,7 +698,8 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     if (showMore) {
         val checklistPast = checklistOffered(armed)
         MoreActionsSheet(
-            tiles = listOfNotNull(
+            sections = listOf(
+                MoreSection(AIRCRAFT_SECTION, listOfNotNull(
                 armedStopOffer(offers, armed)?.let { offer -> MoreTile(STOP_MOTORS, R.drawable.ic_warning, true, warning = true) { pending = emergencyStopAction(offer) } },
                 pursuit?.entry?.let { entry -> MoreTile(entry.label, R.drawable.ic_search, true) { onAutodrop(entry) } },
             ) +
@@ -705,8 +710,6 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                     loiter?.let { offer -> MoreTile(offer.title, R.drawable.ic_my_location, true) { editingLoiter = offer } },
                     MoreTile("Payload", R.drawable.ic_payload, gripper.any { it.ready }) { showGripper = true }.takeIf { gripper.isNotEmpty() },
                     routeTile(routeRecorder) { recording -> scope.launch { refusal = withContext(Dispatchers.Default) { toggleRoute(recording) } } },
-                    MoreTile("Choose readings", R.drawable.ic_tune, true) { flyScreen.choosingReadings = true },
-                    MoreTile("Edit layout", R.drawable.ic_edit, true) { flyScreen.layout.startEditing() }.takeIf { !armed },
                 ) +
                 extras.filter { offer -> entries.none { it.id == offer.id } && offer.id !in GRIPPER_ACTIONS }.map { offer ->
                     MoreTile(offer.title, guidedIcon(offer.id), offer.ready, offer.destructive) {
@@ -726,7 +729,18 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                             }
                         }
                     }
-                },
+                } +
+                listOfNotNull(MoreTile(CALIBRATE, R.drawable.ic_explore, !armed) { navigation.setupPage = SENSORS }.takeIf { sensorsPage }) +
+                auxSwitches.map { switch ->
+                    MoreTile("${switch.label} ${if (switch.on) "on" else "off"}", R.drawable.ic_height, true) {
+                        scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(AUX_SWITCH, switch.id, !switch.on) } }
+                    }
+                }),
+                MoreSection(SCREEN_SECTION, listOfNotNull(
+                    MoreTile("Choose readings", R.drawable.ic_tune, true) { flyScreen.choosingReadings = true },
+                    MoreTile("Edit layout", R.drawable.ic_edit, true) { flyScreen.layout.startEditing() }.takeIf { !armed },
+                )),
+            ),
             onDismiss = { showMore = false },
         ) {
             FlyViewMavlinkActions { showMore = false }

@@ -69,3 +69,16 @@ internal fun guidedCommand(id: String, resumeFrom: Int?): (suspend () -> String?
 }
 
 private fun offMainRefusal(command: () -> String?): suspend () -> String? = { withContext(Dispatchers.Default) { command() } }
+
+internal const val AIRCRAFT_SECTION = "Aircraft"
+internal const val SCREEN_SECTION = "Screen"
+internal const val CALIBRATE = "Calibrate"
+internal const val AUX_SWITCHES_VIEW = "view.auxSwitches"
+internal const val AUX_SWITCH = "vehicle.auxSwitch"
+
+internal data class AuxSwitch(val id: String, val label: String, val on: Boolean)
+
+internal fun auxSwitchReadings(view: org.json.JSONObject?): List<AuxSwitch> =
+    view?.optJSONArray("switches")?.let { array ->
+        (0 until array.length()).mapNotNull { array.optJSONObject(it) }.map { AuxSwitch(it.optString("id"), it.optString("label"), it.optBoolean("on")) }
+    }.orEmpty()

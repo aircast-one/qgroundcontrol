@@ -486,6 +486,9 @@ struct FlightActions<Center: View>: View {
     @QgcPath(GUIDED_ACTIONS) private var actionsJson
     @QgcPath(AUTO_PURSUIT) private var pursuitJson
     @QgcPath(ROUTE_RECORDER_VIEW) private var routeRecorderJson
+    @QgcPath(SETUP) private var setupJson
+    @QgcPath(AUX_SWITCHES_VIEW) private var auxSwitchesJson
+    @Environment(AppNavigationState.self) private var navigation
     @QgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups")) private var automaticMissionPopups
     @State private var room: CGSize = .zero
     @State private var centre: CGFloat = 0
@@ -661,7 +664,7 @@ struct FlightActions<Center: View>: View {
         PreflightChecklist(checklist: checklist, deciding: actions.deciding)
         OpenOnRequest(name: "more", open: { actions.showMore = true })
         if actions.showMore {
-            MoreActionsSheet(tiles: moreTiles(), onDismiss: { actions.showMore = false }) {
+            MoreActionsSheet(sections: moreSections(), onDismiss: { actions.showMore = false }) {
                 FlyViewMavlinkActions { actions.showMore = false }
             }
         }
@@ -671,7 +674,7 @@ struct FlightActions<Center: View>: View {
         }
     }
 
-    private func moreTiles() -> [MoreTile] {
+    private func moreSections() -> [MoreSection] {
         let actions = actions
         let deckEntries = entries()
         let fits = fit(deckEntries)
@@ -694,8 +697,6 @@ struct FlightActions<Center: View>: View {
             loiter.map { offer in MoreTile(label: offer.title, icon: .myLocation, enabled: true, onClick: { actions.editingLoiter = offer }) },
             gripper.isEmpty ? nil : MoreTile(label: "Gripper", icon: .download, enabled: gripper.contains(where: \.ready), onClick: { actions.showGripper = true }),
             route,
-            MoreTile(label: "Choose readings", icon: .tune, enabled: true, onClick: { flyScreen.choosingReadings = true }),
-            armed ? nil : MoreTile(label: "Edit layout", icon: .edit, enabled: true, onClick: { flyScreen.layout.startEditing() }),
             pursuit?.entry.map { entry in MoreTile(label: entry.label, icon: .search, enabled: true, onClick: { onPursuit(entry) }) },
         ].compactMap { $0 }
         let offered = extras.filter { !entryIds.contains($0.id) && !GRIPPER_ACTIONS.contains($0.id) }.map { offer in
@@ -707,7 +708,23 @@ struct FlightActions<Center: View>: View {
                 }
             })
         }
-        return stop + rest + fixed + offered
+        let navigation = navigation
+        let calibrate: [MoreTile] = setupComponents(setupJson).contains(where: { $0.name == SENSORS })
+            ? [MoreTile(label: CALIBRATE, icon: .explore, enabled: !armed, onClick: { navigation.setupPage = SENSORS })]
+            : []
+        let switches = auxSwitchReadings(auxSwitchesJson).map { item in
+            MoreTile(label: "\(item.label) \(item.on ? "on" : "off")", icon: .height, enabled: true, onClick: {
+                actions.scope.launch { flyScreen.refusal = await offMain { Qgc.refusalOf(AUX_SWITCH, item.id, !item.on) } }
+            })
+        }
+        let screen: [MoreTile] = [
+            MoreTile(label: "Choose readings", icon: .tune, enabled: true, onClick: { flyScreen.choosingReadings = true }),
+            armed ? nil : MoreTile(label: "Edit layout", icon: .edit, enabled: true, onClick: { flyScreen.layout.startEditing() }),
+        ].compactMap { $0 }
+        return [
+            MoreSection(title: AIRCRAFT_SECTION, tiles: stop + rest + fixed + offered + calibrate + switches),
+            MoreSection(title: SCREEN_SECTION, tiles: screen),
+        ]
     }
 
     @ViewBuilder

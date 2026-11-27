@@ -1,6 +1,7 @@
 import { PlanCommands } from '@/bridge/BridgeCommands';
 import { VehicleCommands } from '@/bridge/VehicleCommands';
 import { EMERGENCY_STOP } from './EmergencyStop';
+import { type Json, jsonObjects, optBoolean, optJSONArray, optText } from '@/bridge/Json';
 import type { GuidedOffer } from './GuidedActions';
 
 export const PAUSE = 'pause';
@@ -62,3 +63,12 @@ export const guidedCommand = (id: string, resumeFrom: number | null): (() => Pro
       return null;
   }
 };
+
+export const CALIBRATE = 'Calibrate';
+export const AUX_SWITCHES_VIEW = 'view.auxSwitches';
+export const AUX_SWITCH = 'vehicle.auxSwitch';
+
+export type AuxSwitch = { id: string; label: string; on: boolean };
+
+export const auxSwitchReadings = (view: Json | null): readonly AuxSwitch[] =>
+  jsonObjects(optJSONArray(view, 'switches')).map((it) => ({ id: optText(it, 'id'), label: optText(it, 'label'), on: optBoolean(it, 'on') }));

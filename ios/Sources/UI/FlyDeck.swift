@@ -323,20 +323,25 @@ func guidedIcon(_ id: String) -> Icon {
     }
 }
 
-struct MoreActionsSheet<Footer: View>: View {
+struct MoreSection {
+    let title: String
     let tiles: [MoreTile]
+}
+
+struct MoreActionsSheet<Footer: View>: View {
+    let sections: [MoreSection]
     let onDismiss: () -> Void
     @ViewBuilder let footer: () -> Footer
 
     var body: some View {
         AircastSheet(onDismissRequest: onDismiss) {
-            MoreTiles(tiles: tiles, onDismiss: onDismiss, footer: footer)
+            MoreTiles(sections: sections, onDismiss: onDismiss, footer: footer)
         }
     }
 }
 
 private struct MoreTiles<Footer: View>: View {
-    let tiles: [MoreTile]
+    let sections: [MoreSection]
     let onDismiss: () -> Void
     let footer: () -> Footer
     @Environment(\.theme) private var theme
@@ -352,11 +357,17 @@ private struct MoreTiles<Footer: View>: View {
                         .foregroundStyle(theme.colors.onSurfaceVariant)
                 }
                 .padding(.horizontal, Space.s2)
-                ForEach(Array(stride(from: 0, to: tiles.count, by: MORE_COLUMNS)), id: \.self) { start in
-                    let row = Array(tiles[start..<min(start + MORE_COLUMNS, tiles.count)])
-                    HStack(spacing: Space.s3) {
-                        ForEach(row.indices, id: \.self) { at in tile(row[at]) }
-                        ForEach(0..<(MORE_COLUMNS - row.count), id: \.self) { _ in Color.clear.frame(maxWidth: .infinity, maxHeight: 1) }
+                ForEach(sections.filter { !$0.tiles.isEmpty }, id: \.title) { section in
+                    Text(section.title)
+                        .font(.labelLarge)
+                        .foregroundStyle(theme.colors.onSurfaceVariant)
+                        .padding(.horizontal, Space.s2)
+                    ForEach(Array(stride(from: 0, to: section.tiles.count, by: MORE_COLUMNS)), id: \.self) { start in
+                        let row = Array(section.tiles[start..<min(start + MORE_COLUMNS, section.tiles.count)])
+                        HStack(spacing: Space.s3) {
+                            ForEach(row.indices, id: \.self) { at in tile(row[at]) }
+                            ForEach(0..<(MORE_COLUMNS - row.count), id: \.self) { _ in Color.clear.frame(maxWidth: .infinity, maxHeight: 1) }
+                        }
                     }
                 }
                 footer()

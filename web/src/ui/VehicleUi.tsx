@@ -20,7 +20,7 @@ import { LocalAppNavigation } from './AppNavigation';
 import { ConfirmTrack, SENT_SHOWN_MS, SentNotice, sentIsStillShowing, sentUnlessRefused } from './ConfirmTrack';
 import { armedStopOffer, emergencyStopAction } from './EmergencyStop';
 import { FLIGHT_MODES, type FlightModeOption, flightModesView, modeAck, modeConfirmText, modeHeading, modeOutcome, pinsAfter, startsSection } from './FlightModes';
-import { CHECKLIST, DeckButton, DeckEntry, type DeckIds, FlyDeckLayout, FlyMenuSheet, MenuTile, NO_SIGNAL_CODE, RAIL_STOP_GAP, RETURN_HOME, RailDeckButton, TAKE_OFF, bottomDeck, deckIds, guidedIcon, holdTakeoffHeight, railDeck, takeoffLabel, useFlyDestinations } from './FlyDeck';
+import { CHECKLIST, DeckButton, DeckEntry, type DeckIds, FlyDeckLayout, FlyMenuSheet, MenuTile, NO_SIGNAL_CODE, RAIL_STOP_GAP, RETURN_HOME, RailDeckButton, TAKE_OFF, bottomDeck, deckIds, flyMenuSections, guidedIcon, holdTakeoffHeight, railDeck, takeoffLabel, useFlyDestinations } from './FlyDeck';
 import { LocalFlyScreenState, MENU_SHEET, OpenOnRequest, STATUS_ALL_SHEET, useVehicleScoped } from './FlyScreenState';
 import { AnimatedVisibility, PASS_THROUGH, useElementSize, useFlyIsPortrait } from './FlyShell';
 import { FLY_STATE, type Readiness, STALE_OPACITY, flyState, useGuidedReadiness, useHasVehicle, useStaleNotice, vehicleSubtitle } from './FlyState';
@@ -59,7 +59,7 @@ import {
 import { ValueDisplay, ValueDisplayDialog, ValueIcon, ValueLabel, displayColour, displayIcon, readDisplays, writeDisplay } from './InstrumentDisplay';
 import { MAP_CLICK_PATH, type LoiterOffer, LoiterRadiusPanel, loiterOffer, mapClickUnits } from './MapClickMenu';
 import { FlyViewMavlinkActions } from './MavlinkActions';
-import { AUTO_POPUP_ACTIONS, GRIPPER_RELEASE, PAUSE, RELEASE, autoMissionPopup, guidedCommand, missionFlown, moreActions, popupReplacesOpenConfirm } from './MoreActions';
+import { AUTO_POPUP_ACTIONS, AUX_SWITCH, AUX_SWITCHES_VIEW, CALIBRATE, GRIPPER_RELEASE, PAUSE, RELEASE, autoMissionPopup, auxSwitchReadings, guidedCommand, missionFlown, moreActions, popupReplacesOpenConfirm } from './MoreActions';
 import { CHECK_DEVICE, OFFLINE_SHEET, OFFLINE_STATUS_VIEW, offlineStatus, openAddLink, openDeviceTelemetry } from './OfflineStatusSheet';
 import { LayoutWidget, barOrderWith, homeRows, orientedKey, rowsCovered } from './OverlayLayout';
 import { LocalFlyOsd, OSD_SCRIM, osdShadow } from './Osd';
@@ -67,7 +67,7 @@ import { ParameterForm } from './ParameterForm';
 import { PAYLOAD_RAIL_VIEW, payloadRailOf } from './PayloadRail';
 import { PREFLIGHT, checklistOffered, preflightOffered } from './Preflight';
 import { PreflightChecklist, PreflightChecklistReset, useRememberPreflightChecklist } from './PreflightChecklistGate';
-import { FLIGHT_MODES_PAGE } from './SetupPages';
+import { FLIGHT_MODES_PAGE, SENSORS } from './SetupPages';
 import { FootNote, SearchPill, SectionHeader } from './SetupRow';
 import { useHasSetupPage } from './SetupScreen';
 import { ARM_REQUEST, deckRequestRefusal } from './VehicleStatusSheet';
@@ -595,6 +595,10 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
     flyScreen.refusal.value = message;
   };
   const [menuOpen, setMenuOpen] = useState(false);
+  const navigation = useContext(LocalAppNavigation);
+  const sensorsPage = useHasSetupPage(SENSORS);
+  const auxSwitchesJson = useQgcPath(AUX_SWITCHES_VIEW);
+  const auxSwitches = useMemo(() => auxSwitchReadings(auxSwitchesJson), [auxSwitchesJson]);
   const [showGripper, setShowGripper] = useState(false);
   const [editingLoiter, setEditingLoiter] = useState<LoiterOffer | null>(null);
   const mapClickJson = useQgcPath(MAP_CLICK_PATH);
@@ -762,14 +766,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
         <OpenOnRequest name={MENU_SHEET} open={() => setMenuOpen(true)} />
         {!rail ? <OfflineDeck className={className} /> : null}
         {menuOpen ? (
-          <FlyMenuSheet
-            sections={[
-              { title: 'Go to', tiles: destinations },
-              { title: 'Screen', tiles: screen },
-            ]}
-            onDismiss={closeMenu}
-            footer={null}
-          />
+          <FlyMenuSheet lead={destinations.plan} sections={flyMenuSections([], screen, destinations)} onDismiss={closeMenu} footer={null} />
         ) : null}
       </>
     );
@@ -901,6 +898,15 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   );
 
   const checklistPast = checklistOffered(armed);
+  const calibrate = sensorsPage ? [MenuTile({ label: CALIBRATE, icon: 'ic_explore', enabled: !armed, onClick: () => (navigation.setupPage.value = SENSORS) })] : [];
+  const switchTiles = auxSwitches.map((it) =>
+    MenuTile({
+      label: `${it.label} ${it.on ? 'on' : 'off'}`,
+      icon: 'ic_height',
+      enabled: true,
+      onClick: () => void (async () => setRefusal(await Qgc.refusalOf(AUX_SWITCH, it.id, !it.on)))(),
+    }),
+  );
   const aircraft: readonly MenuTile[] = menuOpen
     ? [
         MenuTile({
@@ -933,13 +939,11 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
               },
             }),
           ),
+        ...calibrate,
+        ...switchTiles,
       ]
     : [];
-  const sections = [
-    { title: 'Go to', tiles: destinations },
-    { title: 'Aircraft', tiles: aircraft },
-    { title: 'Screen', tiles: screen },
-  ];
+  const sections = flyMenuSections(aircraft, screen, destinations);
 
   return (
     <>
@@ -948,7 +952,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
       <OpenOnRequest name={MENU_SHEET} open={() => setMenuOpen(true)} />
       {body}
       {menuOpen ? (
-        <FlyMenuSheet sections={sections} onDismiss={closeMenu} footer={<FlyViewMavlinkActions onSent={closeMenu} />} />
+        <FlyMenuSheet lead={destinations.plan} sections={sections} onDismiss={closeMenu} footer={<FlyViewMavlinkActions onSent={closeMenu} />} />
       ) : null}
       {showGripper && gripper.length > 0 ? <GripperPanel offers={gripper} payload={payload} onDismiss={() => setShowGripper(false)} /> : null}
     </>

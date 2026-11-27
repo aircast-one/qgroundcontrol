@@ -328,9 +328,19 @@ export const MenuTile = (fields: Omit<MenuTile, 'warning'> & Partial<Pick<MenuTi
 
 export type MenuSection = { title: string; tiles: readonly MenuTile[] };
 
-export const LocalFlyDestinations = createContext<readonly MenuTile[] | null>(null);
+export type FlyDestinations = { plan: readonly MenuTile[]; aircraft: readonly MenuTile[]; app: readonly MenuTile[] };
 
-export const useFlyDestinations = (): readonly MenuTile[] => {
+export const AIRCRAFT_SECTION = 'Aircraft';
+export const SCREEN_SECTION = 'Screen';
+
+export const flyMenuSections = (aircraft: readonly MenuTile[], screen: readonly MenuTile[], destinations: FlyDestinations): readonly MenuSection[] => [
+  { title: AIRCRAFT_SECTION, tiles: [...aircraft, ...destinations.aircraft] },
+  { title: SCREEN_SECTION, tiles: [...screen, ...destinations.app] },
+];
+
+export const LocalFlyDestinations = createContext<FlyDestinations | null>(null);
+
+export const useFlyDestinations = (): FlyDestinations => {
   const destinations = useContext(LocalFlyDestinations);
   if (destinations === null) throw new Error('the Fly menu is mounted outside LocalFlyDestinations');
   return destinations;
@@ -401,12 +411,33 @@ const TileGrid = ({ tiles, onDismiss }: { tiles: readonly MenuTile[]; onDismiss:
   </div>
 );
 
-export const FlyMenuSheet = ({ sections, onDismiss, footer }: { sections: readonly MenuSection[]; onDismiss: () => void; footer: ReactNode }) => (
+const LeadTile = ({ tile, onDismiss }: { tile: MenuTile; onDismiss: () => void }) => (
+  <Surface
+    onClick={() => {
+      onDismiss();
+      tile.onClick();
+    }}
+    enabled={tile.enabled}
+    shape="large"
+    color={md('primaryContainer')}
+    contentColor={md('onPrimaryContainer')}
+    className="flex items-center gap-3 px-5"
+    style={{ height: MENU_TILE_HEIGHT, opacity: tile.enabled ? 1 : DISABLED_ALPHA }}
+  >
+    <Drawable name={tile.icon} size={28} />
+    <Text typography="titleMedium">{sentenceCase(tile.label)}</Text>
+  </Surface>
+);
+
+export const FlyMenuSheet = ({ lead, sections, onDismiss, footer }: { lead: readonly MenuTile[]; sections: readonly MenuSection[]; onDismiss: () => void; footer: ReactNode }) => (
   <AircastSheet onDismissRequest={onDismiss} label={FLY_MENU}>
     <div className="flex flex-col gap-4 overflow-y-auto px-4 pb-6">
       <Text typography="titleLarge" className="px-2">
         {FLY_MENU}
       </Text>
+      {lead.map((tile) => (
+        <LeadTile key={tile.label} tile={tile} onDismiss={onDismiss} />
+      ))}
       {sections
         .filter((section) => section.tiles.length > 0)
         .map((section) => (

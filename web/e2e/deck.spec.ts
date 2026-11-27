@@ -1,17 +1,48 @@
 import type { Locator, Page } from '@playwright/test';
 import { connectMock, dropFromStrip, expect, flightMode, showMapFull, slideAcross, takeOff, telemetry, test } from './fixtures';
 
-test('on a desktop the Fly menu holds where to go, what the aircraft can do and how the screen is laid out', async ({ vehicle }) => {
+test('on a desktop the Fly menu leads with Plan, keeps the aircraft and its setup together, and the app and its settings together', async ({ vehicle }) => {
   await expect(vehicle.getByRole('navigation')).toHaveCount(0);
   await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   const sheet = vehicle.getByRole('dialog');
   const section = (name: string) => sheet.getByRole('region', { name });
-  await expect(sheet.getByRole('button', { name: 'Plan', exact: true })).toBeVisible();
-  await expect(sheet.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
-  await expect(section('Aircraft').getByRole('button', { name: 'All status', exact: true })).toBeVisible();
-  await expect(section('Aircraft').getByRole('button', { name: 'Payload', exact: true })).toBeVisible();
-  await expect(section('Screen').getByRole('button', { name: 'Choose readings', exact: true })).toBeVisible();
-  await expect(section('Screen').getByRole('button', { name: 'Edit layout', exact: true })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Plan', exact: true }), 'open, plan, fly: Plan stands on its own above the groups').toBeVisible();
+  await expect(sheet.getByRole('region').getByRole('button', { name: 'Plan', exact: true })).toHaveCount(0);
+  const aircraft = ['All status', 'Payload', 'Calibrate', 'Setup', 'Analyze'];
+  await Promise.all(aircraft.map((name) => expect(section('Aircraft').getByRole('button', { name, exact: true })).toBeVisible()));
+  const screen = ['Choose readings', 'Edit layout', 'Settings'];
+  await Promise.all(screen.map((name) => expect(section('Screen').getByRole('button', { name, exact: true })).toBeVisible()));
+});
+
+test('Calibrate in the Fly menu opens the sensor calibrations', async ({ vehicle }) => {
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
+  await vehicle.getByRole('dialog').getByRole('region', { name: 'Aircraft' }).getByRole('button', { name: 'Calibrate', exact: true }).click();
+  await expect(vehicle.getByRole('button', { name: /^Compass/ }).first(), 'compass, accelerometer and level are a tap away from the Fly screen').toBeVisible({ timeout: 30_000 });
+  await expect(vehicle.getByRole('button', { name: /^Accelerometer/ }).first()).toBeVisible();
+});
+
+test('an ArduPilot with a range finder set up turns it off and on from the Fly menu', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  const menu = async () => {
+    await app.getByRole('button', { name: 'Menu', exact: true }).click();
+    return app.getByRole('dialog').getByRole('region', { name: 'Aircraft' });
+  };
+  await expect((await menu()).getByRole('button', { name: /^Range finder/ }), 'no range finder set up, no switch for it').toHaveCount(0);
+  await app.keyboard.press('Escape');
+  await expect
+    .poll(
+      () =>
+        app.evaluate(async (module) => {
+          const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown>; get: (path: string) => Promise<{ value?: unknown }> } };
+          await Qgc.set('vehicle.parameterManager.getParameter(-1,RNGFND1_TYPE)', 14);
+          return (await Qgc.get('vehicle.parameterManager.getParameter(-1,RNGFND1_TYPE)')).value;
+        }, '/src/bridge/Qgc.ts'),
+      { timeout: 30_000 },
+    )
+    .toBe(14);
+  await (await menu()).getByRole('button', { name: 'Range finder on', exact: true }).click();
+  await expect((await menu()).getByRole('button', { name: 'Range finder off', exact: true }), 'the switch went out and the menu shows the range finder off').toBeVisible({ timeout: 15_000 });
+  await expect(app.getByRole('button', { name: /^LiDAR/ }), 'no proximity sensor set up, no LiDAR switch').toHaveCount(0);
 });
 
 test('on the ground Arm sits on the deck beside Take off, and Force arm stays in the menu in plain ink and still asks for a slide', async ({ vehicle }) => {
