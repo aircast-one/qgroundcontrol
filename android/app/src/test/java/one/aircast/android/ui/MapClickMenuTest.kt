@@ -72,7 +72,9 @@ class MapClickMenuTest {
     fun `a tapped item jumps to its sequence, never before the first waypoint`() {
         assertEquals(1, waypointTarget(0))
         assertEquals(4, waypointTarget(4))
-        assertEquals("Adjust current waypoint to 4", setWaypointMessage(4))
+        assertEquals("view.setWaypoint(1)", setWaypointPath(0))
+        assertEquals("Continue the mission from waypoint 2 of 3", setWaypointMessage(JSONObject("""{"line":"Continue the mission from waypoint 2 of 3"}""")))
+        assertEquals("", setWaypointMessage(null))
     }
 
     @Test

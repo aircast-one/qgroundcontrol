@@ -460,16 +460,19 @@ export const SET_WAYPOINT_PATH = 'vehicle.setCurrentMissionSequence';
 
 export const waypointTarget = (sequence: number): number => Math.max(sequence, 1);
 
-export const setWaypointMessage = (sequence: number): string => `Adjust current waypoint to ${waypointTarget(sequence)}`;
+export const setWaypointPath = (sequence: number): string => `view.setWaypoint(${waypointTarget(sequence)})`;
+
+export const setWaypointMessage = (view: Json | null): string => optText(view, 'line');
 
 export const SetWaypointSheet = ({ sequence, onDismiss }: { sequence: number; onDismiss: () => void }) => {
   const [refusal, setRefusal] = useKeyedState<string | null>([sequence], () => null);
+  const view = useQgcPath(setWaypointPath(sequence));
   return (
     <AircastSheet onDismissRequest={onDismiss} label="Set waypoint">
       <div className="flex w-full flex-col gap-3 px-sheet pb-6">
         <Text typography="titleLarge">Set waypoint</Text>
         <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
-          {setWaypointMessage(sequence)}
+          {setWaypointMessage(view)}
         </Text>
         <HoldOrCancel
           label="Set waypoint"

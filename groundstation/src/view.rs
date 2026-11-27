@@ -140,6 +140,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.altitudeModes", "item,<index>"),
     ("view.itemCamera", "<item index>"),
     ("view.itemFacts", "<item index>"),
+    ("view.setWaypoint", "<mission sequence>"),
     ("view.cameraDefinition", "<file path>[,<locale>]"),
     ("view.apmSubFrameImage", "<FRAME_CONFIG value>"),
     ("view.patternPresets", "<complexItemType>"),
@@ -1011,6 +1012,11 @@ pub const VIEWS: &[View] = &[
         path: "view.itemFacts",
         deps: itemfacts::DEPS,
         compute: itemfacts::item_facts_view,
+    },
+    View {
+        path: "view.setWaypoint",
+        deps: missionprogress::DEPS,
+        compute: missionprogress::set_waypoint_view,
     },
     View {
         path: "view.gpsRtkBase",

@@ -3399,6 +3399,20 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
             field("textFieldFacts.").or_else(|| field("comboboxFacts.")),
             number,
         ) {
+            (Some(param), Some(v))
+                if !raw
+                    && param == plandoc::JUMP_TARGET_PARAM
+                    && simple.is_some_and(|s| s.command == plandoc::JUMP_COMMAND) =>
+            {
+                answer(
+                    jump_sequence(&current, v)
+                        .ok_or_else(|| NO_SUCH_WAYPOINT.to_string())
+                        .and_then(|sequence| {
+                            plandoc::set_param(&current, index, param, sequence)
+                                .ok_or_else(|| format!("Item {index} has no such field."))
+                        }),
+                )
+            }
             (Some(param), Some(v)) => match out_of_range(param, raw_of(param, v)) {
                 Some(reason) => refused(reason),
                 None => answer(
@@ -3410,6 +3424,32 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
             (None, _) => answer(unknown()),
         },
     })
+}
+
+const NO_SUCH_WAYPOINT: &str =
+    "This plan has no waypoint with that number. A jump goes to a numbered waypoint.";
+const JUMP_TARGET_LABEL: &str = "Waypoint";
+
+fn plan_stops(doc: &Document) -> Vec<Option<i64>> {
+    crate::missionitems::document_reads(doc, -1)
+        .map(|reads| crate::missionitems::stops(&reads))
+        .unwrap_or_default()
+}
+
+fn jump_sequence(doc: &Document, stop: f64) -> Option<f64> {
+    let row = plan_stops(doc)
+        .iter()
+        .position(|numbered| numbered.is_some_and(|number| number as f64 == stop))?;
+    plandoc::first_sequence(doc, row).map(|sequence| sequence as f64)
+}
+
+fn jump_stop(doc: &Document, sequence: f64) -> Option<f64> {
+    let row = plandoc::row_of_sequence(doc, sequence)?;
+    plan_stops(doc)
+        .get(row)
+        .copied()
+        .flatten()
+        .map(|number| number as f64)
 }
 
 pub(crate) fn qt_number(value: f64) -> String {
@@ -5413,6 +5453,14 @@ mod tests {
             at_loiter.place
         );
         let flying = row_of_sequence(&vehicle, 6).unwrap();
+        assert_eq!(
+            [Some(&flying), None].map(|row| crate::missionprogress::set_waypoint_line(row, 6)),
+            [
+                "Continue the mission from waypoint 2 of 2",
+                "Continue the mission from mission item 6"
+            ],
+            "the marker tapped reads 2, so the sheet says 2, not the mission sequence 6"
+        );
         let progress = crate::missionprogress::Progress {
             current: 3,
             last: 6,
@@ -6417,6 +6465,7 @@ fn simple_fields(
     simple: &plandoc::Simple,
     commands: &std::collections::BTreeMap<i64, crate::cmdinfo::Command>,
     item: &str,
+    jump_stop: Option<f64>,
 ) -> Vec<Value> {
     let Some(info) = commands.get(&simple.command) else {
         return Vec::new();
@@ -6427,10 +6476,28 @@ fn simple_fields(
     let combo_params = combo.iter().map(|(i, p)| (*i, p));
     let build = |group: &'static str| {
         move |(at, (i, p)): (usize, (u8, &Value))| {
-            let value = simple.params[usize::from(i) - 1].unwrap_or(f64::NAN);
+            let jumps_here = simple.command == plandoc::JUMP_COMMAND
+                && usize::from(i) == plandoc::JUMP_TARGET_PARAM;
+            let (value, p) = match jumps_here {
+                true => (
+                    jump_stop.unwrap_or(f64::NAN),
+                    Value::Object(
+                        p.as_object()
+                            .cloned()
+                            .unwrap_or_default()
+                            .into_iter()
+                            .chain([("label".to_string(), json!(JUMP_TARGET_LABEL))])
+                            .collect(),
+                    ),
+                ),
+                false => (
+                    simple.params[usize::from(i) - 1].unwrap_or(f64::NAN),
+                    p.clone(),
+                ),
+            };
             let suffix = format!("{group}.{at}");
             let mut control =
-                crate::control::decode(&param_fact(p, value), &format!("{item}.{suffix}"));
+                crate::control::decode(&param_fact(&p, value), &format!("{item}.{suffix}"));
             if let Value::Object(map) = &mut control {
                 map.insert("pathSuffix".to_string(), json!(suffix));
                 map.insert("group".to_string(), json!("Settings"));
@@ -6741,7 +6808,13 @@ fn document_facts(
                 if raw {
                     raw_fields(s, &commands, &item)
                 } else {
-                    simple_fields(s, &commands, &item)
+                    simple_fields(
+                        s,
+                        &commands,
+                        &item,
+                        s.params[plandoc::JUMP_TARGET_PARAM - 1]
+                            .and_then(|sequence| jump_stop(&document, sequence)),
+                    )
                 },
                 speed_section(
                     &document,

@@ -29,7 +29,7 @@ test('skip moves a running mission on to the next waypoint', async ({ vehicle })
   await expect(progress).toBeVisible({ timeout: 30_000 });
   const [, before] = (await progress.textContent())?.match(/^To waypoint (\d+)/) ?? [];
   await vehicle.getByRole('button', { name: 'Skip' }).click();
-  await expect(vehicle.getByText(/^Adjust current waypoint to \d+$/)).toBeVisible();
+  await expect(vehicle.getByText(/^Continue the mission from waypoint \d+ of \d+$/)).toBeVisible();
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to set waypoint' }));
   await expect.poll(async () => Number((await progress.textContent())?.match(/^To waypoint (\d+)/)?.[1]), { timeout: 30_000 }).toBeGreaterThan(Number(before));
 });

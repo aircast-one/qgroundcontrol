@@ -33,6 +33,27 @@ pub fn progress_line(row: Option<&crate::coreplan::FlownRow>, progress: &Progres
     }
 }
 
+pub fn set_waypoint_line(row: Option<&crate::coreplan::FlownRow>, sequence: i64) -> String {
+    match row {
+        Some(row) => format!("Continue the mission from {}", row.place),
+        None => format!("Continue the mission from mission item {sequence}"),
+    }
+}
+
+pub fn set_waypoint_view(_backend: &dyn Backend, args: &[String]) -> Value {
+    match args.first().and_then(|given| given.parse::<i64>().ok()) {
+        Some(sequence) => json!({
+            "kind": "object",
+            "sequence": sequence,
+            "line": set_waypoint_line(crate::coreplan::flown_row(sequence).as_ref(), sequence),
+        }),
+        None => json!({
+            "ok": false,
+            "reason": "view.setWaypoint needs the mission sequence, as view.setWaypoint(4)",
+        }),
+    }
+}
+
 pub fn fraction(progress: &Progress) -> f64 {
     (progress.current as f64 / progress.last.max(1) as f64).clamp(0.0, 1.0)
 }

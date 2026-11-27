@@ -47,7 +47,9 @@ final class MapClickMenuTests: XCTestCase {
     func testATappedItemJumpsToItsSequenceNeverBeforeTheFirstWaypoint() {
         XCTAssertEqual(waypointTarget(0), 1)
         XCTAssertEqual(waypointTarget(4), 4)
-        XCTAssertEqual(setWaypointMessage(4), "Adjust current waypoint to 4")
+        XCTAssertEqual(setWaypointPath(0), "view.setWaypoint(1)")
+        XCTAssertEqual(setWaypointMessage(JSON.parse(#"{"line":"Continue the mission from waypoint 2 of 3"}"#)), "Continue the mission from waypoint 2 of 3")
+        XCTAssertEqual(setWaypointMessage(nil), "")
     }
 
     func testALoiterChangeReSendsTheGotoPointWithTheDirectionAsTheSign() {

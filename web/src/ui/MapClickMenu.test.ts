@@ -26,6 +26,7 @@ import {
   orbitOpened,
   radiusMetres,
   setWaypointMessage,
+  setWaypointPath,
   signedLoiterRadius,
   waypointTarget,
   mapHoldHintText,
@@ -77,7 +78,9 @@ describe('MapClickMenuTest', () => {
   it('a tapped item jumps to its sequence, never before the first waypoint', () => {
     expect(waypointTarget(0)).toBe(1);
     expect(waypointTarget(4)).toBe(4);
-    expect(setWaypointMessage(4)).toBe('Adjust current waypoint to 4');
+    expect(setWaypointPath(0)).toBe('view.setWaypoint(1)');
+    expect(setWaypointMessage({ line: 'Continue the mission from waypoint 2 of 3' }), 'the core words the line from the stop number on the marker').toBe('Continue the mission from waypoint 2 of 3');
+    expect(setWaypointMessage(null)).toBe('');
   });
 
   it('a loiter change re-sends the goto point with the direction as the sign', () => {

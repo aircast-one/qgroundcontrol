@@ -456,20 +456,29 @@ let SET_WAYPOINT_PATH = "vehicle.setCurrentMissionSequence"
 
 func waypointTarget(_ sequence: Int) -> Int { max(sequence, 1) }
 
-func setWaypointMessage(_ sequence: Int) -> String { "Adjust current waypoint to \(waypointTarget(sequence))" }
+func setWaypointPath(_ sequence: Int) -> String { "view.setWaypoint(\(waypointTarget(sequence)))" }
+
+func setWaypointMessage(_ view: JSON?) -> String { view?["line"].string ?? "" }
 
 struct SetWaypointSheet: View {
     let sequence: Int
     let onDismiss: () -> Void
+    @QgcPath private var line: JSON?
     @State private var refused: String?
     @State private var scope = ViewScope()
     @Environment(\.theme) private var theme
+
+    init(sequence: Int, onDismiss: @escaping () -> Void) {
+        self.sequence = sequence
+        self.onDismiss = onDismiss
+        _line = QgcPath(setWaypointPath(sequence))
+    }
 
     var body: some View {
         AircastSheet(onDismissRequest: onDismiss) {
             VStack(alignment: .leading, spacing: Space.s3) {
                 Text("Set waypoint").font(.titleLarge)
-                Text(setWaypointMessage(sequence)).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+                Text(setWaypointMessage(line)).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
                 HoldOrCancel(label: "Set waypoint", onConfirm: {
                     let target = waypointTarget(sequence)
                     scope.launch {

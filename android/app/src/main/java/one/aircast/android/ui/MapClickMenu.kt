@@ -360,12 +360,15 @@ internal const val SET_WAYPOINT_PATH = "vehicle.setCurrentMissionSequence"
 
 internal fun waypointTarget(sequence: Int): Int = maxOf(sequence, 1)
 
-internal fun setWaypointMessage(sequence: Int): String = "Adjust current waypoint to ${waypointTarget(sequence)}"
+internal fun setWaypointPath(sequence: Int): String = "view.setWaypoint(${waypointTarget(sequence)})"
+
+internal fun setWaypointMessage(view: JSONObject?): String = view?.optString("line").orEmpty()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SetWaypointSheet(sequence: Int, onDismiss: () -> Unit) {
     var refusal by remember(sequence) { mutableStateOf<String?>(null) }
+    val line by qgcPath(setWaypointPath(sequence))
     val scope = rememberCoroutineScope()
     AircastSheet(onDismissRequest = onDismiss) {
         Column(
@@ -373,7 +376,7 @@ internal fun SetWaypointSheet(sequence: Int, onDismiss: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("Set waypoint", style = MaterialTheme.typography.titleLarge)
-            Text(setWaypointMessage(sequence), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(setWaypointMessage(line), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             HoldOrCancel("Set waypoint", onConfirm = {
                 scope.launch {
                     val refused = withContext(Dispatchers.Default) { Qgc.refusalOf(SET_WAYPOINT_PATH, waypointTarget(sequence)) }

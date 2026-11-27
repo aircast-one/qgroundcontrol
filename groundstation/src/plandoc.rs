@@ -339,6 +339,19 @@ pub fn item_spans(doc: &Document) -> Vec<(usize, usize)> {
         .collect()
 }
 
+pub const JUMP_COMMAND: i64 = CMD_DO_JUMP;
+pub const JUMP_TARGET_PARAM: usize = 1;
+
+pub fn row_of_sequence(doc: &Document, sequence: f64) -> Option<usize> {
+    jump_target(&item_spans(doc), Some(sequence)).map(|(at, _)| at + 1)
+}
+
+pub fn first_sequence(doc: &Document, visual_index: usize) -> Option<usize> {
+    item_spans(doc)
+        .get(visual_index.checked_sub(1)?)
+        .map(|(start, _)| *start)
+}
+
 fn jump_seq(item: &Item) -> Option<f64> {
     match item {
         Item::Simple(simple) if simple.command == CMD_DO_JUMP => simple.params[0],
