@@ -10,6 +10,8 @@ private let SIDE_PANEL_WIDTH: CGFloat = 380
 private let SIDE_PANEL_MIN_WIDTH_DP: CGFloat = 840
 let SUMMARY_MAX_FRACTION: CGFloat = 0.74
 private let WAITING_FOR_QGC = "Waiting for QGroundControl"
+let ADD_WAYPOINT_HERE = "Add waypoint here"
+let SET_LAUNCH_HERE = "Set launch here"
 private let CHECKING_TERRAIN = "Checking the terrain\u{2026}"
 private let FAR_FROM_AIRCRAFT_TEXT = "The aircraft is not where this route begins. Move the route so it starts at the aircraft, or upload it as it is."
 private let VIEW_CORNERS = 4
@@ -112,6 +114,7 @@ struct PlanMapContent: View {
     @Environment(\.LocalRootSize) private var root
 
     @State private var follow = false
+    @State private var mapMenu: TrackPoint?
     @State private var shownStyle: String?
     @State private var fitRequest = 0
     @State private var edits = 0
@@ -218,6 +221,15 @@ struct PlanMapContent: View {
             let bottomPanel = sidePanel ? 0 : panelHeight
             ZStack(alignment: .topLeading) {
                 map(sidePanel: sidePanel)
+                    .confirmationDialog("", isPresented: Binding(get: { mapMenu != nil }, set: { if !$0 { mapMenu = nil } }), presenting: mapMenu) { at in
+                        Button(ADD_WAYPOINT_HERE) {
+                            panelOpen = false
+                            addMissionItem(KIND_WAYPOINT, "Adding a waypoint", at, insertAfter(nil, allItems))
+                        }
+                        Button(SET_LAUNCH_HERE) {
+                            onBridge("Moving the launch") { PlanBridge.moveItem(HOME_ITEM, at.latitude, at.longitude) }
+                        }
+                    }
                 if let header {
                     header(bar)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -473,8 +485,7 @@ struct PlanMapContent: View {
         }
         switch layer {
         case .Mission:
-            panelOpen = false
-            addMissionItem(KIND_WAYPOINT, "Adding a waypoint", TrackPoint(latitude: lat, longitude: lon), insertAfter(selected, allItems))
+            mapMenu = TrackPoint(latitude: lat, longitude: lon)
         case .Rally:
             if support.rally { addRallyAt(lat, lon) }
         case .Fence:
