@@ -57,42 +57,37 @@ fun waypointYaw(view: JSONObject?): WaypointYaw? =
         )
     }?.takeIf { it.path.isNotBlank() }
 
-data class WaypointDrop(val index: Int?, val wait: Double, val latitude: Double, val longitude: Double)
+data class WaypointDrop(val index: Int?, val wait: Double, val waitOffered: Boolean, val servo: Boolean, val output: Double?, val pwm: Double?, val bay: Int?)
 
-fun waypointDrop(view: JSONObject?, latitude: Double, longitude: Double): WaypointDrop? =
-    view?.optJSONObject("drop")?.let { WaypointDrop(if (it.isNull("index")) null else it.optInt("index"), it.optDouble("wait", 0.0), latitude, longitude) }
+private fun JSONObject.numberOrNull(name: String): Double? = if (isNull(name)) null else optDouble(name)
+
+fun waypointDrop(view: JSONObject?): WaypointDrop? =
+    view?.optJSONObject("drop")?.let {
+        WaypointDrop(
+            index = if (it.isNull("index")) null else it.optInt("index"),
+            wait = it.optDouble("wait", 0.0),
+            waitOffered = it.optBoolean("waitOffered"),
+            servo = it.optBoolean("servo"),
+            output = it.numberOrNull("output"),
+            pwm = it.numberOrNull("pwm"),
+            bay = it.numberOrNull("bay")?.toInt(),
+        )
+    }
 
 internal const val PLACE_DROP = "core.plan.placeDrop"
 internal const val REMOVE_DROP = "core.plan.removeDrop"
-private const val PAYLOAD_SETTINGS = "settings.flyViewSettings"
-private const val RELEASE_SETTING = "$PAYLOAD_SETTINGS.payloadRelease"
-private const val OUTPUT_SETTING = "$PAYLOAD_SETTINGS.payloadBay1Output"
-private const val PWM_SETTING = "$PAYLOAD_SETTINGS.payloadBay1ReleasePwm"
-private const val SERVO_RELEASE = 1.0
-private val OUTPUT_RANGE = 1.0..16.0
+internal const val SET_DROP_RELEASE = "core.plan.setDropRelease"
+private const val DROP_NOT_CHANGED = "The drop was not changed."
+private val OUTPUT_RANGE = 1.0..32.0
 private val PWM_RANGE = 500.0..2500.0
 private val WAIT_RANGE = 0.0..600.0
 private const val PWM_STEP = 50.0
 
-internal data class DropRelease(val servo: Boolean, val output: Double, val pwm: Double)
-
-private fun settingNumber(view: JSONObject?): Double = view?.optDouble("value", Double.NaN) ?: Double.NaN
-
-internal fun dropRelease(release: JSONObject?, output: JSONObject?, pwm: JSONObject?): DropRelease =
-    DropRelease(servo = settingNumber(release) == SERVO_RELEASE, output = settingNumber(output), pwm = settingNumber(pwm))
-
-internal fun dropText(release: DropRelease, wait: Double): String = listOfNotNull(
-    if (release.servo) "Servo ${trimmedNumber(release.output)} to ${trimmedNumber(release.pwm)}" else "Gripper",
-    "after ${trimmedNumber(wait)} s".takeIf { wait > 0.0 },
+internal fun dropText(drop: WaypointDrop): String = listOfNotNull(
+    drop.bay?.let { "Bay $it" },
+    if (drop.output != null && drop.pwm != null) "Servo ${trimmedNumber(drop.output)} to ${trimmedNumber(drop.pwm)}" else "Gripper",
+    "after ${trimmedNumber(drop.wait)} s".takeIf { drop.wait > 0.0 },
 ).joinToString(" \u00b7 ")
-
-@Composable
-private fun rememberDropRelease(): DropRelease {
-    val release by mapPath("view.control($RELEASE_SETTING)")
-    val output by mapPath("view.control($OUTPUT_SETTING)")
-    val pwm by mapPath("view.control($PWM_SETTING)")
-    return dropRelease(release, output, pwm)
-}
 
 internal enum class ActionKind { Hover, Camera, Gimbal, Mode, Turn, Drop }
 
@@ -127,7 +122,7 @@ internal fun cameraInterval(extras: CameraExtras?): String = when {
 internal fun startingChoice(labels: List<String>, subject: String): Int? =
     labels.indexOfFirst { it.contains(subject, ignoreCase = true) && !it.contains("stop", ignoreCase = true) }.takeIf { it > NO_CAMERA_ACTION }
 
-internal fun activeActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: CameraChoices?, extras: CameraExtras?, drop: WaypointDrop? = null, release: DropRelease? = null): List<WaypointAction> = listOfNotNull(
+internal fun activeActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: CameraChoices?, extras: CameraExtras?, drop: WaypointDrop? = null): List<WaypointAction> = listOfNotNull(
     hold?.takeIf { it.seconds > 0.0 }?.let { WaypointAction(ActionKind.Hover, "Hover", "${trimmedNumber(it.seconds)} ${it.units}", R.drawable.plan_timer) },
     choices?.takeIf { it.chosen > NO_CAMERA_ACTION }?.let { picked ->
         val label = picked.labels.getOrElse(picked.chosen) { "" }
@@ -136,7 +131,7 @@ internal fun activeActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: Came
     extras?.takeIf { it.commandsGimbal }?.let { WaypointAction(ActionKind.Gimbal, "Gimbal", "${degreesText(it.pitch)} / ${degreesText(it.yaw)}", R.drawable.plan_gimbal) },
     extras?.takeIf { it.modeSupported && it.commandsMode }?.let { WaypointAction(ActionKind.Mode, "Camera mode", CAMERA_MODES.getOrElse(it.mode) { "" }, R.drawable.plan_tune) },
     yaw?.degrees?.let { WaypointAction(ActionKind.Turn, "Turn aircraft", degreesText(it), R.drawable.plan_turn) },
-    drop?.takeIf { it.index != null }?.let { WaypointAction(ActionKind.Drop, DROP_TITLE, release?.let { how -> dropText(how, it.wait) }.orEmpty(), R.drawable.plan_drop) },
+    drop?.takeIf { it.index != null }?.let { WaypointAction(ActionKind.Drop, DROP_TITLE, dropText(it), R.drawable.plan_drop) },
 )
 
 internal fun offeredActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: CameraChoices?, extras: CameraExtras?, drop: WaypointDrop? = null): List<ActionOffer> =
@@ -167,15 +162,14 @@ internal fun addActionsHint(offers: List<ActionOffer>): String {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?, drop: WaypointDrop? = null) {
+internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?, drop: WaypointDrop?) {
     var revision by remember(index) { mutableIntStateOf(0) }
     val camera by produceState<JSONObject?>(null, index, revision) {
         value = withContext(Dispatchers.Default) { ItemCameraBridge.read(index) }
     }
     val choices = cameraChoices(camera)
     val extras = cameraExtras(camera)
-    val release = rememberDropRelease()
-    val active = activeActions(hold, yaw, choices, extras, drop, release)
+    val active = activeActions(hold, yaw, choices, extras, drop)
     val offers = offeredActions(hold, yaw, choices, extras, drop)
     if (active.isEmpty() && offers.isEmpty()) return
     val scope = rememberCoroutineScope()
@@ -184,6 +178,14 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?,
     val write: (() -> Boolean) -> Unit = { work ->
         scope.launch {
             withContext(Dispatchers.Default) { work() }
+            revision += 1
+        }
+    }
+    var refusal by remember(index) { mutableStateOf<String?>(null) }
+    val refusing: (ActionKind?, () -> String?) -> Unit = { opens, work ->
+        scope.launch {
+            refusal = withContext(Dispatchers.Default) { work() }
+            if (refusal == null && opens != null) editing = opens
             revision += 1
         }
     }
@@ -197,7 +199,7 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?,
             ActionKind.Gimbal -> setCamera("specifyGimbal", false)
             ActionKind.Mode -> setCamera("specifyCameraMode", false)
             ActionKind.Turn -> setYaw(null)
-            ActionKind.Drop -> drop?.index?.let { at -> write { invokeOk(REMOVE_DROP, "[$index, $at]") } }
+            ActionKind.Drop -> refusing(null) { invokeRefusal(REMOVE_DROP, "[$index]", DROP_NOT_CHANGED) }
         }
     }
 
@@ -223,9 +225,9 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?,
                                     ActionKind.Gimbal -> setCamera("specifyGimbal", true)
                                     ActionKind.Mode -> setCamera("specifyCameraMode", true)
                                     ActionKind.Turn -> setYaw(0.0)
-                                    ActionKind.Drop -> drop?.let { write { invokeOk(PLACE_DROP, "[$index, null, 0]") } }
+                                    ActionKind.Drop -> refusing(ActionKind.Drop) { invokeRefusal(PLACE_DROP, "[$index]", DROP_NOT_CHANGED) }
                                 }
-                                editing = offer.kind
+                                if (offer.kind != ActionKind.Drop) editing = offer.kind
                             },
                         )
                     }
@@ -238,6 +240,7 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?,
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             active.forEach { action -> ActionChip(action, onClick = { editing = action.kind }, onRemove = { remove(action.kind) }) }
         }
+        refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     }
 
     editing?.let { kind ->
@@ -258,7 +261,7 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?,
                                 FilterChip(selected = extras?.mode == at, onClick = { setCamera("cameraMode", at) }, label = { Text(label) })
                             }
                         }
-                        ActionKind.Drop -> drop?.let { DropEditor(index, it, release, write) }
+                        ActionKind.Drop -> drop?.takeIf { it.index != null }?.let { DropEditor(index, it) { work -> refusing(null, work) } }
                         ActionKind.Camera -> {
                             choices?.labels.orEmpty().withIndex().drop(1).forEach { (at, label) ->
                                 Row(
@@ -285,20 +288,21 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?,
 }
 
 @Composable
-private fun DropEditor(index: Int, drop: WaypointDrop, release: DropRelease, write: (() -> Boolean) -> Unit) {
-    val placeAgain: (Double) -> Boolean = { wait -> invokeOk(PLACE_DROP, "[$index, ${drop.index ?: "null"}, $wait]") }
-    val remembered: (String, Double) -> Unit = { setting, value -> write { setOk(setting, settingJson("$value")) && placeAgain(drop.wait) } }
+private fun DropEditor(index: Int, drop: WaypointDrop, refusing: (() -> String?) -> Unit) {
+    val release: (String) -> Unit = { change -> refusing { invokeRefusal(SET_DROP_RELEASE, "[$index, $change]", DROP_NOT_CHANGED) } }
+    val kind: (Boolean) -> Unit = { servo -> if (servo != drop.servo) release("""{"servo":$servo}""") }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(selected = !release.servo, onClick = { remembered(RELEASE_SETTING, 0.0) }, label = { Text("Gripper") })
-        FilterChip(selected = release.servo, onClick = { remembered(RELEASE_SETTING, SERVO_RELEASE) }, label = { Text("Servo") })
+        FilterChip(selected = !drop.servo, onClick = { kind(false) }, label = { Text("Gripper") })
+        FilterChip(selected = drop.servo, onClick = { kind(true) }, label = { Text("Servo") })
     }
-    if (release.servo) {
-        SettingStepper("Servo output", release.output, "", 1.0, onSet = { remembered(OUTPUT_SETTING, it) }, range = OUTPUT_RANGE)
-        SettingStepper("Release PWM", release.pwm, "\u00b5s", PWM_STEP, onSet = { remembered(PWM_SETTING, it) }, range = PWM_RANGE)
+    if (drop.output != null && drop.pwm != null) {
+        SettingStepper("Servo output", drop.output, "", 1.0, onSet = { release("""{"output":$it}""") }, range = OUTPUT_RANGE)
+        SettingStepper("Release PWM", drop.pwm, "\u00b5s", PWM_STEP, onSet = { release("""{"pwm":$it}""") }, range = PWM_RANGE)
     }
-    SettingStepper("Wait before dropping", drop.wait, "s", 1.0, onSet = { wait -> write { placeAgain(wait) } }, range = WAIT_RANGE)
+    if (drop.waitOffered) SettingStepper("Wait before dropping", drop.wait, "s", 1.0, onSet = { wait -> refusing { invokeRefusal(PLACE_DROP, "[$index, $wait]", DROP_NOT_CHANGED) } }, range = WAIT_RANGE)
     Text(
-        "Photos and camera moves happen on arrival; the drone then waits this long over the point and drops. The release is kept for every later drop.",
+        if (drop.waitOffered) "Photos and camera moves happen on arrival; the drone then waits this long over the point and drops. The servo and PWM belong to this drop, and the next drop starts from them."
+        else "A plane flies through its drop without stopping. The servo and PWM belong to this drop, and the next drop starts from them.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

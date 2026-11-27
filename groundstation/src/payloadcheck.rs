@@ -49,10 +49,14 @@ pub fn servo_bays(ardupilot: bool) -> Vec<Servo> {
     if let Some(servos) = CONFIGURED.with_borrow(Clone::clone) {
         return servos.into_iter().filter(|_| ardupilot).collect();
     }
+    configured_bays(ardupilot && setting("payloadRelease") == Some(SERVO_PER_BAY))
+}
+
+pub fn configured_bays(servo_per_bay: bool) -> Vec<Servo> {
     let bays = setting("payloadBays")
         .map_or(1, |bays| bays as i64)
         .clamp(1, MAX_BAYS);
-    match ardupilot && setting("payloadRelease") == Some(SERVO_PER_BAY) {
+    match servo_per_bay {
         false => Vec::new(),
         true => (1..=bays)
             .map(|bay| Servo {
@@ -63,6 +67,24 @@ pub fn servo_bays(ardupilot: bool) -> Vec<Servo> {
             })
             .collect(),
     }
+}
+
+pub fn remembered(servo: Option<bool>, release: Option<(i64, f64, f64)>) -> Vec<(String, Value)> {
+    servo
+        .map(|servo| {
+            (
+                format!("{SETTINGS}.payloadRelease"),
+                json!(if servo { SERVO_PER_BAY } else { 0.0 }),
+            )
+        })
+        .into_iter()
+        .chain(release.into_iter().flat_map(|(bay, output, pwm)| {
+            [
+                (format!("{SETTINGS}.payloadBay{bay}Output"), json!(output)),
+                (format!("{SETTINGS}.payloadBay{bay}ReleasePwm"), json!(pwm)),
+            ]
+        }))
+        .collect()
 }
 
 pub fn seed_pwm_defaults(parameter: impl Fn(&str) -> Option<f64>) {
@@ -87,8 +109,32 @@ pub fn servo_drop_bay(command: i64, output: f64, pwm: f64, servos: &[Servo]) -> 
     (command == i64::from(CMD_DO_SET_SERVO)).then_some(())?;
     servos
         .iter()
-        .position(|servo| servo.output as f64 == output && servo.release == pwm)
+        .position(|servo| servo.output as f64 == output && servo.hold != pwm)
         .map(|at| at as i64 + 1)
+}
+
+pub fn waypoint_drop(command: i64, first: f64, second: f64, servos: &[Servo]) -> bool {
+    let closes_a_bay = servos
+        .iter()
+        .any(|servo| servo.output as f64 == first && servo.hold == second);
+    (command == i64::from(CMD_DO_GRIPPER) && second == GRIPPER_RELEASE)
+        || (command == i64::from(CMD_DO_SET_SERVO) && !servos.is_empty() && !closes_a_bay)
+}
+
+pub const SERVO_OUTPUT_RANGE: RangeInclusive<f64> = 1.0..=SERVO_OUTPUTS as f64;
+pub const SERVO_PWM_RANGE: RangeInclusive<f64> = 500.0..=2500.0;
+
+pub fn servo_release(output: f64, pwm: f64) -> Result<(f64, f64), String> {
+    match (
+        SERVO_OUTPUT_RANGE.contains(&output) && output.fract() == 0.0,
+        SERVO_PWM_RANGE.contains(&pwm),
+    ) {
+        (false, _) => Err(format!(
+            "A servo output is a whole number from 1 to {SERVO_OUTPUTS}."
+        )),
+        (_, false) => Err("A servo PWM is from 500 to 2500.".to_string()),
+        (true, true) => Ok((output, pwm)),
+    }
 }
 
 pub fn drops(command: i64, first: f64, second: f64, servos: &[Servo]) -> bool {

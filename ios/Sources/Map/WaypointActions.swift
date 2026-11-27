@@ -18,41 +18,40 @@ func waypointYaw(_ view: JSON?) -> WaypointYaw? {
 
 struct WaypointDrop: Equatable {
     var index: Int?
-    var wait: Double = 0
-    var latitude: Double
-    var longitude: Double
+    var wait: Double
+    var waitOffered: Bool
+    var servo: Bool
+    var output: Double?
+    var pwm: Double?
+    var bay: Int?
 }
 
-func waypointDrop(_ view: JSON?, _ latitude: Double, _ longitude: Double) -> WaypointDrop? {
+func waypointDrop(_ view: JSON?) -> WaypointDrop? {
     guard let drop = view?["drop"], drop.object != nil else { return nil }
-    return WaypointDrop(index: drop["index"].isNull ? nil : drop["index"].int(0), wait: drop["wait"].nonNanDouble ?? 0, latitude: latitude, longitude: longitude)
+    return WaypointDrop(
+        index: drop["index"].isNull ? nil : drop["index"].int(0),
+        wait: drop["wait"].nonNanDouble ?? 0,
+        waitOffered: drop["waitOffered"].bool(false),
+        servo: drop["servo"].bool(false),
+        output: drop["output"].nonNanDouble,
+        pwm: drop["pwm"].nonNanDouble,
+        bay: drop["bay"].isNull ? nil : drop["bay"].int(0)
+    )
 }
 
 let PLACE_DROP = "core.plan.placeDrop"
 let REMOVE_DROP = "core.plan.removeDrop"
-private let PAYLOAD_SETTINGS = "settings.flyViewSettings"
-private let RELEASE_SETTING = "\(PAYLOAD_SETTINGS).payloadRelease"
-private let OUTPUT_SETTING = "\(PAYLOAD_SETTINGS).payloadBay1Output"
-private let PWM_SETTING = "\(PAYLOAD_SETTINGS).payloadBay1ReleasePwm"
-private let SERVO_RELEASE = 1.0
-private let OUTPUT_RANGE = 1.0...16.0
+let SET_DROP_RELEASE = "core.plan.setDropRelease"
+private let OUTPUT_RANGE = 1.0...32.0
 private let PWM_RANGE = 500.0...2500.0
 private let WAIT_RANGE = 0.0...600.0
 private let PWM_STEP = 50.0
-private let DROP_NOTE = "Photos and camera moves happen on arrival; the drone then waits this long over the point and drops. The release is kept for every later drop."
+private let DROP_NOTE = "Photos and camera moves happen on arrival; the drone then waits this long over the point and drops. The servo and PWM belong to this drop, and the next drop starts from them."
+private let PLANE_DROP_NOTE = "A plane flies through its drop without stopping. The servo and PWM belong to this drop, and the next drop starts from them."
 
-struct DropRelease: Equatable {
-    var servo: Bool
-    var output: Double
-    var pwm: Double
-}
-
-func dropRelease(_ release: Double, _ output: Double, _ pwm: Double) -> DropRelease {
-    DropRelease(servo: release == SERVO_RELEASE, output: output, pwm: pwm)
-}
-
-func dropText(_ release: DropRelease, _ wait: Double) -> String {
-    [release.servo ? "Servo \(trimmedNumber(release.output)) to \(trimmedNumber(release.pwm))" : "Gripper", wait > 0 ? "after \(trimmedNumber(wait)) s" : ""]
+func dropText(_ drop: WaypointDrop) -> String {
+    let release = drop.output.flatMap { output in drop.pwm.map { pwm in "Servo \(trimmedNumber(output)) to \(trimmedNumber(pwm))" } } ?? "Gripper"
+    return [drop.bay.map { "Bay \($0)" } ?? "", release, drop.wait > 0 ? "after \(trimmedNumber(drop.wait)) s" : ""]
         .filter { !$0.isEmpty }
         .joined(separator: " · ")
 }
@@ -81,6 +80,7 @@ private let HEADING_RANGE = -180.0...180.0
 private let INTERVAL_RANGE = 1.0...3600.0
 private let ANGLE_STEP = 5.0
 private let DROP_TITLE = "Drop payload"
+private let DROP_SUBJECT = "The drop"
 
 private func mentions(_ label: String, _ word: String) -> Bool { label.range(of: word, options: .caseInsensitive) != nil }
 
@@ -102,7 +102,7 @@ func startingChoice(_ labels: [String], _ subject: String) -> Int? {
     labels.firstIndex { mentions($0, subject) && !mentions($0, "stop") }.flatMap { $0 > NO_CAMERA_ACTION ? $0 : nil }
 }
 
-func activeActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: CameraChoices?, _ extras: CameraExtras?, _ drop: WaypointDrop? = nil, _ release: DropRelease? = nil) -> [WaypointAction] {
+func activeActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: CameraChoices?, _ extras: CameraExtras?, _ drop: WaypointDrop? = nil) -> [WaypointAction] {
     [
         hold.flatMap { $0.seconds > 0 ? WaypointAction(kind: .Hover, title: "Hover", value: "\(trimmedNumber($0.seconds)) \($0.units)", icon: .planTimer) : nil },
         choices.flatMap { picked -> WaypointAction? in
@@ -117,7 +117,7 @@ func activeActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: Camera
                 : nil
         },
         yaw?.degrees.map { WaypointAction(kind: .Turn, title: "Turn aircraft", value: degreesText($0), icon: .planTurn) },
-        drop.flatMap { placed in placed.index.map { _ in WaypointAction(kind: .Drop, title: DROP_TITLE, value: release.map { dropText($0, placed.wait) } ?? "", icon: .planDrop) } },
+        drop.flatMap { placed in placed.index.map { _ in WaypointAction(kind: .Drop, title: DROP_TITLE, value: dropText(placed), icon: .planDrop) } },
     ].compactMap { $0 }
 }
 
@@ -152,19 +152,15 @@ struct WaypointActions: View {
     let yaw: WaypointYaw?
     var drop: WaypointDrop? = nil
     @Environment(\.theme) private var theme
-    @MapDouble(settingControl(RELEASE_SETTING)) private var releaseKind
-    @MapDouble(settingControl(OUTPUT_SETTING)) private var releaseOutput
-    @MapDouble(settingControl(PWM_SETTING)) private var releasePwm
     @State private var revision = 0
     @State private var camera: JSON?
     @State private var editing: ActionKind?
-
-    private var release: DropRelease { dropRelease(releaseKind, releaseOutput, releasePwm) }
+    @State private var refusal: String?
 
     var body: some View {
         let choices = cameraChoices(camera)
         let extras = cameraExtras(camera)
-        let active = activeActions(hold, yaw, choices, extras, drop, release)
+        let active = activeActions(hold, yaw, choices, extras, drop)
         let offers = offeredActions(hold, yaw, choices, extras, drop)
         VStack(alignment: .leading, spacing: 0) {
             if !active.isEmpty || !offers.isEmpty {
@@ -194,6 +190,12 @@ struct WaypointActions: View {
                         Text(addActionsHint(offers))
                             .font(.bodySmall)
                             .foregroundStyle(theme.colors.onSurfaceVariant)
+                    }
+                    if let refusal {
+                        Text(refusal)
+                            .font(.bodySmall)
+                            .foregroundStyle(theme.colors.error)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     PlanFlowRow(spacing: 8, lineSpacing: 8) {
                         ForEach(active, id: \.kind) { action in
@@ -232,17 +234,19 @@ struct WaypointActions: View {
                         SettingStepper(label: "Yaw", value: extras.yaw, unit: "°", step: ANGLE_STEP, onSet: { setCamera("gimbalYaw", $0) }, range: extras.yawRange ?? HEADING_RANGE, slider: true)
                     }
                 case .Drop:
-                    if let drop {
+                    if let drop, drop.index != nil {
                         HStack(spacing: Space.s2) {
-                            CameraChip(label: "Gripper", selected: !release.servo) { remember(RELEASE_SETTING, 0) }
-                            CameraChip(label: "Servo", selected: release.servo) { remember(RELEASE_SETTING, SERVO_RELEASE) }
+                            CameraChip(label: "Gripper", selected: !drop.servo) { releaseKind(false) }
+                            CameraChip(label: "Servo", selected: drop.servo) { releaseKind(true) }
                         }
-                        if release.servo {
-                            SettingStepper(label: "Servo output", value: release.output, unit: "", step: 1.0, onSet: { remember(OUTPUT_SETTING, $0) }, range: OUTPUT_RANGE)
-                            SettingStepper(label: "Release PWM", value: release.pwm, unit: "µs", step: PWM_STEP, onSet: { remember(PWM_SETTING, $0) }, range: PWM_RANGE)
+                        if let output = drop.output, let pwm = drop.pwm {
+                            SettingStepper(label: "Servo output", value: output, unit: "", step: 1.0, onSet: { setRelease(["output": $0]) }, range: OUTPUT_RANGE)
+                            SettingStepper(label: "Release PWM", value: pwm, unit: "µs", step: PWM_STEP, onSet: { setRelease(["pwm": $0]) }, range: PWM_RANGE)
                         }
-                        SettingStepper(label: "Wait before dropping", value: drop.wait, unit: "s", step: 1.0, onSet: { placeDrop($0) }, range: WAIT_RANGE)
-                        Text(DROP_NOTE)
+                        if drop.waitOffered {
+                            SettingStepper(label: "Wait before dropping", value: drop.wait, unit: "s", step: 1.0, onSet: { placeDrop($0) }, range: WAIT_RANGE)
+                        }
+                        Text(drop.waitOffered ? DROP_NOTE : PLANE_DROP_NOTE)
                             .font(.bodySmall)
                             .foregroundStyle(theme.colors.onSurfaceVariant)
                             .fixedSize(horizontal: false, vertical: true)
@@ -285,7 +289,10 @@ struct WaypointActions: View {
         case .Gimbal: setCamera("specifyGimbal", true)
         case .Mode: setCamera("specifyCameraMode", true)
         case .Turn: setYaw(0.0)
-        case .Drop: placeDrop(0)
+        case .Drop:
+            let waypoint = index
+            refusing(opens: .Drop) { Qgc.refusalOf(PLACE_DROP, waypoint, subject: DROP_SUBJECT) }
+            return
         }
         editing = offer.kind
     }
@@ -302,24 +309,31 @@ struct WaypointActions: View {
     }
 
     private func placeDrop(_ wait: Double) {
-        guard let drop else { return }
         let waypoint = index
-        let placed = drop.index
-        write { invokeOk(PLACE_DROP, waypoint, placed, wait) }
+        refusing(opens: nil) { Qgc.refusalOf(PLACE_DROP, waypoint, wait, subject: DROP_SUBJECT) }
     }
 
-    private func remember(_ setting: String, _ value: Double) {
-        guard let drop else { return }
+    private func releaseKind(_ servo: Bool) {
+        guard servo != drop?.servo else { return }
+        setRelease(["servo": servo])
+    }
+
+    private func setRelease(_ change: [String: any Sendable]) {
         let waypoint = index
-        let placed = drop.index
-        let wait = drop.wait
-        write { setOk(setting, value) && invokeOk(PLACE_DROP, waypoint, placed, wait) }
+        refusing(opens: nil) { Qgc.refusalOf(SET_DROP_RELEASE, waypoint, change, subject: DROP_SUBJECT) }
     }
 
     private func removeDrop() {
-        guard let at = drop?.index else { return }
         let waypoint = index
-        write { invokeOk(REMOVE_DROP, waypoint, at) }
+        refusing(opens: nil) { Qgc.refusalOf(REMOVE_DROP, waypoint, subject: DROP_SUBJECT) }
+    }
+
+    private func refusing(opens: ActionKind?, _ work: @escaping @Sendable () -> String?) {
+        Task { @MainActor in
+            refusal = await offMain(work)
+            if refusal == nil, let opens { editing = opens }
+            revision += 1
+        }
     }
 
     private func write(_ work: @escaping @Sendable () -> Bool) {

@@ -123,6 +123,6 @@ internal fun WaypointSettings(
                 )
             }
         }
-        if (item.index != HOME_ITEM) WaypointActions(item.index, waypointHold(json), waypointYaw(json), waypointDrop(json, item.latitude, item.longitude))
+        if (item.index != HOME_ITEM) WaypointActions(item.index, waypointHold(json), waypointYaw(json), waypointDrop(json))
     }
 }

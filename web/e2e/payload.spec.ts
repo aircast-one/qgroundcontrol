@@ -71,7 +71,7 @@ test('a second drop while the gripper is still open is refused rather than count
   await expect(vehicle.getByText(/^Dropped \d+ s ago$/)).toBeVisible({ timeout: 30_000 });
 });
 
-test('a waypoint drops from a servo after a wait, keeps that servo, and gives the drop back', async ({ app: vehicle }) => {
+test('a waypoint drops from its own servo after a wait, a second waypoint is told the bay is used, and the drop goes with its wait', async ({ app: vehicle }) => {
   await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
   await openPlanAtVehicle(vehicle);
   await tapPlanMission(vehicle);
@@ -93,12 +93,43 @@ test('a waypoint drops from a servo after a wait, keeps that servo, and gives th
   await typed('Release PWM', '2000');
   await typed('Wait before dropping', '10');
   await editor.getByRole('button', { name: 'Done' }).click();
-  await expect(vehicle.getByText('Servo 4 to 2000 · after 10 s'), 'Oleg\'s dropper is servo 4, opened at 2000 after the drone has waited 10 s').toBeVisible({ timeout: 30_000 });
+  await expect(vehicle.getByText('Servo 4 to 2000 · after 10 s'), 'the chip reads the mission item: servo 4, opened at 2000 after the drone has waited 10 s').toBeVisible({ timeout: 30_000 });
   await expect.poll(() => itemCount(vehicle), { message: 'the drop and the wait before it', timeout: 30_000 }).toBe(before + 2);
+
+  await vehicle.getByRole('button', { name: 'Waypoint 2' }).first().click();
+  await vehicle.getByRole('button', { name: 'Add action', exact: true }).click();
+  await vehicle.getByRole('menuitem', { name: 'Drop payload' }).click();
+  await expect(vehicle.getByText(/Every bay already drops in this mission/), 'the one bay is taken, and the pilot is told instead of nothing happening').toBeVisible({ timeout: 30_000 });
+  await expect(vehicle.getByRole('dialog').filter({ hasText: 'Wait before dropping' }), 'no editor opens for a drop that was not added').toHaveCount(0);
+  expect(await itemCount(vehicle)).toBe(before + 2);
+
+  await vehicle.getByRole('button', { name: 'Waypoint 3' }).first().click();
   await expect(vehicle.getByRole('button', { name: 'Remove Drop payload' })).toBeVisible();
   await vehicle.getByRole('button', { name: 'Remove Drop payload' }).click();
   await expect.poll(() => itemCount(vehicle), { timeout: 30_000 }).toBe(before);
   await expect(vehicle.getByRole('button', { name: 'Add action', exact: true })).toBeVisible();
+});
+
+test('deleting a waypoint takes its wait and its drop with it, so the waypoint before does not drop instead', async ({ app: vehicle }) => {
+  await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
+  await openPlanAtVehicle(vehicle);
+  await tapPlanMission(vehicle);
+  await expect.poll(() => itemCount(vehicle)).toBeGreaterThanOrEqual(5);
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  await vehicle.getByRole('button', { name: 'Waypoint 3' }).first().click();
+  const before = await itemCount(vehicle);
+  await vehicle.getByRole('button', { name: 'Add action', exact: true }).click();
+  await vehicle.getByRole('menuitem', { name: 'Drop payload' }).click();
+  const editor = vehicle.getByRole('dialog').filter({ hasText: 'Wait before dropping' });
+  await editor.getByRole('button', { name: /^Wait before dropping: / }).click();
+  await vehicle.getByRole('textbox', { name: /^Wait before dropping/ }).fill('10');
+  await vehicle.getByRole('button', { name: 'Set', exact: true }).click();
+  await editor.getByRole('button', { name: 'Done' }).click();
+  await expect.poll(() => itemCount(vehicle), { timeout: 30_000 }).toBe(before + 2);
+  await vehicle.getByRole('button', { name: 'Delete waypoint 3' }).click();
+  await expect.poll(() => itemCount(vehicle), { message: 'the waypoint, its wait and its drop', timeout: 30_000 }).toBe(before - 1);
+  await vehicle.getByRole('button', { name: 'Waypoint 2' }).first().click();
+  await expect(vehicle.getByRole('button', { name: 'Remove Drop payload' }), 'waypoint 2 did not inherit the drop').toHaveCount(0);
 });
 
 test('a pilot flying by hand drops from the payload strip, and a drop that cannot fall says why', async ({ app: vehicle }) => {

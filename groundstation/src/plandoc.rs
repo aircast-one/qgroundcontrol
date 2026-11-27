@@ -1582,6 +1582,36 @@ pub fn free_bay(doc: &Document, servos: &[crate::payloadcheck::Servo]) -> Option
     (1..=servos.len() as i64).find(|bay| !used.contains(bay))
 }
 
+const CMD_DO_LAND_START: i64 = 189;
+const CMD_DO_VTOL_TRANSITION: i64 = 3000;
+const CMD_JUMP_TAG: i64 = 600;
+const CMD_DO_JUMP_TAG: i64 = 601;
+const KEEPS_ITS_OWN_PLACE: [i64; 6] = [
+    CMD_NAV_RETURN_TO_LAUNCH,
+    CMD_DO_JUMP,
+    CMD_DO_LAND_START,
+    CMD_DO_VTOL_TRANSITION,
+    CMD_JUMP_TAG,
+    CMD_DO_JUMP_TAG,
+];
+
+pub fn rides_along(item: &Item) -> bool {
+    matches!(item, Item::Simple(s) if s.altitude.is_none() && !KEEPS_ITS_OWN_PLACE.contains(&s.command))
+}
+
+pub fn riders_after(doc: &Document, at: usize) -> usize {
+    doc.items
+        .get(at + 1..)
+        .unwrap_or_default()
+        .iter()
+        .take_while(|item| rides_along(item))
+        .count()
+}
+
+fn is_waypoint_drop(item: &Item, servos: &[crate::payloadcheck::Servo]) -> bool {
+    matches!(item, Item::Simple(s) if crate::payloadcheck::waypoint_drop(s.command, s.params[0].unwrap_or(f64::NAN), s.params[1].unwrap_or(f64::NAN), servos))
+}
+
 pub fn drop_after(
     doc: &Document,
     visual_index: usize,
@@ -1589,21 +1619,46 @@ pub fn drop_after(
 ) -> Option<Option<usize>> {
     let at = visual_index.checked_sub(1)?;
     matches!(doc.items.get(at)?, Item::Simple(s) if s.command == CMD_NAV_WAYPOINT).then_some(())?;
-    let following = doc.items.get(at + 1..).unwrap_or_default();
-    let unplaced = following
-        .iter()
-        .take_while(|item| matches!(item, Item::Simple(s) if s.altitude.is_none()))
-        .count();
     Some(
-        following[..unplaced]
+        doc.items[at + 1..at + 1 + riders_after(doc, at)]
             .iter()
-            .position(|item| is_drop(item, servos))
+            .position(|item| is_waypoint_drop(item, servos))
             .map(|offset| visual_index + 1 + offset),
     )
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DropRelease {
+    pub output: f64,
+    pub pwm: f64,
+    pub bay: Option<i64>,
+}
+
+pub fn drop_release(
+    doc: &Document,
+    drop_visual: usize,
+    servos: &[crate::payloadcheck::Servo],
+) -> Option<DropRelease> {
+    let (_, drop) = simple_at(doc, drop_visual)?;
+    (drop.command == i64::from(crate::payloadcheck::CMD_DO_SET_SERVO)).then_some(())?;
+    let (output, pwm) = drop.params[0].zip(drop.params[1])?;
+    Some(DropRelease {
+        output,
+        pwm,
+        bay: crate::payloadcheck::servo_drop_bay(drop.command, output, pwm, servos),
+    })
+}
+
 const DROP_NEEDS_A_WAYPOINT: &str = "Add a waypoint before the drop. A drop falls where the drone is when it reaches the item before it, so after takeoff it would fall over the launch point.";
 const EVERY_BAY_DROPS: &str = "Every bay already drops in this mission. Add a bay in Settings, Fly View, Payload, or remove a drop.";
+pub const NOT_A_WAYPOINT: &str = "A drop belongs to a waypoint. Pick the waypoint it falls at.";
+pub const NO_DROP_HERE: &str = "This waypoint has no drop.";
+pub const WAIT_NEEDS_A_HOVER: &str =
+    "Only a multirotor can wait over the point before it drops. A plane flies through its drop.";
+pub const WAIT_RANGE_SECONDS: std::ops::RangeInclusive<f64> = 0.0..=600.0;
+pub const WAIT_OUT_OF_RANGE: &str = "The wait before a drop is from 0 to 600 seconds.";
+pub const NOT_A_SERVO_DROP: &str =
+    "This drop opens the gripper, which has no servo output or PWM of its own.";
 
 pub fn insert_drop(
     doc: &Document,
@@ -1641,7 +1696,7 @@ pub fn insert_drop(
             );
             set_param(&placed, at + 1, 1, servo.output as f64)
                 .and_then(|output| set_param(&output, at + 1, 2, servo.release))
-                .unwrap_or(placed)
+                .ok_or_else(|| "The drop could not be given its servo.".to_string())?
         }
     };
     Ok(hold_before_drop(
@@ -1657,8 +1712,12 @@ fn is_delay(doc: &Document, visual_index: usize) -> bool {
     matches!(doc.items.get(visual_index.wrapping_sub(1)), Some(Item::Simple(s)) if s.command == CMD_NAV_DELAY)
 }
 
+fn waits_before(doc: &Document, waypoint_visual: usize, drop_visual: usize) -> bool {
+    drop_visual > waypoint_visual + 1 && is_delay(doc, drop_visual - 1)
+}
+
 pub fn drop_wait(doc: &Document, waypoint_visual: usize, drop_visual: usize) -> f64 {
-    match drop_visual > waypoint_visual + 1 && is_delay(doc, drop_visual - 1) {
+    match waits_before(doc, waypoint_visual, drop_visual) {
         true => simple_at(doc, drop_visual - 1)
             .and_then(|(_, delay)| delay.params[0])
             .filter(|seconds| *seconds > 0.0)
@@ -1667,40 +1726,114 @@ pub fn drop_wait(doc: &Document, waypoint_visual: usize, drop_visual: usize) -> 
     }
 }
 
+pub fn wait_offered(doc: &Document) -> bool {
+    vehicle_class(doc.vehicle_type) == VehicleClass::MultiRotor
+}
+
+fn found_drop(
+    doc: &Document,
+    waypoint_visual: usize,
+    servos: &[crate::payloadcheck::Servo],
+) -> Result<Option<usize>, String> {
+    drop_after(doc, waypoint_visual, servos).ok_or_else(|| NOT_A_WAYPOINT.to_string())
+}
+
 pub fn remove_drop(
     doc: &Document,
     waypoint_visual: usize,
-    drop_visual: usize,
+    servos: &[crate::payloadcheck::Servo],
 ) -> Result<Document, String> {
+    let drop_visual =
+        found_drop(doc, waypoint_visual, servos)?.ok_or_else(|| NO_DROP_HERE.to_string())?;
     let without = remove(doc, drop_visual)?;
-    match drop_visual > waypoint_visual + 1 && is_delay(&without, drop_visual - 1) {
+    match waits_before(doc, waypoint_visual, drop_visual) {
         true => remove(&without, drop_visual - 1),
         false => Ok(without),
+    }
+}
+
+fn with_wait(
+    doc: &Document,
+    waypoint_visual: usize,
+    drop_visual: usize,
+    wait: f64,
+    defaults: &EditDefaults,
+) -> Result<Document, String> {
+    if !WAIT_RANGE_SECONDS.contains(&wait) {
+        return Err(WAIT_OUT_OF_RANGE.to_string());
+    }
+    if wait > 0.0 && !wait_offered(doc) {
+        return Err(WAIT_NEEDS_A_HOVER.to_string());
+    }
+    let timed = |doc: &Document, delay_visual: usize| {
+        set_param(doc, delay_visual, 1, wait)
+            .ok_or_else(|| "The wait before the drop could not be set.".to_string())
+    };
+    match (waits_before(doc, waypoint_visual, drop_visual), wait > 0.0) {
+        (true, true) => timed(doc, drop_visual - 1),
+        (true, false) => remove(doc, drop_visual - 1),
+        (false, true) => timed(
+            &insert_simple(doc, CMD_NAV_DELAY, 0.0, 0.0, drop_visual as i64, defaults),
+            drop_visual,
+        ),
+        (false, false) => Ok(doc.clone()),
     }
 }
 
 pub fn place_drop(
     doc: &Document,
     waypoint_visual: usize,
-    old_drop: Option<usize>,
-    wait: f64,
+    wait: Option<f64>,
     defaults: &EditDefaults,
     servos: &[crate::payloadcheck::Servo],
 ) -> Result<Document, String> {
-    let cleared = match old_drop {
-        Some(drop) => remove_drop(doc, waypoint_visual, drop)?,
-        None => doc.clone(),
+    let placed = match found_drop(doc, waypoint_visual, servos)? {
+        Some(_) => doc.clone(),
+        None => insert_drop(doc, waypoint_visual as i64 + 1, defaults, servos)?,
     };
-    let at = waypoint_visual as i64 + 1;
-    let dropped = insert_drop(&cleared, at, defaults, servos)?;
-    Ok(
-        match wait > 0.0 && vehicle_class(doc.vehicle_type) == VehicleClass::MultiRotor {
-            true => {
-                let delayed = insert_simple(&dropped, CMD_NAV_DELAY, 0.0, 0.0, at, defaults);
-                set_param(&delayed, waypoint_visual + 1, 1, wait).unwrap_or(delayed)
-            }
-            false => dropped,
-        },
+    let drop_visual = found_drop(&placed, waypoint_visual, servos)?
+        .ok_or_else(|| "The drop was not added at this waypoint.".to_string())?;
+    match wait {
+        Some(wait) => with_wait(&placed, waypoint_visual, drop_visual, wait, defaults),
+        None => Ok(placed),
+    }
+}
+
+pub fn set_drop_servo(
+    doc: &Document,
+    waypoint_visual: usize,
+    output: Option<f64>,
+    pwm: Option<f64>,
+    servos: &[crate::payloadcheck::Servo],
+) -> Result<Document, String> {
+    let drop_visual =
+        found_drop(doc, waypoint_visual, servos)?.ok_or_else(|| NO_DROP_HERE.to_string())?;
+    let release =
+        drop_release(doc, drop_visual, servos).ok_or_else(|| NOT_A_SERVO_DROP.to_string())?;
+    crate::payloadcheck::servo_release(output.unwrap_or(release.output), pwm.unwrap_or(release.pwm))
+        .and_then(|(output, pwm)| {
+            set_param(doc, drop_visual, 1, output)
+                .and_then(|moved| set_param(&moved, drop_visual, 2, pwm))
+                .ok_or_else(|| NO_DROP_HERE.to_string())
+        })
+}
+
+pub fn replace_drop(
+    doc: &Document,
+    waypoint_visual: usize,
+    defaults: &EditDefaults,
+    was: &[crate::payloadcheck::Servo],
+    servos: &[crate::payloadcheck::Servo],
+) -> Result<Document, String> {
+    let drop_visual =
+        found_drop(doc, waypoint_visual, was)?.ok_or_else(|| NO_DROP_HERE.to_string())?;
+    let wait = drop_wait(doc, waypoint_visual, drop_visual);
+    place_drop(
+        &remove_drop(doc, waypoint_visual, was)?,
+        waypoint_visual,
+        Some(wait),
+        defaults,
+        servos,
     )
 }
 
@@ -1888,34 +2021,82 @@ fn pins_order(doc: &Document, item: &Item) -> bool {
     }
 }
 
-pub fn move_item(doc: &Document, visual_index: usize, later: bool) -> Result<Document, String> {
+fn group_at(doc: &Document, at: usize) -> std::ops::Range<usize> {
+    match rides_along(&doc.items[at]) {
+        true => at..at + 1,
+        false => at..at + 1 + riders_after(doc, at),
+    }
+}
+
+fn group_before(doc: &Document, at: usize) -> Option<std::ops::Range<usize>> {
+    let before = at.checked_sub(1)?;
+    let head = match rides_along(&doc.items[at]) {
+        true => before,
+        false => (0..=before)
+            .rev()
+            .find(|i| !rides_along(&doc.items[*i]))
+            .unwrap_or(before),
+    };
+    Some(head..at)
+}
+
+pub fn move_item(
+    doc: &Document,
+    visual_index: usize,
+    later: bool,
+) -> Result<(Document, usize), String> {
     let at = visual_index
         .checked_sub(1)
         .filter(|at| *at < doc.items.len())
         .ok_or_else(|| format!("This plan has no item {visual_index} to move."))?;
-    let to = match later {
-        true => Some(at + 1).filter(|to| *to < doc.items.len()),
-        false => at.checked_sub(1),
-    }
-    .ok_or_else(|| "The item is already at that end of the mission.".to_string())?;
-    if pins_order(doc, &doc.items[at]) || pins_order(doc, &doc.items[to]) {
+    let moving = group_at(doc, at);
+    let passed =
+        match later {
+            true => Some(moving.end)
+                .filter(|next| *next < doc.items.len())
+                .map(|next| match rides_along(&doc.items[at]) {
+                    true => next..next + 1,
+                    false => group_at(doc, next),
+                }),
+            false => group_before(doc, at),
+        }
+        .ok_or_else(|| "The item is already at that end of the mission.".to_string())?;
+    if pins_order(doc, &doc.items[at]) || pins_order(doc, &doc.items[passed.start]) {
         return Err(ORDER_PINNED.to_string());
     }
-    let swapped = |i: usize| match i {
-        i if i == at => to,
-        i if i == to => at,
-        i => i,
+    let (first, second) = match later {
+        true => (passed.clone(), moving.clone()),
+        false => (moving.clone(), passed.clone()),
     };
-    Ok(kept_jumps(
-        doc,
-        Document {
-            items: (0..doc.items.len())
-                .map(|i| doc.items[swapped(i)].clone())
-                .collect(),
-            ..doc.clone()
-        },
-        &|from| Some(swapped(from)),
+    let start = moving.start.min(passed.start);
+    let end = moving.end.max(passed.end);
+    let order: Vec<usize> = (0..start)
+        .chain(first)
+        .chain(second)
+        .chain(end..doc.items.len())
+        .collect();
+    let landed = order.iter().position(|from| *from == at).unwrap_or(at);
+    Ok((
+        kept_jumps(
+            doc,
+            Document {
+                items: order.iter().map(|from| doc.items[*from].clone()).collect(),
+                ..doc.clone()
+            },
+            &|from| order.iter().position(|it| *it == from),
+        ),
+        landed + 1,
     ))
+}
+
+pub fn remove_with_riders(doc: &Document, visual_index: usize) -> Result<Document, String> {
+    let at = visual_index
+        .checked_sub(1)
+        .filter(|i| *i < doc.items.len())
+        .ok_or_else(|| format!("This plan has no item {visual_index} to remove."))?;
+    group_at(doc, at)
+        .rev()
+        .try_fold(doc.clone(), |left, gone| remove(&left, gone + 1))
 }
 
 pub fn remove(doc: &Document, visual_index: usize) -> Result<Document, String> {
@@ -3494,7 +3675,7 @@ mod tests {
                 })
                 .collect()
         };
-        let planned = place_drop(&aimed, 2, None, 10.0, &QT_DEFAULTS, &servos).unwrap();
+        let planned = place_drop(&aimed, 2, Some(10.0), &QT_DEFAULTS, &servos).unwrap();
         assert_eq!(
             flown(&planned)
                 .iter()
@@ -3523,7 +3704,7 @@ mod tests {
             "servo 4 to its release PWM"
         );
         assert_eq!(drop_wait(&planned, 2, 4), 10.0);
-        let quicker = place_drop(&planned, 2, Some(4), 0.0, &QT_DEFAULTS, &servos).unwrap();
+        let quicker = place_drop(&planned, 2, Some(0.0), &QT_DEFAULTS, &servos).unwrap();
         assert_eq!(
             flown(&quicker)
                 .iter()
@@ -3540,9 +3721,291 @@ mod tests {
         );
         assert_eq!(drop_wait(&quicker, 2, 3), 0.0);
         assert_eq!(
-            remove_drop(&planned, 2, 4).unwrap().items.len(),
+            remove_drop(&planned, 2, &servos).unwrap().items.len(),
             2,
             "removing the drop takes its wait with it"
+        );
+    }
+
+    fn route(vehicle_type: i64, tail: &str) -> Document {
+        let text = format!(
+            r#"{{"fileType":"Plan","version":1,"groundStation":"QGroundControl","mission":{{"version":2,"firmwareType":3,"vehicleType":{vehicle_type},"cruiseSpeed":15,"hoverSpeed":5,"plannedHomePosition":[47.0,8.0,500],"items":[
+            {{"type":"SimpleItem","autoContinue":true,"command":22,"doJumpId":1,"frame":3,"params":[0,0,0,null,0,0,5]}},
+            {{"type":"SimpleItem","autoContinue":true,"command":16,"doJumpId":2,"frame":3,"params":[0,0,0,null,47.001,8.0,21]}},
+            {{"type":"SimpleItem","autoContinue":true,"command":16,"doJumpId":3,"frame":3,"params":[0,0,0,null,47.002,8.0,22]}},
+            {{"type":"SimpleItem","autoContinue":true,"command":16,"doJumpId":4,"frame":3,"params":[0,0,0,null,47.003,8.0,23]}}{tail}]}},"geoFence":{{"version":2,"polygons":[],"circles":[]}},"rallyPoints":{{"version":2,"points":[]}}}}"#
+        );
+        load(&text, 2).unwrap()
+    }
+
+    fn flown_commands(doc: &Document) -> Vec<(i64, Option<f64>, Option<f64>)> {
+        doc.items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Simple(s) => Some((s.command, s.params[0], s.params[1])),
+                Item::Complex { .. } => None,
+            })
+            .collect()
+    }
+
+    const SERVO: i64 = crate::payloadcheck::CMD_DO_SET_SERVO as i64;
+
+    fn bay(output: i64, release: f64) -> crate::payloadcheck::Servo {
+        crate::payloadcheck::Servo {
+            output,
+            release,
+            hold: 1100.0,
+        }
+    }
+
+    #[test]
+    fn a_drop_is_read_from_its_own_item_so_changing_the_servo_for_one_leaves_the_others_drops() {
+        let nine = [bay(9, 1900.0)];
+        let first = place_drop(&route(2, ""), 2, Some(5.0), &QT_DEFAULTS, &nine).unwrap();
+        let four = [bay(4, 1500.0)];
+        let both = place_drop(&first, 5, None, &QT_DEFAULTS, &four).unwrap();
+        assert_eq!(
+            flown_commands(&both)
+                .iter()
+                .filter(|(command, ..)| *command == SERVO)
+                .map(|(_, output, pwm)| (*output, *pwm))
+                .collect::<Vec<_>>(),
+            [(Some(9.0), Some(1900.0)), (Some(4.0), Some(1500.0))]
+        );
+        let earlier = drop_after(&both, 2, &four).flatten();
+        assert_eq!(
+            earlier,
+            Some(4),
+            "with the bay now on servo 4, the waypoint that opens servo 9 still has its drop"
+        );
+        assert_eq!(
+            drop_release(&both, 4, &four),
+            Some(DropRelease {
+                output: 9.0,
+                pwm: 1900.0,
+                bay: None
+            }),
+            "its chip reads the item, and servo 9 is no bay any more"
+        );
+        assert_eq!(
+            drop_release(&both, 6, &four).and_then(|release| release.bay),
+            Some(1)
+        );
+        assert_eq!(drop_wait(&both, 2, 4), 5.0);
+        let moved = set_drop_servo(&both, 5, Some(7.0), Some(1200.0), &four).unwrap();
+        assert_eq!(
+            (
+                drop_release(&moved, 6, &four).map(|it| (it.output, it.pwm)),
+                drop_release(&moved, 4, &four).map(|it| (it.output, it.pwm))
+            ),
+            (Some((7.0, 1200.0)), Some((9.0, 1900.0))),
+            "editing one waypoint's servo writes that item and no other"
+        );
+        assert_eq!(
+            set_drop_servo(&both, 5, Some(40.0), None, &four).unwrap_err(),
+            "A servo output is a whole number from 1 to 32."
+        );
+        assert_eq!(
+            set_drop_servo(&both, 5, None, Some(3000.0), &four).unwrap_err(),
+            "A servo PWM is from 500 to 2500."
+        );
+        assert_eq!(
+            set_drop_servo(&both, 7, Some(4.0), None, &four).unwrap_err(),
+            NO_DROP_HERE
+        );
+        let closing = set_param(&both, 6, 2, 1100.0).unwrap();
+        assert_eq!(
+            drop_after(&closing, 5, &four),
+            Some(None),
+            "a servo sent back to the bay's hold PWM closes it, which is no drop"
+        );
+        let two_bays = [bay(9, 1900.0), bay(4, 1500.0)];
+        assert_eq!(
+            (4..=6)
+                .filter_map(|at| drop_release(&both, at, &two_bays)?.bay)
+                .collect::<Vec<_>>(),
+            [1, 2],
+            "with a servo per bay each drop names the bay its own output belongs to"
+        );
+        let gripper = place_drop(&route(2, ""), 2, None, &QT_DEFAULTS, &[]).unwrap();
+        assert_eq!(drop_release(&gripper, 3, &[]), None);
+        assert_eq!(
+            set_drop_servo(&gripper, 2, Some(4.0), None, &[]).unwrap_err(),
+            NOT_A_SERVO_DROP
+        );
+    }
+
+    #[test]
+    fn the_core_finds_a_waypoints_drop_itself_and_says_why_it_cannot_place_or_remove_one() {
+        let servos = [bay(4, 1500.0)];
+        let plan = route(2, "");
+        assert_eq!(
+            place_drop(&plan, 1, None, &QT_DEFAULTS, &servos).unwrap_err(),
+            NOT_A_WAYPOINT,
+            "the takeoff takes no drop"
+        );
+        assert_eq!(
+            place_drop(&plan, 9, None, &QT_DEFAULTS, &servos).unwrap_err(),
+            NOT_A_WAYPOINT
+        );
+        assert_eq!(remove_drop(&plan, 2, &servos).unwrap_err(), NO_DROP_HERE);
+        let dropped = place_drop(&plan, 2, None, &QT_DEFAULTS, &servos).unwrap();
+        assert_eq!(
+            place_drop(&dropped, 4, None, &QT_DEFAULTS, &servos).unwrap_err(),
+            EVERY_BAY_DROPS,
+            "one bay drops once, and the second waypoint is told so"
+        );
+        assert_eq!(
+            place_drop(&dropped, 2, Some(601.0), &QT_DEFAULTS, &servos).unwrap_err(),
+            WAIT_OUT_OF_RANGE
+        );
+        assert_eq!(
+            place_drop(&dropped, 2, Some(-1.0), &QT_DEFAULTS, &servos).unwrap_err(),
+            WAIT_OUT_OF_RANGE
+        );
+        assert_eq!(
+            remove_drop(&dropped, 2, &servos).unwrap(),
+            Document {
+                items: plan
+                    .items
+                    .iter()
+                    .enumerate()
+                    .map(|(at, item)| match (at, item) {
+                        (1, Item::Simple(held)) => Item::Simple(Simple {
+                            params: std::array::from_fn(|i| match i {
+                                0 => Some(crate::payloadcheck::DROP_HOLD_SECONDS),
+                                _ => held.params[i],
+                            }),
+                            ..held.clone()
+                        }),
+                        _ => item.clone(),
+                    })
+                    .collect(),
+                ..plan.clone()
+            },
+            "a drop with no wait leaves only the hold the waypoint took for it"
+        );
+        let lit = insert_simple(&dropped, CMD_DO_CHANGE_SPEED, 0.0, 0.0, 3, &QT_DEFAULTS);
+        assert_eq!(
+            drop_after(&lit, 2, &servos),
+            Some(Some(4)),
+            "another command between the waypoint and its drop does not hide the drop"
+        );
+        let waited = place_drop(&lit, 2, Some(8.0), &QT_DEFAULTS, &servos).unwrap();
+        assert_eq!(
+            flown_commands(&waited)[2..5]
+                .iter()
+                .map(|(command, ..)| *command)
+                .collect::<Vec<_>>(),
+            [CMD_DO_CHANGE_SPEED, CMD_NAV_DELAY, SERVO],
+            "the wait goes straight before the drop"
+        );
+        assert_eq!(
+            flown_commands(&remove_drop(&waited, 2, &servos).unwrap())[2].0,
+            CMD_DO_CHANGE_SPEED,
+            "removing the drop leaves the other command and takes the wait"
+        );
+        let by_hand = set_param(
+            &insert_simple(&dropped, CMD_NAV_DELAY, 0.0, 0.0, 3, &QT_DEFAULTS),
+            3,
+            1,
+            12.0,
+        )
+        .unwrap();
+        assert_eq!(
+            drop_wait(&by_hand, 2, 4),
+            12.0,
+            "a delay the pilot put before the drop by hand is that drop's wait"
+        );
+        assert_eq!(
+            remove_drop(&by_hand, 2, &servos).unwrap().items.len(),
+            plan.items.len()
+        );
+        let plane = route(1, "");
+        let flown_through = place_drop(&plane, 2, None, &QT_DEFAULTS, &servos).unwrap();
+        assert_eq!(
+            place_drop(&flown_through, 2, Some(5.0), &QT_DEFAULTS, &servos).unwrap_err(),
+            WAIT_NEEDS_A_HOVER,
+            "a plane cannot wait over the point, and is told so instead of losing the wait"
+        );
+        assert!(!wait_offered(&plane) && wait_offered(&plan));
+    }
+
+    #[test]
+    fn a_waypoint_takes_its_wait_and_drop_along_when_it_moves_and_when_it_is_deleted() {
+        let servos = [bay(4, 1500.0)];
+        let plan = place_drop(&route(2, ""), 3, Some(10.0), &QT_DEFAULTS, &servos).unwrap();
+        let heights = |doc: &Document| -> Vec<(i64, Option<f64>)> {
+            doc.items
+                .iter()
+                .filter_map(|item| match item {
+                    Item::Simple(s) => Some((s.command, s.altitude.as_ref().map(|a| a.altitude))),
+                    Item::Complex { .. } => None,
+                })
+                .collect()
+        };
+        let waypoint = |height: f64| (CMD_NAV_WAYPOINT, Some(height));
+        let attached = [(CMD_NAV_DELAY, None), (SERVO, None)];
+        assert_eq!(
+            heights(&plan)[1..],
+            [
+                waypoint(21.0),
+                waypoint(22.0),
+                attached[0],
+                attached[1],
+                waypoint(23.0)
+            ]
+        );
+        let (earlier, landed) = move_item(&plan, 3, false).unwrap();
+        assert_eq!(
+            (heights(&earlier)[1..].to_vec(), landed),
+            (
+                vec![
+                    waypoint(22.0),
+                    attached[0],
+                    attached[1],
+                    waypoint(21.0),
+                    waypoint(23.0)
+                ],
+                2
+            ),
+            "moved up, the waypoint still waits and drops over itself, not over the one it passed"
+        );
+        let (later, landed) = move_item(&plan, 3, true).unwrap();
+        assert_eq!(
+            (heights(&later)[1..].to_vec(), landed),
+            (
+                vec![
+                    waypoint(21.0),
+                    waypoint(23.0),
+                    waypoint(22.0),
+                    attached[0],
+                    attached[1]
+                ],
+                4
+            )
+        );
+        let (passed, landed) = move_item(&plan, 2, true).unwrap();
+        assert_eq!(
+            (heights(&passed)[1..].to_vec(), landed),
+            (heights(&earlier)[1..].to_vec(), 5),
+            "a waypoint moved down goes past the next waypoint and everything attached to it"
+        );
+        assert_eq!(
+            heights(&remove_with_riders(&plan, 3).unwrap())[1..],
+            [waypoint(21.0), waypoint(23.0)],
+            "a deleted waypoint leaves no wait and no drop behind for the waypoint before it"
+        );
+        assert_eq!(
+            heights(&remove_with_riders(&plan, 5).unwrap())[1..],
+            [waypoint(21.0), waypoint(22.0), attached[0], waypoint(23.0)],
+            "an attached command is deleted alone"
+        );
+        let (lifted, landed) = move_item(&plan, 5, false).unwrap();
+        assert_eq!(
+            (heights(&lifted)[3..5].to_vec(), landed),
+            (vec![attached[1], attached[0]], 4),
+            "an attached command moves one place"
         );
     }
 
@@ -3655,11 +4118,11 @@ mod tests {
                 })
                 .collect::<Vec<_>>()
         };
-        let later = move_item(&doc, 3, true).unwrap();
+        let later = move_item(&doc, 3, true).unwrap().0;
         assert_eq!(heights(&later)[3], heights(&doc)[2]);
         assert_eq!(heights(&later)[2], heights(&doc)[3]);
         assert_eq!(
-            heights(&move_item(&later, 4, false).unwrap()),
+            heights(&move_item(&later, 4, false).unwrap().0),
             heights(&doc)
         );
         assert_eq!(
@@ -4428,32 +4891,32 @@ mod tests {
             "takeoff 1, waypoint 2, the survey's four 3 to 6, then the target at 7"
         );
         assert_eq!(
-            jump_lands_on(&move_item(&doc, 3, false).unwrap()),
+            jump_lands_on(&move_item(&doc, 3, false).unwrap().0),
             (Some(7.0), Some(47.002), 0),
             "swapping two items before the target leaves its sequence alone"
         );
-        let target_up = move_item(&doc, 4, false).unwrap();
+        let target_up = move_item(&doc, 4, false).unwrap().0;
         assert_eq!(
             jump_lands_on(&target_up),
             (Some(3.0), Some(47.002), 0),
             "the target moved above the survey, so it is four sequence numbers earlier"
         );
         assert_eq!(
-            jump_lands_on(&move_item(&target_up, 3, true).unwrap()),
+            jump_lands_on(&move_item(&target_up, 3, true).unwrap().0),
             (Some(7.0), Some(47.002), 0)
         );
         assert_eq!(
-            jump_lands_on(&move_item(&doc, 4, true).unwrap()),
+            jump_lands_on(&move_item(&doc, 4, true).unwrap().0),
             (Some(8.0), Some(47.002), 0),
             "the target moved one place down"
         );
         assert_eq!(
-            jump_lands_on(&move_item(&doc, 6, false).unwrap()),
+            jump_lands_on(&move_item(&doc, 6, false).unwrap().0),
             (Some(7.0), Some(47.002), 0),
             "the jump itself moved, its target did not"
         );
         assert_eq!(
-            jump_lands_on(&move_item(&jump_to(&doc, 5.0), 3, false).unwrap()),
+            jump_lands_on(&move_item(&jump_to(&doc, 5.0), 3, false).unwrap().0),
             (Some(4.0), None, 2),
             "a jump into the survey's third item follows the survey"
         );

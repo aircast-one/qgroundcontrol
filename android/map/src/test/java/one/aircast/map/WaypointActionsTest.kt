@@ -84,24 +84,30 @@ class WaypointActionsTest {
         assertEquals(44.001, legLabels(listOf(first, roi, next)).single().first.longitude, 1e-9)
     }
 
+    private fun dropFact(fields: String = "") =
+        waypointDrop(JSONObject("""{"drop":{"index":5,"wait":0,"waitOffered":true,"servo":true,"output":4,"pwm":2000,"bay":null}}""").apply {
+            JSONObject("{$fields}").let { changed -> changed.keys().forEach { getJSONObject("drop").put(it, changed.get(it)) } }
+        })
+
     @Test
     fun `a waypoint offers a drop until one follows it, then shows it as an action`() {
-        val free = waypointDrop(JSONObject("""{"drop":{"index":null}}"""), 47.1, 8.2)
-        val taken = waypointDrop(JSONObject("""{"drop":{"index":5}}"""), 47.1, 8.2)
-        assertNull(waypointDrop(JSONObject("{}"), 47.1, 8.2))
-        assertEquals(WaypointDrop(null, 0.0, 47.1, 8.2), free)
-        assertEquals("a wait before the drop reads back", 10.0, waypointDrop(JSONObject("""{"drop":{"index":6,"wait":10}}"""), 47.1, 8.2)!!.wait, 0.0)
+        val free = dropFact(""""index":null,"output":null,"pwm":null""")
+        val taken = dropFact()
+        assertNull(waypointDrop(JSONObject("{}")))
+        assertNull(free!!.index)
+        assertEquals("a plane is not offered a wait", false, dropFact(""""waitOffered":false""")!!.waitOffered)
         assertEquals(listOf("Hover", "Turn aircraft", "Drop payload"), offeredActions(noHold, noTurn, null, null, free).map { it.title })
         assertEquals(listOf("Hover", "Turn aircraft"), offeredActions(noHold, noTurn, null, null, taken).map { it.title })
         assertEquals(listOf("Drop payload"), activeActions(noHold, noTurn, null, null, taken).map { it.title })
     }
 
     @Test
-    fun `a servo drop says which servo, which PWM and how long the drone waits first`() {
-        val servo = dropRelease(JSONObject("""{"value":1}"""), JSONObject("""{"value":4}"""), JSONObject("""{"value":2000}"""))
-        assertEquals("Servo 4 to 2000 \u00b7 after 10 s", dropText(servo, 10.0))
-        assertEquals("Gripper", dropText(dropRelease(JSONObject("""{"value":0}"""), JSONObject("""{"value":9}"""), JSONObject("""{"value":1900}""")), 0.0))
-        val waiting = waypointDrop(JSONObject("""{"drop":{"index":5,"wait":10}}"""), 47.1, 8.2)
-        assertEquals(listOf("Servo 4 to 2000 \u00b7 after 10 s"), activeActions(noHold, noTurn, null, null, waiting, servo).map { it.value })
+    fun `a drop reads its servo, its PWM and its bay from its own mission item, and says how long the drone waits first`() {
+        assertEquals(WaypointDrop(5, 10.0, true, true, 4.0, 2000.0, null), dropFact(""""wait":10"""))
+        assertEquals(
+            listOf("Servo 4 to 2000 \u00b7 after 10 s", "Bay 2 \u00b7 Servo 10 to 1900", "Gripper"),
+            listOf(dropFact(""""wait":10"""), dropFact(""""output":10,"pwm":1900,"bay":2"""), dropFact(""""servo":false,"output":null,"pwm":null""")).map { dropText(it!!) },
+        )
+        assertEquals(listOf("Servo 4 to 2000 \u00b7 after 10 s"), activeActions(noHold, noTurn, null, null, dropFact(""""wait":10""")).map { it.value })
     }
 }

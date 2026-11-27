@@ -24,6 +24,7 @@ pub const CONVERT_TO_VEHICLE: &str = "core.plan.convertToVehicle";
 pub const MOVE_ITEM: &str = "core.plan.moveItem";
 pub const PLACE_DROP: &str = "core.plan.placeDrop";
 pub const REMOVE_DROP: &str = "core.plan.removeDrop";
+pub const SET_DROP_RELEASE: &str = "core.plan.setDropRelease";
 pub const DRAFT_DEPS: &[&str] = &[CHANGED];
 pub const RESTORE_DRAFT: &str = "core.plan.restoreDraft";
 const ACTIONS: &[&str] = &[
@@ -32,6 +33,7 @@ const ACTIONS: &[&str] = &[
     MOVE_ITEM,
     PLACE_DROP,
     REMOVE_DROP,
+    SET_DROP_RELEASE,
     OPEN,
     SAVE,
     SEND,
@@ -271,6 +273,7 @@ pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
         MOVE_ITEM => move_item(args),
         PLACE_DROP => place_drop(backend, args),
         REMOVE_DROP => remove_drop(args),
+        SET_DROP_RELEASE => set_drop_release(backend, args),
         RESTORE_DRAFT => first_text(args).map_or_else(
             || refused("Restoring needs the plan that was kept."),
             |text| restore_draft(&text),
@@ -324,6 +327,24 @@ fn edit_selecting(
     change: impl FnOnce(&Document) -> Result<Document, String>,
     selected: Option<i64>,
 ) -> Value {
+    edit_with(|doc| {
+        change(doc).map(|document| Edited {
+            document,
+            selected,
+            note: None,
+            plain: None,
+        })
+    })
+}
+
+struct Edited {
+    document: Document,
+    selected: Option<i64>,
+    note: Option<String>,
+    plain: Option<usize>,
+}
+
+fn edit_with(change: impl FnOnce(&Document) -> Result<Edited, String>) -> Value {
     let types = offline_types();
     let (answer, before) = {
         let mut state = held();
@@ -341,16 +362,21 @@ fn edit_selecting(
                 .unwrap_or(false);
         crate::surveyitems::CONDITION_GATE_SUPPORTED
             .store(gate, std::sync::atomic::Ordering::Relaxed);
-        match change(&current).map(|changed| plandoc::above_terrain(&changed, &terrain_height)) {
-            Ok(changed) => {
+        match change(&current) {
+            Ok(edited) => {
+                let changed = plandoc::above_terrain(&edited.document, &terrain_height);
                 let count = changed.items.len();
                 shift_raw_edits(&current.items, &changed.items);
+                if let Some(index) = edited.plain {
+                    raw_edits().remove(&index);
+                }
                 let previous = state.document.replace(tracked(changed, types));
                 remember(&mut state, previous, crate::hub::now_ms());
                 state.dirty = true;
                 state.dirty_for_save = true;
-                state.selected = selected.unwrap_or(state.selected);
-                state.note = None;
+                state.selected = edited.selected.unwrap_or(state.selected);
+                state.note_id += u64::from(edited.note.is_some());
+                state.note = edited.note;
                 (json!({ "ok": true, "items": count }), before)
             }
             Err(reason) => return refused(reason),
@@ -574,49 +600,107 @@ fn insert_drop(backend: &dyn Backend, args: &str) -> Value {
     })
 }
 
-fn drop_indices(given: &Value) -> (Option<usize>, Option<usize>) {
-    let index = |i: usize| {
-        given
-            .get(i)
-            .and_then(Value::as_u64)
-            .and_then(|v| usize::try_from(v).ok())
-    };
-    (index(0), index(1))
+fn plan_servos(doc: &Document) -> Vec<crate::payloadcheck::Servo> {
+    crate::payloadcheck::servo_bays(
+        plandoc::firmware(doc.firmware_type) == crate::cmdinfo::Firmware::ArduPilot,
+    )
+}
+
+fn waypoint_given(given: &Value) -> Option<usize> {
+    given
+        .get(0)
+        .and_then(Value::as_u64)
+        .and_then(|v| usize::try_from(v).ok())
 }
 
 fn place_drop(backend: &dyn Backend, args: &str) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
-    let (Some(waypoint), old_drop) = drop_indices(&given) else {
-        return refused("Placing a drop needs the waypoint it follows.");
+    let Some(waypoint) = waypoint_given(&given) else {
+        return refused(plandoc::NOT_A_WAYPOINT);
     };
-    let wait = given
-        .get(2)
-        .and_then(Value::as_f64)
-        .filter(|v| v.is_finite())
-        .unwrap_or(0.0);
+    let wait = match given.get(1) {
+        None | Some(Value::Null) => Ok(None),
+        Some(wait) => wait
+            .as_f64()
+            .filter(|seconds| seconds.is_finite())
+            .map(Some)
+            .ok_or(plandoc::WAIT_OUT_OF_RANGE),
+    };
+    let wait = match wait {
+        Ok(wait) => wait,
+        Err(reason) => return refused(reason),
+    };
     let Some(defaults) = edit_defaults(backend) else {
         return refused("The default mission item altitude is not known.");
     };
-    edit(|doc| {
-        plandoc::place_drop(
-            doc,
-            waypoint,
-            old_drop,
-            wait,
-            &defaults,
-            &crate::payloadcheck::servo_bays(
-                plandoc::firmware(doc.firmware_type) == crate::cmdinfo::Firmware::ArduPilot,
-            ),
-        )
-    })
+    edit(|doc| plandoc::place_drop(doc, waypoint, wait, &defaults, &plan_servos(doc)))
 }
 
 fn remove_drop(args: &str) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
-    match drop_indices(&given) {
-        (Some(waypoint), Some(drop)) => edit(|doc| plandoc::remove_drop(doc, waypoint, drop)),
-        _ => refused("Removing a drop needs the waypoint and the drop."),
+    match waypoint_given(&given) {
+        Some(waypoint) => edit(|doc| plandoc::remove_drop(doc, waypoint, &plan_servos(doc))),
+        None => refused(plandoc::NOT_A_WAYPOINT),
     }
+}
+
+fn set_drop_release(backend: &dyn Backend, args: &str) -> Value {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let Some(waypoint) = waypoint_given(&given) else {
+        return refused(plandoc::NOT_A_WAYPOINT);
+    };
+    let wanted = given.get(1).cloned().unwrap_or(Value::Null);
+    let number = |key: &str| wanted.get(key).and_then(Value::as_f64);
+    let (servo, output, pwm) = (
+        wanted.get("servo").and_then(Value::as_bool),
+        number("output"),
+        number("pwm"),
+    );
+    let Some(defaults) = edit_defaults(backend) else {
+        return refused("The default mission item altitude is not known.");
+    };
+    let kept = std::cell::RefCell::new(Vec::new());
+    let answer = edit(|doc| {
+        let was = plan_servos(doc);
+        let retyped = match servo.filter(|servo| *servo == was.is_empty()) {
+            Some(servo) => {
+                let now = crate::payloadcheck::configured_bays(servo);
+                plandoc::replace_drop(doc, waypoint, &defaults, &was, &now).map(|doc| (doc, now))
+            }
+            None => Ok((doc.clone(), was)),
+        }?;
+        let (document, servos) = retyped;
+        let edited = match output.is_some() || pwm.is_some() {
+            true => plandoc::set_drop_servo(&document, waypoint, output, pwm, &servos),
+            false => Ok(document.clone()),
+        }?;
+        let release_at = |doc: &Document, servos: &[crate::payloadcheck::Servo]| {
+            plandoc::drop_after(doc, waypoint, servos)
+                .flatten()
+                .and_then(|drop| plandoc::drop_release(doc, drop, servos))
+        };
+        let bay = release_at(&document, &servos)
+            .and_then(|release| release.bay)
+            .or_else(|| (servos.len() == 1).then_some(1));
+        *kept.borrow_mut() = crate::payloadcheck::remembered(
+            servo,
+            release_at(&edited, &servos)
+                .zip(bay)
+                .map(|(release, bay)| (bay, release.output, release.pwm)),
+        );
+        Ok(edited)
+    });
+    if answer["ok"] == true {
+        crate::settingsstore::set_raw_together(
+            &kept
+                .borrow()
+                .iter()
+                .map(|(path, value)| (path.as_str(), value.clone()))
+                .collect::<Vec<_>>(),
+        );
+        changed();
+    }
+    answer
 }
 
 fn insert_scan(backend: &dyn Backend, args: &str, corridor: bool) -> Value {
@@ -791,56 +875,30 @@ fn item_edit(backend: &dyn Backend, args: &str, command: bool) -> Value {
     let Some(defaults) = edit_defaults(backend) else {
         return refused("The default mission item altitude is not known.");
     };
-    let added = match command {
-        true => held()
-            .document
-            .as_ref()
-            .and_then(|doc| plandoc::command_at(doc, index, value as i64, &defaults))
-            .and_then(|(_, added)| added),
-        false => None,
-    };
-    let answer = edit_selecting(
-        |doc| {
-            let changed = match command {
-                true => plandoc::command_at(doc, index, value as i64, &defaults)
-                    .map(|(changed, _)| changed),
-                false => plandoc::set_altitude(doc, index, value),
-            };
-            changed.ok_or_else(|| format!("Item {index} cannot take that edit."))
-        },
-        added.map(|at| at as i64),
-    );
-    if command && answer["ok"] == true && added.is_none() {
-        raw_edits().remove(&index);
-        changed();
-    }
-    if let Some(note) = added
-        .filter(|_| answer["ok"] == true)
-        .and_then(|at| added_note(index, at))
-    {
-        let mut state = held();
-        state.note = Some(note);
-        state.note_id += 1;
-        drop(state);
-        changed();
-    }
-    answer
+    edit_with(|doc| {
+        let (document, added) = match command {
+            true => plandoc::command_at(doc, index, value as i64, &defaults),
+            false => plandoc::set_altitude(doc, index, value).map(|changed| (changed, None)),
+        }
+        .ok_or_else(|| format!("Item {index} cannot take that edit."))?;
+        Ok(Edited {
+            note: added.and_then(|at| added_note(&document, index, at)),
+            selected: added.map(|at| at as i64),
+            plain: Some(index).filter(|_| command && added.is_none()),
+            document,
+        })
+    })
 }
 
-fn added_note(waypoint: usize, added: usize) -> Option<String> {
-    let doc = held().document.clone()?;
-    let reads = crate::missionitems::document_reads(&doc, -1).ok()?;
+fn added_note(doc: &Document, waypoint: usize, added: usize) -> Option<String> {
+    let reads = crate::missionitems::document_reads(doc, -1).ok()?;
     let stops = crate::missionitems::stops(&reads);
     let name = |index: usize| {
-        reads.get(index)?.get("commandName")?.as_str().map(|text| {
-            let lower = text.to_lowercase();
-            lower
-                .chars()
-                .take(1)
-                .flat_map(char::to_uppercase)
-                .chain(lower.chars().skip(1))
-                .collect::<String>()
-        })
+        reads
+            .get(index)?
+            .get("commandName")?
+            .as_str()
+            .map(crate::label::sentence)
     };
     let at = match stops.get(waypoint).copied().flatten() {
         Some(number) => format!("{} {number}", name(waypoint)?),
@@ -1035,7 +1093,7 @@ fn remove(args: &str) -> Value {
         return refused("Remove needs the index of the item.");
     };
     let answer = edit(|doc| {
-        plandoc::remove(doc, index).map(|after| plandoc::after_scan_removed(doc, after))
+        plandoc::remove_with_riders(doc, index).map(|after| plandoc::after_scan_removed(doc, after))
     });
     if answer["ok"] == true {
         let mut state = held();
@@ -1069,9 +1127,19 @@ fn move_item(args: &str) -> Value {
     ) else {
         return refused("Moving an item needs its index and a step of 1 or -1.");
     };
-    let moved = index as i64 + step;
-    match edit_selecting(|doc| plandoc::move_item(doc, index, step > 0), Some(moved)) {
-        answer if answer["ok"] == true => json!({ "ok": true, "index": moved }),
+    let landed = std::cell::Cell::new(index);
+    match edit_with(|doc| {
+        plandoc::move_item(doc, index, step > 0).map(|(document, moved)| {
+            landed.set(moved);
+            Edited {
+                document,
+                selected: Some(moved as i64),
+                note: None,
+                plain: None,
+            }
+        })
+    }) {
+        answer if answer["ok"] == true => json!({ "ok": true, "index": landed.get() }),
         answer => answer,
     }
 }
@@ -6489,23 +6557,7 @@ fn facts_in(
                 Value::Object(
                     map.into_iter()
                         .chain([("launchAltitude".to_string(), launch.unwrap_or(Value::Null))])
-                        .chain([(
-                            "drop".to_string(),
-                            plandoc::drop_after(
-                                document,
-                                index,
-                                &crate::payloadcheck::servo_bays(
-                                    plandoc::firmware(document.firmware_type)
-                                        == crate::cmdinfo::Firmware::ArduPilot,
-                                ),
-                            )
-                            .map_or(Value::Null, |drop| {
-                                json!({
-                                    "index": drop,
-                                    "wait": drop.map_or(0.0, |at| plandoc::drop_wait(document, index, at)),
-                                })
-                            }),
-                        )])
+                        .chain([("drop".to_string(), drop_fact(document, index))])
                         .chain(crate::itemfacts::command_info(&read))
                         .chain(takeoff_wizard)
                         .collect(),
@@ -6517,6 +6569,25 @@ fn facts_in(
         }
         other => other,
     }
+}
+
+fn drop_fact(document: &Document, waypoint: usize) -> Value {
+    let servos = plan_servos(document);
+    plandoc::drop_after(document, waypoint, &servos).map_or(Value::Null, |drop| {
+        let release = drop.and_then(|at| plandoc::drop_release(document, at, &servos));
+        json!({
+            "index": drop,
+            "wait": drop.map_or(0.0, |at| plandoc::drop_wait(document, waypoint, at)),
+            "waitOffered": plandoc::wait_offered(document),
+            "servo": match drop {
+                Some(_) => release.is_some(),
+                None => !servos.is_empty(),
+            },
+            "output": release.map(|release| release.output),
+            "pwm": release.map(|release| release.pwm),
+            "bay": release.and_then(|release| release.bay).filter(|_| servos.len() > 1),
+        })
+    })
 }
 
 pub fn with_previous_coordinate(facts: Value, previous: Option<(f64, f64)>) -> Value {

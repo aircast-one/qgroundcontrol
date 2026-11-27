@@ -167,7 +167,7 @@ export const WaypointSettings = ({
           />
         </div>
       ) : null}
-      {item.index !== HOME_ITEM ? <WaypointActions index={item.index} hold={waypointHold(json)} yaw={waypointYaw(json)} drop={waypointDrop(json, item.latitude, item.longitude)} /> : null}
+      {item.index !== HOME_ITEM ? <WaypointActions index={item.index} hold={waypointHold(json)} yaw={waypointYaw(json)} drop={waypointDrop(json)} onRefusal={onRefusal} /> : null}
     </div>
   );
 };

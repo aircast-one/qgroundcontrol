@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CameraExtras } from './ItemCamera';
 import { legLabels } from './MissionLayers';
 import { MissionItem } from './PlanBridge';
-import { activeActions, addActionsHint, cameraIcon, dropRelease, dropText, offeredActions, startingChoice, waypointDrop, waypointYaw } from './WaypointActions';
+import { activeActions, addActionsHint, cameraIcon, dropText, offeredActions, startingChoice, waypointDrop, waypointYaw } from './WaypointActions';
 
 describe('WaypointActionsTest', () => {
   const labels = ['No change', 'Take photo', 'Take photos (time)', 'Take photos (distance)', 'Stop taking photos', 'Start recording video', 'Stop recording video'];
@@ -11,15 +11,15 @@ describe('WaypointActionsTest', () => {
   const noTurn = { degrees: null, units: 'deg', path: 'y' };
 
   it('a plain waypoint has no actions and offers every one it can carry', () => {
-    expect(activeActions(noHold, noTurn, { labels, chosen: 0 }, idleCamera)).toEqual([]);
-    expect(offeredActions(noHold, noTurn, { labels, chosen: 0 }, idleCamera).map((it) => it.title)).toEqual(['Hover', 'Photo', 'Video', 'Tilt camera', 'Camera mode', 'Turn aircraft']);
+    expect(activeActions(noHold, noTurn, { labels, chosen: 0 }, idleCamera, null)).toEqual([]);
+    expect(offeredActions(noHold, noTurn, { labels, chosen: 0 }, idleCamera, null).map((it) => it.title)).toEqual(['Hover', 'Photo', 'Video', 'Tilt camera', 'Camera mode', 'Turn aircraft']);
   });
 
   it('a plane, which flies through its waypoints, is not offered a hover or told it can hover', () => {
-    const offers = offeredActions(null, null, { labels, chosen: 0 }, idleCamera);
+    const offers = offeredActions(null, null, { labels, chosen: 0 }, idleCamera, null);
     expect(offers.map((it) => it.title)).not.toContain('Hover');
     expect(addActionsHint(offers)).toBe('Tap Add action to take a photo or film here.');
-    expect(addActionsHint(offeredActions(noHold, noTurn, { labels, chosen: 0 }, idleCamera))).toBe('Tap Add action to take a photo, film, hover or turn here.');
+    expect(addActionsHint(offeredActions(noHold, noTurn, { labels, chosen: 0 }, idleCamera, null))).toBe('Tap Add action to take a photo, film, hover or turn here.');
   });
 
   it('each action set on the waypoint shows once with its value and leaves the offers', () => {
@@ -28,9 +28,10 @@ describe('WaypointActionsTest', () => {
       { degrees: 90.0, units: 'deg', path: 'y' },
       { labels, chosen: 2 },
       { ...idleCamera, intervalTime: 10.0, commandsGimbal: true, pitch: -45.0, commandsMode: true, mode: 1 },
+      null,
     );
     expect(active.map((it) => `${it.title} ${it.value}`)).toEqual(['Hover 5 s', 'Take photos (time) every 10 s', 'Gimbal -45° / 0°', 'Camera mode Video', 'Turn aircraft 90°']);
-    expect(offeredActions({ seconds: 5.0, units: 's', path: 'h' }, { degrees: 90.0, units: 'deg', path: 'y' }, { labels, chosen: 2 }, { ...idleCamera, commandsGimbal: true, commandsMode: true })).toEqual([]);
+    expect(offeredActions({ seconds: 5.0, units: 's', path: 'h' }, { degrees: 90.0, units: 'deg', path: 'y' }, { labels, chosen: 2 }, { ...idleCamera, commandsGimbal: true, commandsMode: true }, null)).toEqual([]);
   });
 
   it('photo and video start from their first action, and the editor offers the rest', () => {
@@ -68,20 +69,24 @@ describe('WaypointActionsTest', () => {
     expect(legs[0]?.[0].longitude).toBeCloseTo(44.001, 9);
   });
 
-  it("a servo drop says which servo, which PWM and how long the drone waits first", () => {
-    const servo = dropRelease({ value: 1 }, { value: 4 }, { value: 2000 });
-    expect(dropText(servo, 10)).toBe('Servo 4 to 2000 · after 10 s');
-    expect(dropText(dropRelease({ value: 0 }, { value: 9 }, { value: 1900 }), 0)).toBe('Gripper');
-    expect(activeActions(noHold, noTurn, null, null, waypointDrop({ drop: { index: 5, wait: 10 } }, 47.1, 8.2), servo).map((it) => it.value)).toEqual(['Servo 4 to 2000 · after 10 s']);
+  const dropFact = (fields: object) => waypointDrop({ drop: { index: 5, wait: 0, waitOffered: true, servo: true, output: 4, pwm: 2000, bay: null, ...fields } });
+
+  it('a drop reads its servo, its PWM and its bay from its own mission item, and says how long the drone waits first', () => {
+    expect(dropFact({ wait: 10 })).toEqual({ index: 5, wait: 10, waitOffered: true, servo: true, output: 4, pwm: 2000, bay: null });
+    expect([dropFact({ wait: 10 }), dropFact({ output: 10, pwm: 1900, bay: 2 }), dropFact({ servo: false, output: null, pwm: null })].map((it) => (it === null ? '' : dropText(it)))).toEqual([
+      'Servo 4 to 2000 · after 10 s',
+      'Bay 2 · Servo 10 to 1900',
+      'Gripper',
+    ]);
+    expect(activeActions(noHold, noTurn, null, null, dropFact({ wait: 10 })).map((it) => `${it.title} ${it.value}`)).toEqual(['Drop payload Servo 4 to 2000 · after 10 s']);
   });
 
   it('a waypoint offers a drop until one follows it, then shows it as an action', () => {
-    const free = waypointDrop({ drop: { index: null } }, 47.1, 8.2);
-    const taken = waypointDrop({ drop: { index: 5 } }, 47.1, 8.2);
-    expect(waypointDrop({}, 47.1, 8.2)).toBeNull();
-    expect(free).toEqual({ index: null, wait: 0, latitude: 47.1, longitude: 8.2 });
-    expect(taken?.index).toBe(5);
-    expect(waypointDrop({ drop: { index: 6, wait: 10 } }, 47.1, 8.2)?.wait, 'a wait before the drop reads back').toBe(10);
+    const free = dropFact({ index: null, output: null, pwm: null });
+    const taken = dropFact({});
+    expect(waypointDrop({})).toBeNull();
+    expect(free?.index).toBeNull();
+    expect(dropFact({ waitOffered: false })?.waitOffered, 'a plane is not offered a wait').toBe(false);
     expect(offeredActions(noHold, noTurn, null, null, free).map((it) => it.title)).toContain('Drop payload');
     expect(offeredActions(noHold, noTurn, null, null, taken).map((it) => it.title)).not.toContain('Drop payload');
     expect(activeActions(noHold, noTurn, null, null, taken).map((it) => it.title)).toEqual(['Drop payload']);

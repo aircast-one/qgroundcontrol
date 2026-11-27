@@ -17,6 +17,21 @@ pub fn capitalised(name: &str) -> String {
         .collect()
 }
 
+pub fn sentence(name: &str) -> String {
+    let keeps_case = |word: &str| {
+        word.chars().skip(1).any(char::is_uppercase) || !word.chars().any(char::is_lowercase)
+    };
+    name.split(' ')
+        .enumerate()
+        .map(|(at, word)| match (at, keeps_case(word)) {
+            (0, _) => capitalised(word),
+            (_, true) => word.to_string(),
+            (_, false) => word.to_lowercase(),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 pub fn humanise(identifier: &str) -> String {
     let chars: Vec<char> = identifier.chars().collect();
     let spelt_acronym = |from: usize, at: usize| -> bool {
@@ -83,7 +98,15 @@ pub fn label_view(_backend: &dyn Backend, args: &[String]) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::humanise;
+    use super::{humanise, sentence};
+
+    #[test]
+    fn a_name_in_a_sentence_keeps_its_acronyms_and_lowers_its_other_words() {
+        assert_eq!(
+            ["Set Servo", "Cancel ROI", "VTOL Transition", "delay"].map(sentence),
+            ["Set servo", "Cancel ROI", "VTOL transition", "Delay"]
+        );
+    }
 
     #[test]
     fn splits_camel_case_and_keeps_acronyms_whole() {
