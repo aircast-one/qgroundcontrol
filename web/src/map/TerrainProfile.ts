@@ -11,11 +11,10 @@ export type ProfilePoint = { distance: number; terrain: number | null; planned: 
 
 export const ProfilePoint = (fields: { distance: number; terrain: number | null; planned: number; collision?: boolean }): ProfilePoint => ({ collision: false, ...fields });
 
-export type ProfileMarker = { sequence: number; distance: number; label: string; endDistance: number | null; lastSequence: number | null; pattern: string };
+export type ProfileMarker = { sequence: number; distance: number; label: string; endDistance: number | null; pattern: string };
 
-export const ProfileMarker = (fields: { sequence: number; distance: number; label: string; endDistance?: number | null; lastSequence?: number | null; pattern?: string }): ProfileMarker => ({
+export const ProfileMarker = (fields: { sequence: number; distance: number; label: string; endDistance?: number | null; pattern?: string }): ProfileMarker => ({
   endDistance: null,
-  lastSequence: null,
   pattern: '',
   ...fields,
 });
@@ -150,7 +149,6 @@ export const terrainProfile = (view: Json | null): TerrainProfile => {
         distance: optDouble(marker, 'distance', 0.0),
         label: optText(marker, 'label'),
         endDistance: complex === null ? null : optDouble(complex, 'endDistance'),
-        lastSequence: complex === null ? null : optInt(complex, 'lastSequence'),
         pattern: optText(complex, 'pattern'),
       });
     }),
@@ -161,7 +159,7 @@ export const terrainProfile = (view: Json | null): TerrainProfile => {
     bandText: optText(view, 'bandText'),
     band: low !== null && high !== null ? [low, high] : null,
     heightHeader: optText(view, 'heightHeader'),
-    heightReference: optText(view, 'heightReference') || 'AMSL',
+    heightReference: optText(view, 'heightReference'),
     distanceTicks: jsonStrings(optJSONArray(view, 'distanceTicks')),
     heightTicks: jsonStrings(optJSONArray(view, 'heightTicks')),
   });

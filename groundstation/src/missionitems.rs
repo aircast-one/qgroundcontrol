@@ -1167,7 +1167,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
         crate::settingsstore::raw_setting("settings.planViewSettings.showGimbalOnlyWhenSet")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-    Ok(with_gimbal_yaws(
+    Ok(with_gimbal_looks(
         with_vehicle_yaws(std::iter::once(settings).chain(reads).collect()),
         only_when_set,
     ))
@@ -1209,7 +1209,7 @@ fn sections_gimbal_pitch(sections: &[crate::plandoc::Simple]) -> Option<f64> {
     sections.iter().find_map(mount_gimbal_pitch)
 }
 
-fn with_gimbal_yaws(reads: Vec<Value>, only_when_set: bool) -> Vec<Value> {
+fn with_gimbal_looks(reads: Vec<Value>, only_when_set: bool) -> Vec<Value> {
     reads
         .into_iter()
         .scan(None::<(f64, Option<f64>)>, |carried, read| {
@@ -4128,7 +4128,7 @@ mod reported {
             item(80, None),
             item(16, None),
         ];
-        let carried: Vec<Value> = with_gimbal_yaws(reads.clone(), false)
+        let carried: Vec<Value> = with_gimbal_looks(reads.clone(), false)
             .iter()
             .map(|r| r["missionGimbalYaw"].clone())
             .collect();
@@ -4143,7 +4143,7 @@ mod reported {
             ],
             "MissionFlightStatusCalculator: a set yaw carries on, an ROI clears it"
         );
-        let strict: Vec<Value> = with_gimbal_yaws(reads, true)
+        let strict: Vec<Value> = with_gimbal_looks(reads, true)
             .iter()
             .map(|r| r["missionGimbalYaw"].clone())
             .collect();
@@ -4163,7 +4163,7 @@ mod reported {
     #[test]
     fn gimbal_pitch_travels_with_the_yaw_so_the_map_can_draw_where_the_camera_looks() {
         let item = |yaw: Option<f64>, pitch: Option<f64>| json!({ "command": 16, "specifiedGimbalYaw": yaw, "specifiedGimbalPitch": pitch });
-        let pitches: Vec<Value> = with_gimbal_yaws(
+        let pitches: Vec<Value> = with_gimbal_looks(
             vec![
                 item(None, None),
                 item(Some(-73.0), Some(-77.0)),

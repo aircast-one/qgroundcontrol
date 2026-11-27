@@ -153,7 +153,6 @@ describe('HeightRangeTest', () => {
             "markers":[{"sequence":0,"distance":0,"label":"T"},{"sequence":2,"distance":200,"label":"2","complex":{"endDistance":600,"lastSequence":7,"pattern":"Survey"}}]}`),
     );
     expect(profile.markers.map((it) => it.label)).toEqual(['T', '2']);
-    expect(profile.markers[1]?.lastSequence).toBe(7);
     expect(collisionSegments(profile, 1000, 100).length).toBe(1);
     expect([10, 590, 400, 850].map((it) => tappedSequence(profile, 1000, it)), 'the exit line and the band between belong to the pattern; open ground selects nothing').toEqual([0, 2, 2, null]);
   });

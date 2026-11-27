@@ -158,7 +158,6 @@ final class HeightRangeTests: XCTestCase {
     func testMarkersAndCollisionsComeFromTheCoreAndATapPicksTheNearestItem() {
         let profile = terrainProfile(JSON.parse(#"{"points":[{"distance":0,"missionAltitude":100,"terrainAltitude":50},{"distance":100,"missionAltitude":100,"terrainAltitude":120,"collision":true},{"distance":200,"missionAltitude":100,"terrainAltitude":130,"collision":true},{"distance":1000,"missionAltitude":100,"terrainAltitude":50}],"markers":[{"sequence":0,"distance":0,"label":"T"},{"sequence":2,"distance":200,"label":"2","complex":{"endDistance":600,"lastSequence":7,"pattern":"Survey"}}]}"#))
         XCTAssertEqual(["T", "2"], profile.markers.map(\.label))
-        XCTAssertEqual(7, profile.markers[1].lastSequence)
         XCTAssertEqual(1, collisionSegments(profile, 1000, 100).count)
         XCTAssertEqual([0, 2, 2, nil], [10, 590, 400, 850].map { tappedSequence(profile, 1000, $0) }, "the exit line and the band between belong to the pattern; open ground selects nothing")
     }

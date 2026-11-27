@@ -22,7 +22,6 @@ struct ProfileMarker: Equatable {
     var distance: Double
     var label: String
     var endDistance: Double? = nil
-    var lastSequence: Int? = nil
     var pattern: String = ""
 }
 
@@ -132,13 +131,12 @@ func terrainProfile(_ view: JSON?) -> TerrainProfile {
                 distance: marker["distance"].double(0),
                 label: marker["label"].string,
                 endDistance: isComplex ? complex["endDistance"].double(.nan) : nil,
-                lastSequence: isComplex ? complex["lastSequence"].int(0) : nil,
                 pattern: isComplex ? complex["pattern"].string : ""
             )
         },
         band: low.isFinite && high.isFinite ? (low, high) : nil,
         heightHeader: view["heightHeader"].string,
-        heightReference: view["heightReference"].string.ifBlank("AMSL"),
+        heightReference: view["heightReference"].string,
         distanceTicks: view["distanceTicks"].arrayOrNil?.map(\.string) ?? [],
         heightTicks: view["heightTicks"].arrayOrNil?.map(\.string) ?? []
     )

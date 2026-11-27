@@ -499,7 +499,7 @@ export const PlanMapContent = ({
     const nextAll = allMissionItems(plan);
     const noteId = optInt(plan, 'noteId');
     const note = optText(plan, 'note');
-    if (noteSeen.value !== null && noteId > noteSeen.value && note !== '') say(note);
+    if (noteSeen.value !== null && noteId !== noteSeen.value && note !== '') say(note);
     noteSeen.value = noteId;
     const nextItems = nextAll.filter((it) => it.placed);
     const nextItemCount = planItemCount(plan);

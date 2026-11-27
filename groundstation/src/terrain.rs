@@ -872,6 +872,7 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
     });
     let launch = core.as_ref().and_then(|(.., launch)| *launch);
     let above = |metres: f64| metres - launch.unwrap_or(0.0);
+    let reference = height_reference(launch);
     let model = match &core {
         Some((reads, ..)) => core_model(backend, reads),
         None => backend.value_fields("plan.missionController.visualItems", FIELDS),
@@ -930,8 +931,8 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "lowestText": crate::read::format_measure(vertical.show(above(profile.min_altitude)), &vertical.name),
         "highestText": crate::read::format_measure(vertical.show(above(profile.max_altitude)), &vertical.name),
         "bandText": crate::read::range_text(above(profile.min_altitude), above(profile.max_altitude), &vertical),
-        "heightReference": height_reference(launch),
-        "heightHeader": format!("Height {} ({})", height_reference(launch), vertical.name),
+        "heightReference": reference,
+        "heightHeader": format!("Height {reference} ({})", vertical.name),
         "distanceTicks": axis_ticks(0.0, Unit::horizontal(backend).show(profile.total_distance), 4),
         "heightTicks": axis_ticks(vertical.show(above(profile.min_altitude)), vertical.show(above(profile.max_altitude)), 3),
         "markers": markers(&model),
