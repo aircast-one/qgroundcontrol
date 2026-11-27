@@ -3203,7 +3203,14 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
     {
         Some(combo) => (
             combo,
-            number.and_then(|at| combo_value(simple, &commands, raw, combo, at)),
+            number.and_then(|at| {
+                let slot = combo.strip_prefix("comboboxFacts.")?.parse().ok()?;
+                let choices = match raw {
+                    true => Choices::Raw,
+                    false => Choices::Friendly(simple?),
+                };
+                combo_value(choices, &commands, slot, usize::try_from(at as i64).ok()?)
+            }),
         ),
         None => (property, number),
     };
@@ -3420,6 +3427,18 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
                         .ok_or_else(|| format!("Item {index} has no such field.")),
                 ),
             },
+            (Some(param), None)
+                if raw
+                    && param <= OPTIONAL_RAW_PARAMS
+                    && given.as_ref().is_none_or(|entry| {
+                        entry.is_null() || entry.as_str().is_some_and(|text| text.trim().is_empty())
+                    }) =>
+            {
+                answer(
+                    plandoc::clear_param(&current, index, param)
+                        .ok_or_else(|| format!("Item {index} has no such field.")),
+                )
+            }
             (Some(_), None) => refused("That field takes a number."),
             (None, _) => answer(unknown()),
         },
@@ -5707,7 +5726,7 @@ mod tests {
         );
         let delay = commands.keys().position(|id| *id == 93).unwrap();
         assert_eq!(
-            combo_value(None, &commands, true, "comboboxFacts.0", delay as f64),
+            combo_value(Choices::Raw, &commands, 0, delay),
             Some(93.0),
             "the raw Command list writes its index, which is the command at that place, not a refused enumIndex"
         );
@@ -5728,13 +5747,10 @@ mod tests {
             sections: Vec::new(),
         };
         assert_eq!(
-            combo_value(Some(&simple), &commands, false, "comboboxFacts.0", 0.0),
+            combo_value(Choices::Friendly(&simple), &commands, 0, 0),
             list(&param, "enumValues")[0].parse().ok()
         );
-        assert_eq!(
-            combo_value(None, &commands, true, "comboboxFacts.0", 9999.0),
-            None
-        );
+        assert_eq!(combo_value(Choices::Raw, &commands, 0, 9999), None);
     }
 
     #[test]
@@ -6159,6 +6175,8 @@ pub fn summary_fields(backend: &dyn Backend) -> Option<Value> {
 const DEFAULT_DECIMAL_PLACES: i64 = 3;
 const ITEM_ROOT: &str = "plan.missionController.visualItems";
 
+const OPTIONAL_RAW_PARAMS: usize = 4;
+
 fn formatted(value: f64, decimals: i64) -> String {
     let places = usize::try_from(decimals).unwrap_or(0);
     match value.is_nan() {
@@ -6285,13 +6303,13 @@ const MAV_FRAMES: [(&str, i64); 12] = [
     ("Mission", 2),
     ("Relative to launch", 3),
     ("Local east-north-up", 4),
-    ("Above sea level (whole numbers)", 5),
-    ("Relative to launch (whole numbers)", 6),
+    ("Above sea level (finer position)", 5),
+    ("Relative to launch (finer position)", 6),
     ("Offset from the vehicle", 7),
     ("Body frame", 8),
     ("Offset from the body", 9),
     ("Above terrain", 10),
-    ("Above terrain (whole numbers)", 11),
+    ("Above terrain (finer position)", 11),
 ];
 const FRIENDLY_FRAMES: [i64; 3] = [0, 3, 10];
 
@@ -6438,27 +6456,27 @@ fn raw_choices(commands: &std::collections::BTreeMap<i64, crate::cmdinfo::Comman
     ]
 }
 
+enum Choices<'a> {
+    Raw,
+    Friendly(&'a plandoc::Simple),
+}
+
 fn combo_value(
-    simple: Option<&plandoc::Simple>,
+    choices: Choices,
     commands: &std::collections::BTreeMap<i64, crate::cmdinfo::Command>,
-    raw: bool,
-    combo: &str,
-    at: f64,
+    slot: usize,
+    at: usize,
 ) -> Option<f64> {
-    let slot: usize = combo.strip_prefix("comboboxFacts.")?.parse().ok()?;
-    let choices = match raw {
-        true => raw_choices(commands).into_iter().nth(slot)?,
-        false => {
-            field_params(commands.get(&simple?.command)?, true)
+    let choices = match choices {
+        Choices::Raw => raw_choices(commands).into_iter().nth(slot)?,
+        Choices::Friendly(simple) => {
+            field_params(commands.get(&simple.command)?, true)
                 .into_iter()
                 .nth(slot)?
                 .1
         }
     };
-    list(&choices, "enumValues")
-        .get(usize::try_from(at as i64).ok()?)?
-        .parse()
-        .ok()
+    list(&choices, "enumValues").get(at)?.parse().ok()
 }
 
 fn simple_fields(

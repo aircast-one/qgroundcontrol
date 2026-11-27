@@ -830,7 +830,13 @@ pub fn insert_simple(
     visual_index: i64,
     defaults: &EditDefaults,
 ) -> Document {
-    let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
+    let commands = commands_at(
+        doc,
+        usize::try_from(visual_index - 1)
+            .ok()
+            .filter(|at| *at <= doc.items.len())
+            .unwrap_or(doc.items.len()),
+    );
     let fresh = with_command_defaults(
         doc,
         &commands,
@@ -895,14 +901,17 @@ pub fn insert_simple(
     }
 }
 
+pub fn commands_at(doc: &Document, at: usize) -> std::collections::BTreeMap<i64, cmdinfo::Command> {
+    cmdinfo::tree(firmware(doc.firmware_type), command_class_at(doc, at))
+}
+
 pub fn past_takeoff(doc: &Document, kind: &str, visual_index: i64) -> i64 {
-    let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
     let takeoff = doc
         .items
         .iter()
         .position(|item| !rides_along(item))
         .filter(|first_place| {
-            matches!(&doc.items[*first_place], Item::Simple(simple) if commands.get(&simple.command).is_some_and(|c| c.is_takeoff))
+            matches!(&doc.items[*first_place], Item::Simple(simple) if commands_at(doc, *first_place).get(&simple.command).is_some_and(|c| c.is_takeoff))
         });
     match takeoff.map(|at| at as i64 + 1) {
         Some(takeoff) if kind != "takeoff" && (1..=takeoff).contains(&visual_index) => takeoff + 1,
@@ -1237,7 +1246,7 @@ pub fn set_command(
     defaults: &EditDefaults,
 ) -> Option<Document> {
     let (at, current) = simple_at(doc, visual_index)?;
-    let commands = cmdinfo::tree(firmware(doc.firmware_type), command_class_at(doc, at));
+    let commands = commands_at(doc, at);
     match current.command == command {
         true => Some(doc.clone()),
         false => Some(replaced(
@@ -1255,11 +1264,12 @@ pub fn command_at(
     defaults: &EditDefaults,
 ) -> Option<(Document, Option<usize>)> {
     let (at, current) = simple_at(doc, visual_index)?;
-    let commands = cmdinfo::tree(firmware(doc.firmware_type), command_class_at(doc, at));
+    let commands = commands_at(doc, at);
     let positioned = |id: i64| commands.get(&id).is_some_and(|c| c.specifies_coordinate);
     let lands = commands.get(&current.command).is_some_and(|c| c.is_land);
+    let takes_off = commands.get(&current.command).is_some_and(|c| c.is_takeoff);
     match current.command != command
-        && positioned(current.command)
+        && (positioned(current.command) || takes_off)
         && !positioned(command)
         && !lands
     {
@@ -1998,6 +2008,22 @@ pub fn set_param(
 
 const LOITER_COMMANDS: [i64; 4] = [17, 18, 19, 31];
 const CMD_NAV_LOITER_TO_ALT: i64 = 31;
+
+pub fn clear_param(doc: &Document, visual_index: usize, param: usize) -> Option<Document> {
+    let (at, current) = simple_at(doc, visual_index)?;
+    let slot = param.checked_sub(1).filter(|p| *p < 4)?;
+    Some(replaced(
+        doc,
+        at,
+        Simple {
+            params: std::array::from_fn(|i| match i == slot {
+                true => None,
+                false => current.params[i],
+            }),
+            ..current.clone()
+        },
+    ))
+}
 
 pub fn set_loiter_radius(doc: &Document, visual_index: usize, radius: f64) -> Option<Document> {
     let (_, current) = simple_at(doc, visual_index)?;
@@ -4199,6 +4225,63 @@ mod tests {
             ),
             (None, vec![22, 16, 16, 177, 16, 183]),
             "nothing runs after a landing, so a command picked on it replaces it as Change command says"
+        );
+    }
+
+    #[test]
+    fn a_command_picked_on_a_takeoff_a_waypoint_before_a_pattern_or_a_vtol_waypoint_lands_where_it_runs()
+     {
+        let copter = plan_with(2, &[22, 16, 16]);
+        let (on_takeoff, added) = command_at(&copter, 1, 183, &QT_DEFAULTS).unwrap();
+        assert_eq!(
+            (
+                added,
+                flown_commands(&on_takeoff)
+                    .iter()
+                    .map(|it| it.0)
+                    .collect::<Vec<_>>()
+            ),
+            (Some(2), vec![22, 183, 16, 16]),
+            "picked on the takeoff, the command runs once the climb is done and the takeoff stays"
+        );
+        let pattern = load(include_str!("../tests/fixtures/survey-upload.plan"), 2)
+            .unwrap()
+            .items
+            .into_iter()
+            .find(|item| matches!(item, Item::Complex { .. }))
+            .unwrap();
+        let surveyed = Document {
+            items: copter.items[..2]
+                .iter()
+                .cloned()
+                .chain([pattern, copter.items[2].clone()])
+                .collect(),
+            ..copter.clone()
+        };
+        let (with_servo, added) = command_at(&surveyed, 2, 183, &QT_DEFAULTS).unwrap();
+        assert_eq!(added, Some(3));
+        assert!(
+            matches!(&with_servo.items[2], Item::Simple(servo) if servo.command == 183)
+                && matches!(&with_servo.items[3], Item::Complex { .. }),
+            "the command sits after its waypoint and ahead of the pattern, which stays whole"
+        );
+        let vtol = plan_with(20, &[84, 16, 16, 20]);
+        let (hovering, added) = command_at(&vtol, 2, 3000, &QT_DEFAULTS).unwrap();
+        assert_eq!(
+            (
+                added,
+                flown_commands(&hovering)
+                    .iter()
+                    .map(|it| it.0)
+                    .collect::<Vec<_>>()
+            ),
+            (Some(3), vec![84, 16, 3000, 16, 20]),
+            "a VTOL plan takes the command at the waypoint under the tree that waypoint flies with"
+        );
+        assert_eq!(
+            command_at(&vtol, 2, 16, &QT_DEFAULTS).map(|(_, added)| added),
+            Some(None),
+            "the command already there changes nothing"
         );
     }
 

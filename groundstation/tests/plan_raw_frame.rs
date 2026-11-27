@@ -131,6 +131,23 @@ fn a_frame_picked_in_the_raw_view_is_the_frame_sent_and_the_altitude_mode_every_
         true,
         "a command with no height takes any frame"
     );
+    assert_eq!(written(&core, 2, "textFieldFacts.3", json!(90))["ok"], true);
+    let yaw = || match groundstation::coreplan::current_document().items.get(1) {
+        Some(plandoc::Item::Simple(waypoint)) => waypoint.params[3],
+        _ => None,
+    };
+    assert_eq!(yaw(), Some(90.0));
+    assert_eq!(
+        written(&core, 2, "textFieldFacts.3", json!(""))["ok"],
+        true,
+        "a raw value emptied is unset again, as it was before it was typed"
+    );
+    assert_eq!(yaw(), None);
+    assert_eq!(
+        written(&core, 2, "textFieldFacts.6", json!(""))["reason"],
+        "That field takes a number.",
+        "a height cannot be left unset"
+    );
     let reloaded = plandoc::load(
         &plandoc::save(&groundstation::coreplan::current_document()).to_string(),
         2,
