@@ -217,10 +217,10 @@ class IsLandingPatternTest {
 
     @org.junit.Test
     fun `a landing pattern is marked at its approach and touchdown like QGC's visuals`() {
-        val item = MissionItem(3, 7, 47.0, 8.0, "Landing Pattern", false, 30.0, kind = KIND_LAND, foldedCommands = 4)
+        val item = MissionItem(3, 7, 47.0, 8.0, "Landing Pattern", false, 30.0, kind = KIND_LAND, foldedCommands = 4, stop = 3)
         val pattern = LandingPattern(index = 3, landing = TrackPoint(47.0, 8.0), slopeStart = TrackPoint(47.01, 8.0), finalApproach = TrackPoint(47.02, 8.0), loiterRadiusMetres = 80.0, loiterClockwise = true)
         val marks = missionFeatures(listOf(item), landings = listOf(pattern)).features()!!.map { it.getStringProperty(WAYPOINT_LABEL_PROPERTY) to it.getStringProperty(WAYPOINT_SIDE_LABEL_PROPERTY) }
-        assertEquals(listOf("7" to "Approach", "11" to "Land"), marks)
+        assertEquals("both ends carry the pattern's own stop number, not mission sequences 7 and 11", listOf("3" to "Approach", "3" to "Land"), marks)
         val loiter = missionFeatures(listOf(item), landings = listOf(pattern.copy(loiterToAltitude = true))).features()!!.first().getStringProperty(WAYPOINT_SIDE_LABEL_PROPERTY)
         assertEquals("Loiter", loiter)
     }

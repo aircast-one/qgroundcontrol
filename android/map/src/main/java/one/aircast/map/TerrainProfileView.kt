@@ -94,7 +94,7 @@ private fun pathOf(points: List<Offset>): Path = Path().apply {
 }
 
 internal fun heightRange(profile: TerrainProfile): String =
-    if (profile.flat) "${profile.lowestText} AMSL" else "${profile.bandText} AMSL"
+    "${if (profile.flat) profile.lowestText else profile.bandText} ${profile.heightReference}"
 
 internal fun profileLabel(profile: TerrainProfile): String =
     terrainWarning(profile.clearance)?.let { "$it " } .orEmpty() +
@@ -190,7 +190,7 @@ fun TerrainProfileView(
 
                 profile.markers.forEach { marker ->
                     val start = markerX(marker.distance, profile, size.width)
-                    val labels = listOfNotNull(start to marker.label, marker.endDistance?.let { markerX(it, profile, size.width) to (marker.lastSequence ?: marker.sequence).toString() })
+                    val labels = listOfNotNull(start to marker.label, marker.endDistance?.let { markerX(it, profile, size.width) to marker.label })
                     marker.endDistance?.let { end ->
                         val band = measurer.measure(marker.pattern, labelStyle)
                         val right = markerX(end, profile, size.width)

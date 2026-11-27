@@ -202,7 +202,7 @@ internal fun PlanMapContent(
     var removals by remember { mutableIntStateOf(0) }
     val removeItem: (MissionItem) -> Unit = { item ->
         scope.launch {
-            busy = "Removing #${item.sequence}"
+            busy = "Removing ${itemTitle(item).replaceFirstChar(Char::lowercaseChar)}"
             val outcome = withContext(Dispatchers.Default) { removeMissionItem(item.index) }
             if (outcome.ok) removals++
             selected = if (outcome.ok) selectionAfterRemove(item.index, allItems.size) else null
@@ -1343,6 +1343,7 @@ internal fun PlanMapContent(
 private const val SURVEY_FIT_INSET = 0.8
 
 private val ITEM_MARKER_SIZE = 40.dp
+private val ACTION_MARKER_SIZE = 12.dp
 
 @Composable
 private fun ItemListHeading(rows: List<ItemRow>, summary: String, modifier: Modifier) {
@@ -1356,19 +1357,21 @@ private fun ItemListHeading(rows: List<ItemRow>, summary: String, modifier: Modi
 
 @Composable
 private fun ItemRowView(row: ItemRow, selected: Boolean, onClick: () -> Unit) {
+    val action = row.number.isEmpty()
+    val marker = if (action) ACTION_MARKER_SIZE else ITEM_MARKER_SIZE
     Surface(
         onClick = onClick,
         color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
         contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
     ) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+            Modifier.fillMaxWidth().heightIn(min = if (action) 56.dp else 72.dp).padding(start = if (action) 56.dp else 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                if (row.readyForSave) Modifier.size(ITEM_MARKER_SIZE).background(Color(android.graphics.Color.parseColor(row.colour)), CircleShape)
-                else Modifier.size(ITEM_MARKER_SIZE).border(1.dp, MaterialTheme.aircast.warning, CircleShape),
+                if (row.readyForSave) Modifier.size(marker).background(Color(android.graphics.Color.parseColor(row.colour)), CircleShape)
+                else Modifier.size(marker).border(1.dp, MaterialTheme.aircast.warning, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(row.number, style = MaterialTheme.typography.labelLarge, color = if (row.readyForSave) MaterialTheme.colorScheme.surface else MaterialTheme.aircast.warning, maxLines = 1)

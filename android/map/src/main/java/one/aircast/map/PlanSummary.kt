@@ -11,7 +11,7 @@ internal fun selectionText(
 ): String? = when (selected) {
     is MapHit.Waypoint ->
         items.firstOrNull { it.index == selected.index }
-            ?.let { item -> altitudeWithFrame(item)?.let { "#${item.sequence} at $it" } }
+            ?.let { item -> altitudeWithFrame(item)?.let { "${itemTitle(item)} at $it" } }
     is MapHit.Circle -> circles.firstOrNull { it.index == selected.index }?.let(::circleText)
     is MapHit.CircleCentre -> circles.firstOrNull { it.index == selected.index }?.let(::circleText)
     is MapHit.CircleRadius -> circles.firstOrNull { it.index == selected.index }?.let(::circleText)

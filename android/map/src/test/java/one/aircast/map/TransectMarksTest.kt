@@ -51,12 +51,12 @@ class TransectMarksTest {
     }
 
     @Test
-    fun `a pattern item gets a second marker at its exit labelled with its last sequence number`() {
-        val survey = leg(2, complex = true).copy(exit = TrackPoint(47.5, 8.1), foldedCommands = 6)
+    fun `a pattern item gets a second marker at its exit labelled with its own stop number`() {
+        val survey = leg(2, complex = true).copy(stop = 1, exit = TrackPoint(47.5, 8.1), foldedCommands = 6)
         val plain = leg(3).copy(exit = TrackPoint(47.6, 8.1))
         assertEquals(listOf(survey to TrackPoint(47.5, 8.1)), exitMarkers(listOf(survey, plain)))
         val labels = missionFeatures(listOf(survey)).features()!!.map { it.getStringProperty(WAYPOINT_LABEL_PROPERTY) }
-        assertEquals("TransectStyleMapVisuals labels the exit with lastSequenceNumber", listOf("2", "8"), labels)
+        assertEquals("entry and exit are the same stop, so both read 1, not mission sequences 2 and 8", listOf("1", "1"), labels)
     }
 
     @Test

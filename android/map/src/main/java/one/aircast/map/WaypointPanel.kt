@@ -38,7 +38,7 @@ internal val SPEED_RANGE = 0.0..30.0
 internal fun altitudeRange(units: String): ClosedFloatingPointRange<Double> =
     0.0..(if (units == FEET) ALTITUDE_CEILING_FEET else ALTITUDE_CEILING_METRES)
 
-internal fun stripRows(rows: List<ItemRow>): List<ItemRow> = rows.filter { it.index != HOME_ITEM }
+internal fun stripRows(rows: List<ItemRow>): List<ItemRow> = rows.filter { it.index != HOME_ITEM && it.number.isNotEmpty() }
 
 @Composable
 internal fun WaypointStrip(rows: List<ItemRow>, altitudes: Map<Int, String>, conflicts: Set<Int>, selected: Int?, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
@@ -64,12 +64,12 @@ internal fun WaypointStrip(rows: List<ItemRow>, altitudes: Map<Int, String>, con
                     else -> BorderStroke(1.dp, MaterialTheme.aircast.warning)
                 },
                 modifier = Modifier.size(CHIP_SIZE).semantics {
-                    contentDescription = "${sentenceCase(row.name)} ${row.seal}" + if (row.index in conflicts) ", too close to the terrain" else ""
+                    contentDescription = "${sentenceCase(row.name)} ${row.number}" + if (row.index in conflicts) ", too close to the terrain" else ""
                     this.selected = chosen
                 },
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(row.seal, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                    Text(row.number, style = MaterialTheme.typography.labelLarge, maxLines = 1)
                 }
             }
             Text(altitudes[row.index].orEmpty(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)

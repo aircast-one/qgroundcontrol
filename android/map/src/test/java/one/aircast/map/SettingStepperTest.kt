@@ -28,8 +28,8 @@ class SettingStepperTest {
     }
 
     @Test
-    fun `the waypoint strip leaves out the planned home, which is not flown to`() {
-        val rows = listOf(0, 1, 2).map { ItemRow(it, "$it", "Waypoint", "", "#ffffff", true) }
+    fun `the waypoint strip leaves out the planned home, which is not flown to, and the actions under a waypoint`() {
+        val rows = listOf(0, 1, 2).map { ItemRow(it, "$it", "Waypoint", "", "#ffffff", true) } + ItemRow(3, "", "Set servo", "", "#ffffff", true)
         assertEquals(listOf(1, 2), stripRows(rows).map { it.index })
     }
 }

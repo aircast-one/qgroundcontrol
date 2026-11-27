@@ -130,6 +130,7 @@ data class MissionItem(
     val abbreviation: String = "",
     val dropsPayload: Boolean = false,
     val drops: Boolean = false,
+    val stop: Int? = null,
 )
 
 private fun JSONObject.isReturn() = optBoolean("endsRoute") && optInt("command") == MAV_CMD_NAV_RETURN_TO_LAUNCH
@@ -164,6 +165,7 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
         MissionItem(
             index = index,
             sequence = element.optInt("sequence", index),
+            stop = if (element.isNull("stop")) null else element.optInt("stop"),
             latitude = at?.latitude ?: Double.NaN,
             longitude = at?.longitude ?: Double.NaN,
             command = element.optText("name"),

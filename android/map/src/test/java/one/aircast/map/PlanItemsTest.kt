@@ -17,7 +17,7 @@ class PlanItemsTest {
         commandId: Int = 16,
     ) = MissionItem(
         index, sequence, 41.0, 44.0, name, false, altitude,
-        kind = kind, commandId = commandId,
+        kind = kind, commandId = commandId, stop = sequence,
         altitudeText = if (altitude.isNaN()) "" else "${altitude.toInt()} m",
     )
 
@@ -286,19 +286,19 @@ class SelectionSequenceTest {
 class AddingAfterTextTest {
     private val plan = listOf(
         MissionItem(0, 0, 41.0, 44.0, "Mission Start", false, 0.0, kind = "settings"),
-        MissionItem(2, 5, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint"),
+        MissionItem(2, 5, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint", stop = 2),
     )
 
     @Test
-    fun `the line names the sequence the operator sees on the marker`() {
-        assertEquals("Tap the map to add after #5", addingAfterText(MapHit.Waypoint(2), plan))
+    fun `the line names the waypoint by the number on its marker, not its mission sequence`() {
+        assertEquals("Tap the map to add after Waypoint 2", addingAfterText(MapHit.Waypoint(2), plan))
     }
 
     @Test
     fun `with the return selected the line says the new item goes before it`() {
-        val returning = plan + MissionItem(3, 6, 41.0, 44.0, "Return to launch", false, Double.NaN, kind = "land", endsRoute = true)
-        assertEquals("Tap the map to add before #6", addingAfterText(MapHit.Waypoint(3), returning))
-        assertEquals("Tap the map to add after #5", addingAfterText(MapHit.Waypoint(2), returning))
+        val returning = plan + MissionItem(3, 6, 41.0, 44.0, "Return to launch", false, Double.NaN, kind = "land", endsRoute = true, abbreviation = "Return")
+        assertEquals("Tap the map to add before Return to launch", addingAfterText(MapHit.Waypoint(3), returning))
+        assertEquals("Tap the map to add after Waypoint 2", addingAfterText(MapHit.Waypoint(2), returning))
     }
 
     @Test

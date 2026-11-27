@@ -240,6 +240,13 @@ class HeightRangeTest {
         assertEquals("50 m AMSL", heightRange(profile(50.0, 50.0, "50 m", "50 m", "50 m to 50 m")))
     }
 
+    @Test
+    fun `heights read from the launch when the core says the chart is measured from it`() {
+        val fromLaunch = terrainProfile(org.json.JSONObject("""{"points":[{"distance":0,"missionAltitude":0},{"distance":100,"missionAltitude":40}],"bandText":"0 m to 40 m","heightReference":"above launch"}"""))
+        assertEquals("0 m to 40 m above launch", heightRange(fromLaunch))
+        assertEquals("AMSL", terrainProfile(org.json.JSONObject("""{"points":[]}""")).heightReference)
+    }
+
 
     @Test
     fun `markers and collisions come from the core and a tap picks the nearest item`() {
@@ -250,7 +257,6 @@ class HeightRangeTest {
             {"distance":1000,"missionAltitude":100,"terrainAltitude":50}],
             "markers":[{"sequence":0,"distance":0,"label":"T"},{"sequence":2,"distance":200,"label":"2","complex":{"endDistance":600,"lastSequence":7,"pattern":"Survey"}}]}"""))
         assertEquals(listOf("T", "2"), profile.markers.map { it.label })
-        assertEquals(7, profile.markers[1].lastSequence)
         assertEquals(1, collisionSegments(profile, 1000f, 100f).size)
         assertEquals(
             "the exit line and the band between belong to the pattern; open ground selects nothing",

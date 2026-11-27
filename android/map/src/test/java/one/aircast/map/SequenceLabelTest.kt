@@ -27,10 +27,10 @@ class SequenceLabelTest {
     }
 
     @Test
-    fun `the rows of a plan with a folded speed leave no gap between them`() {
-        val rows = itemRows(listOf(item(0, 0), item(1, 0), item(2, 1), item(4, 0)))
+    fun `waypoints are numbered 1, 2, 3 in the list whatever commands fold into them, and an action under a waypoint has no number of its own`() {
+        val rows = itemRows(listOf(item(0, 0), item(1, 0).copy(stop = 1), item(2, 1).copy(stop = 2), item(4, 0)))
 
-        assertEquals(listOf("0", "1", "2–3", "4"), rows.map { it.number })
+        assertEquals(listOf("H", "1", "2", ""), rows.map { it.number })
     }
 
     @Test

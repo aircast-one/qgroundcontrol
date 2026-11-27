@@ -8,15 +8,15 @@ class PlanSummaryTest {
     private fun item(index: Int = 0, altitude: Double = Double.NaN) =
         MissionItem(
             index, index + 1, 41.0, 44.0, "Waypoint", false, altitude,
-            altitudeText = if (altitude.isNaN()) "" else "${altitude.toInt()} m",
+            altitudeText = if (altitude.isNaN()) "" else "${altitude.toInt()} m", stop = index - 1,
         )
 
     @Test
     fun `a selected waypoint shows its altitude against the number on its marker`() {
         assertEquals(
-            "the map marker and the list row are labelled with the sequence, so naming the " +
-                "index here would point at a different item once a survey is in the plan",
-            "#4 at 75 m",
+            "the map marker and the list row are labelled with the waypoint number, so naming the " +
+                "index or the mission sequence here would point at a different item",
+            "Waypoint 2 at 75 m",
             selectionText(MapHit.Waypoint(3), listOf(item(index = 3, altitude = 75.0)), emptyList(), emptyList()),
         )
     }

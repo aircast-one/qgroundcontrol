@@ -14,7 +14,7 @@ class AltitudeFrameTest {
     ) = MissionItem(
         2, 2, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint",
         altitudeText = text, altitudeBandText = band, altitudeFrameText = frameText,
-        altitudeEditUnits = editUnits,
+        altitudeEditUnits = editUnits, stop = 2,
     )
 
     @Test
@@ -55,12 +55,17 @@ class AltitudeFrameTest {
     fun `the summary chip carries the frame too, being the other place a height is spelled`() {
         val amsl = item("AMSL", "541 m")
 
-        assertEquals("#2 at 541 m AMSL", selectionText(MapHit.Waypoint(2), listOf(amsl), emptyList(), emptyList()))
-        assertEquals("#2 at 50.0 m", selectionText(MapHit.Waypoint(2), listOf(item("")), emptyList(), emptyList()))
+        assertEquals("Waypoint 2 at 541 m AMSL", selectionText(MapHit.Waypoint(2), listOf(amsl), emptyList(), emptyList()))
+        assertEquals("Waypoint 2 at 50.0 m", selectionText(MapHit.Waypoint(2), listOf(item("")), emptyList(), emptyList()))
     }
 
     @Test
     fun `a frame neither head has heard of is shown, not swallowed into the default`() {
         assertEquals("50.0 m SEABED", altitudeWithFrame(item("SEABED")))
+    }
+
+    @Test
+    fun `the launch row says its height is the ground's`() {
+        assertEquals("Ground 485 m AMSL", altitudeWithFrame(item("AMSL", "485 m").copy(index = HOME_ITEM)))
     }
 }

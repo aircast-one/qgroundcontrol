@@ -15,7 +15,6 @@ data class ItemRow(
     val colour: String,
     val placed: Boolean,
     val readyForSave: Boolean = true,
-    val seal: String = number,
 )
 
 internal const val NOT_READY_SEAL = "?"
@@ -26,7 +25,8 @@ internal fun altitudeWithFrame(item: MissionItem): String? {
         ?: item.altitudeBandText.ifBlank { null }
         ?: return null
     val frame = item.altitudeFrameText
-    return if (frame.isBlank()) height else "$height $frame"
+    val framed = if (frame.isBlank()) height else "$height $frame"
+    return if (item.index == HOME_ITEM) "Ground $framed" else framed
 }
 
 internal fun rallyAltitudeLabel(point: RallyPoint): String =
@@ -37,13 +37,13 @@ internal fun rallyAltitudeIsEditable(point: RallyPoint): Boolean =
 
 internal fun itemSeal(item: MissionItem): String = when (item.index) {
     HOME_ITEM -> HOME_SEAL
-    else -> waypointLabel(item.sequence, crowded = false, abbreviation = item.abbreviation.takeIf { !item.complexPattern }.orEmpty())
+    else -> waypointLabel(item.stop, crowded = false, abbreviation = item.abbreviation.takeIf { !item.complexPattern }.orEmpty())
 }
 
 internal fun itemTitle(item: MissionItem): String {
     val name = sentenceCase(item.command.ifBlank { "Item" })
     val seal = itemSeal(item)
-    return if (seal.all(Char::isDigit)) "$name $seal" else name
+    return if (seal.isNotEmpty() && seal.all(Char::isDigit)) "$name $seal" else name
 }
 
 internal fun sequenceLabel(item: MissionItem): String = when {
@@ -69,13 +69,12 @@ fun itemRows(
 ): List<ItemRow> = items.map { item ->
     ItemRow(
         index = item.index,
-        number = if (item.readyForSave) sequenceLabel(item) else NOT_READY_SEAL,
+        number = if (item.readyForSave) itemSeal(item) else NOT_READY_SEAL,
         name = item.command.ifBlank { "Item ${item.sequence}" },
         detail = itemDetail(item, stats[item.index]),
         colour = waypointColour(item.kind, item.commandId),
         placed = item.placed,
         readyForSave = item.readyForSave,
-        seal = if (item.readyForSave) itemSeal(item) else NOT_READY_SEAL,
     )
 }
 
@@ -126,7 +125,7 @@ fun selectionSequence(selected: MapHit?, items: List<MissionItem>): Int? {
 fun addingAfterText(selected: MapHit?, items: List<MissionItem>): String? {
     val index = missionItemIndex(selected) ?: return null
     val item = items.firstOrNull { it.index == index } ?: return null
-    return pastRouteEnd(item.index, items)?.let { "Tap the map to add before #${it.sequence}" } ?: "Tap the map to add after #${item.sequence}"
+    return pastRouteEnd(item.index, items)?.let { "Tap the map to add before ${itemTitle(it)}" } ?: "Tap the map to add after ${itemTitle(item)}"
 }
 
 fun legText(item: MissionItem): String? =
@@ -143,7 +142,7 @@ fun legText(item: MissionItem): String? =
 
 fun movedText(hit: MapHit, items: List<MissionItem>): String = when (hit) {
     is MapHit.Waypoint ->
-        items.firstOrNull { it.index == hit.index }?.let { "Moved #${it.sequence}" } ?: "Moved an item"
+        items.firstOrNull { it.index == hit.index }?.let { "Moved ${itemTitle(it).replaceFirstChar(Char::lowercaseChar)}" } ?: "Moved an item"
     is MapHit.FenceVertex -> "Moved a fence corner"
     is MapHit.SurveyVertex -> "Moved a survey corner"
     is MapHit.Rally -> "Moved a rally point"

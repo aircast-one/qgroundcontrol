@@ -6,12 +6,12 @@ import org.junit.Test
 class MovedNoticeTest {
 
     private val items = listOf(
-        MissionItem(4, 72, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint"),
+        MissionItem(4, 72, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint", stop = 3),
     )
 
     @Test
-    fun `a moved waypoint is named by the number on its marker`() {
-        assertEquals("Moved #72", movedText(MapHit.Waypoint(4), items))
+    fun `a moved waypoint is named by the number on its marker, not its mission sequence`() {
+        assertEquals("Moved waypoint 3", movedText(MapHit.Waypoint(4), items))
     }
 
     @Test

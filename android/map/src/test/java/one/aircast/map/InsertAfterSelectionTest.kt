@@ -15,8 +15,8 @@ class InsertAfterSelectionTest {
 
     @Test
     fun `an item not ready to send shows a question mark seal like MissionItemEditor`() {
-        val item = MissionItem(2, 2, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint", commandId = 16)
-        assertEquals("2", itemRows(listOf(item)).single().number)
+        val item = MissionItem(2, 2, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint", commandId = 16, stop = 1)
+        assertEquals("1", itemRows(listOf(item)).single().number)
         assertEquals(NOT_READY_SEAL, itemRows(listOf(item.copy(readyForSave = false))).single().number)
     }
 }

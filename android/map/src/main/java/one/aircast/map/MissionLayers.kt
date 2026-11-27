@@ -170,10 +170,10 @@ fun legLabels(items: List<MissionItem>): List<Pair<TrackPoint, String>> =
             TrackPoint((start.latitude + to.latitude) / 2, (start.longitude + to.longitude) / 2) to to.distanceText
         }
 
-fun waypointLabel(sequence: Int, crowded: Boolean, abbreviation: String = ""): String = when {
+fun waypointLabel(stop: Int?, crowded: Boolean, abbreviation: String = ""): String = when {
     crowded -> ""
     lettered(abbreviation) -> abbreviation.take(1)
-    else -> sequence.toString()
+    else -> stop?.toString().orEmpty()
 }
 
 fun sideLabel(crowded: Boolean, abbreviation: String): String =
@@ -190,14 +190,14 @@ fun markerStroke(crowded: Boolean, selected: Boolean): Double = when {
     else -> MARKER_STROKE
 }
 
-private data class Marker(val item: MissionItem, val at: TrackPoint, val sequence: Int, val exit: Boolean, val side: String? = null)
+private data class Marker(val item: MissionItem, val at: TrackPoint, val exit: Boolean, val side: String? = null)
 
 fun exitMarkers(items: List<MissionItem>): List<Pair<MissionItem, TrackPoint>> =
     items.filter { it.complexPattern }.mapNotNull { item -> item.exit?.let { item to it } }
 
 private fun landingMarkers(item: MissionItem, pattern: LandingPattern): List<Marker> = listOfNotNull(
-    pattern.finalApproach?.let { Marker(item, it, item.sequence, exit = false, side = if (pattern.loiterToAltitude) "Loiter" else "Approach") },
-    pattern.landing?.let { Marker(item, it, item.sequence + item.foldedCommands, exit = true, side = "Land") },
+    pattern.finalApproach?.let { Marker(item, it, exit = false, side = if (pattern.loiterToAltitude) "Loiter" else "Approach") },
+    pattern.landing?.let { Marker(item, it, exit = true, side = "Land") },
 )
 
 const val HOME_SEAL = "H"
@@ -223,14 +223,14 @@ fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null, landin
     val crowded = crowded(items.size)
     val patterns = landings.associateBy { it.index }
     val plain = items.filter { it.index !in patterns }.filterNot { it.index == HOME_ITEM && homeCovered(items) }
-    val markers = plain.map { item -> Marker(item, TrackPoint(item.latitude, item.longitude), item.sequence, exit = false, side = DROP_SIDE.takeIf { item.drops }) } +
-        exitMarkers(plain).map { (item, exit) -> Marker(item, exit, item.sequence + item.foldedCommands, exit = true) } +
+    val markers = plain.map { item -> Marker(item, TrackPoint(item.latitude, item.longitude), exit = false, side = DROP_SIDE.takeIf { item.drops }) } +
+        exitMarkers(plain).map { (item, exit) -> Marker(item, exit, exit = true) } +
         items.flatMap { item -> patterns[item.index]?.let { landingMarkers(item, it) }.orEmpty() }
-    val features = markers.map { (item, at, sequence, exit, side) ->
+    val features = markers.map { (item, at, exit, side) ->
         val lettered = item.abbreviation.takeIf { !exit && !item.complexPattern }.orEmpty()
         Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).apply {
             addNumberProperty(WAYPOINT_ID_PROPERTY, item.index)
-            addStringProperty(WAYPOINT_LABEL_PROPERTY, if (item.index == HOME_ITEM && !exit && !crowded) HOME_SEAL else waypointLabel(sequence, crowded, lettered))
+            addStringProperty(WAYPOINT_LABEL_PROPERTY, if (item.index == HOME_ITEM && !exit && !crowded) HOME_SEAL else waypointLabel(item.stop, crowded, lettered))
             addStringProperty(WAYPOINT_SIDE_LABEL_PROPERTY, side?.takeUnless { crowded } ?: sideLabel(crowded, lettered))
             addNumberProperty(
                 WAYPOINT_RADIUS_PROPERTY,

@@ -82,8 +82,9 @@ class PlanStripTest {
         val takeoff = MissionItem(1, 1, 41.0, 44.0, "Takeoff", false, 50.0, abbreviation = "Takeoff")
         val away = takeoff.copy(latitude = 41.001)
         assertEquals(listOf(true, false), listOf(homeCovered(listOf(home, takeoff)), homeCovered(listOf(home, away))))
-        assertEquals(listOf("H", "T", "2"), listOf(itemSeal(home), itemSeal(takeoff), itemSeal(MissionItem(2, 2, 41.0, 44.0, "Waypoint", false, 50.0))))
-        assertEquals(listOf("Takeoff", "Waypoint 2"), listOf(itemTitle(takeoff), itemTitle(MissionItem(2, 2, 41.0, 44.0, "Waypoint", false, 50.0))))
+        val plain = MissionItem(2, 2, 41.0, 44.0, "Waypoint", false, 50.0, stop = 1)
+        assertEquals("the first waypoint after the takeoff is waypoint 1, not mission item 2", listOf("H", "T", "1"), listOf(itemSeal(home), itemSeal(takeoff), itemSeal(plain)))
+        assertEquals(listOf("Takeoff", "Waypoint 1"), listOf(itemTitle(takeoff), itemTitle(plain)))
     }
 
     @Test

@@ -30,7 +30,6 @@ data class ProfileMarker(
     val distance: Double,
     val label: String,
     val endDistance: Double? = null,
-    val lastSequence: Int? = null,
     val pattern: String = "",
 )
 
@@ -44,6 +43,7 @@ data class TerrainProfile(
     val markers: List<ProfileMarker> = emptyList(),
     val band: Pair<Double, Double>? = null,
     val heightHeader: String = "",
+    val heightReference: String = "AMSL",
     val distanceTicks: List<String> = emptyList(),
     val heightTicks: List<String> = emptyList(),
 ) {
@@ -131,7 +131,6 @@ fun terrainProfile(view: JSONObject?): TerrainProfile {
                     distance = marker.optDouble("distance", 0.0),
                     label = marker.optText("label"),
                     endDistance = complex?.optDouble("endDistance"),
-                    lastSequence = complex?.optInt("lastSequence"),
                     pattern = complex?.optText("pattern").orEmpty(),
                 )
             }
@@ -144,6 +143,7 @@ fun terrainProfile(view: JSONObject?): TerrainProfile {
         band = view.optDouble("minAltitudeMeters", Double.NaN).takeIf { it.isFinite() }
             ?.let { low -> view.optDouble("maxAltitudeMeters", Double.NaN).takeIf { it.isFinite() }?.let { low to it } },
         heightHeader = view.optText("heightHeader"),
+        heightReference = view.optText("heightReference").ifBlank { "AMSL" },
         distanceTicks = view.optJSONArray("distanceTicks")?.let { list -> (0 until list.length()).map { list.optString(it) } }.orEmpty(),
         heightTicks = view.optJSONArray("heightTicks")?.let { list -> (0 until list.length()).map { list.optString(it) } }.orEmpty(),
     )
