@@ -671,10 +671,24 @@ test('a reading over the picture drags to a place of its own, keeps it after a r
   expect(await topStart(height)).toEqual(before);
 });
 
-const pullFromBar = async (page: Page, cell: Locator, dx: number, dy: number) => {
-  const [x, y] = await centre(cell);
-  await page.mouse.move(x, y);
+const pressOn = async (page: Page, target: Locator): Promise<readonly [number, number]> => {
+  await expect(async () => {
+    const at = await centre(target);
+    await page.mouse.move(at[0], at[1]);
+    const over = await target.evaluate((node, [x, y]) => {
+      const hit = document.elementFromPoint(x!, y!);
+      const item = node.closest('[data-layout-item]')?.parentElement ?? node;
+      return hit !== null && (item.contains(hit) || (hit.closest('[data-layout-item]')?.contains(node) ?? false));
+    }, at);
+    expect(over, 'the pointer is over it where it stands now, not where it stood before the bar moved').toBe(true);
+  }).toPass({ timeout: 15_000 });
+  const pressed = await centre(target);
   await page.mouse.down();
+  return pressed;
+};
+
+const pullFromBar = async (page: Page, cell: Locator, dx: number, dy: number) => {
+  const [x, y] = await pressOn(page, cell);
   await page.waitForTimeout(300);
   await page.mouse.move(x + dx, y + dy, { steps: 12 });
   await page.mouse.up();
@@ -695,9 +709,15 @@ test('a reading dropped on the top bar joins its items, and pulled down from the
       return (await centre(flightTime))[0] - first[0];
     }, { message: 'the bar has settled' })
     .toBe(0);
-  const [fromX, fromY] = await centre(distance);
+  await pressOn(vehicle, distance);
   const [timeX, timeY] = await centre(flightTime);
-  await dragBy(vehicle, distance, timeX - 30 - fromX, timeY - fromY);
+  await vehicle.mouse.move(timeX - 30, timeY, { steps: 12 });
+  await expect(async () => {
+    const [x, y] = await centre(flightTime);
+    await vehicle.mouse.move(x - 30, y);
+    expect((await centre(flightTime))[0], 'the pointer is just before the flight time where it stands now').toBe(x);
+  }).toPass({ timeout: 15_000 });
+  await vehicle.mouse.up();
   await expect(docked.getByText('D', { exact: true }), 'the reading is one of the bar items').toHaveCount(1);
   const row = (await strip.boundingBox())!;
   const inBar = (await distance.boundingBox())!;
