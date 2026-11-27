@@ -18,13 +18,43 @@ func waypointYaw(_ view: JSON?) -> WaypointYaw? {
 
 struct WaypointDrop: Equatable {
     var index: Int?
+    var wait: Double = 0
     var latitude: Double
     var longitude: Double
 }
 
 func waypointDrop(_ view: JSON?, _ latitude: Double, _ longitude: Double) -> WaypointDrop? {
     guard let drop = view?["drop"], drop.object != nil else { return nil }
-    return WaypointDrop(index: drop["index"].isNull ? nil : drop["index"].int(0), latitude: latitude, longitude: longitude)
+    return WaypointDrop(index: drop["index"].isNull ? nil : drop["index"].int(0), wait: drop["wait"].nonNanDouble ?? 0, latitude: latitude, longitude: longitude)
+}
+
+let PLACE_DROP = "core.plan.placeDrop"
+let REMOVE_DROP = "core.plan.removeDrop"
+private let PAYLOAD_SETTINGS = "settings.flyViewSettings"
+private let RELEASE_SETTING = "\(PAYLOAD_SETTINGS).payloadRelease"
+private let OUTPUT_SETTING = "\(PAYLOAD_SETTINGS).payloadBay1Output"
+private let PWM_SETTING = "\(PAYLOAD_SETTINGS).payloadBay1ReleasePwm"
+private let SERVO_RELEASE = 1.0
+private let OUTPUT_RANGE = 1.0...16.0
+private let PWM_RANGE = 500.0...2500.0
+private let WAIT_RANGE = 0.0...600.0
+private let PWM_STEP = 50.0
+private let DROP_NOTE = "Photos and camera moves happen on arrival; the drone then waits this long over the point and drops. The release is kept for every later drop."
+
+struct DropRelease: Equatable {
+    var servo: Bool
+    var output: Double
+    var pwm: Double
+}
+
+func dropRelease(_ release: Double, _ output: Double, _ pwm: Double) -> DropRelease {
+    DropRelease(servo: release == SERVO_RELEASE, output: output, pwm: pwm)
+}
+
+func dropText(_ release: DropRelease, _ wait: Double) -> String {
+    [release.servo ? "Servo \(trimmedNumber(release.output)) to \(trimmedNumber(release.pwm))" : "Gripper", wait > 0 ? "after \(trimmedNumber(wait)) s" : ""]
+        .filter { !$0.isEmpty }
+        .joined(separator: " · ")
 }
 
 enum ActionKind { case Hover, Camera, Gimbal, Mode, Turn, Drop }
@@ -72,7 +102,7 @@ func startingChoice(_ labels: [String], _ subject: String) -> Int? {
     labels.firstIndex { mentions($0, subject) && !mentions($0, "stop") }.flatMap { $0 > NO_CAMERA_ACTION ? $0 : nil }
 }
 
-func activeActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: CameraChoices?, _ extras: CameraExtras?, _ drop: WaypointDrop? = nil) -> [WaypointAction] {
+func activeActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: CameraChoices?, _ extras: CameraExtras?, _ drop: WaypointDrop? = nil, _ release: DropRelease? = nil) -> [WaypointAction] {
     [
         hold.flatMap { $0.seconds > 0 ? WaypointAction(kind: .Hover, title: "Hover", value: "\(trimmedNumber($0.seconds)) \($0.units)", icon: .planTimer) : nil },
         choices.flatMap { picked -> WaypointAction? in
@@ -87,7 +117,7 @@ func activeActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: Camera
                 : nil
         },
         yaw?.degrees.map { WaypointAction(kind: .Turn, title: "Turn aircraft", value: degreesText($0), icon: .planTurn) },
-        drop?.index.map { _ in WaypointAction(kind: .Drop, title: DROP_TITLE, value: "", icon: .planDrop) },
+        drop.flatMap { placed in placed.index.map { _ in WaypointAction(kind: .Drop, title: DROP_TITLE, value: release.map { dropText($0, placed.wait) } ?? "", icon: .planDrop) } },
     ].compactMap { $0 }
 }
 
@@ -122,14 +152,19 @@ struct WaypointActions: View {
     let yaw: WaypointYaw?
     var drop: WaypointDrop? = nil
     @Environment(\.theme) private var theme
+    @MapDouble(settingControl(RELEASE_SETTING)) private var releaseKind
+    @MapDouble(settingControl(OUTPUT_SETTING)) private var releaseOutput
+    @MapDouble(settingControl(PWM_SETTING)) private var releasePwm
     @State private var revision = 0
     @State private var camera: JSON?
     @State private var editing: ActionKind?
 
+    private var release: DropRelease { dropRelease(releaseKind, releaseOutput, releasePwm) }
+
     var body: some View {
         let choices = cameraChoices(camera)
         let extras = cameraExtras(camera)
-        let active = activeActions(hold, yaw, choices, extras, drop)
+        let active = activeActions(hold, yaw, choices, extras, drop, release)
         let offers = offeredActions(hold, yaw, choices, extras, drop)
         VStack(alignment: .leading, spacing: 0) {
             if !active.isEmpty || !offers.isEmpty {
@@ -162,7 +197,7 @@ struct WaypointActions: View {
                     }
                     PlanFlowRow(spacing: 8, lineSpacing: 8) {
                         ForEach(active, id: \.kind) { action in
-                            ActionChip(action: action, onClick: { editing = action.kind == .Drop ? nil : action.kind }, onRemove: { remove(action.kind) })
+                            ActionChip(action: action, onClick: { editing = action.kind }, onRemove: { remove(action.kind) })
                         }
                     }
                 }
@@ -197,7 +232,21 @@ struct WaypointActions: View {
                         SettingStepper(label: "Yaw", value: extras.yaw, unit: "°", step: ANGLE_STEP, onSet: { setCamera("gimbalYaw", $0) }, range: extras.yawRange ?? HEADING_RANGE, slider: true)
                     }
                 case .Drop:
-                    EmptyView()
+                    if let drop {
+                        HStack(spacing: Space.s2) {
+                            CameraChip(label: "Gripper", selected: !release.servo) { remember(RELEASE_SETTING, 0) }
+                            CameraChip(label: "Servo", selected: release.servo) { remember(RELEASE_SETTING, SERVO_RELEASE) }
+                        }
+                        if release.servo {
+                            SettingStepper(label: "Servo output", value: release.output, unit: "", step: 1.0, onSet: { remember(OUTPUT_SETTING, $0) }, range: OUTPUT_RANGE)
+                            SettingStepper(label: "Release PWM", value: release.pwm, unit: "µs", step: PWM_STEP, onSet: { remember(PWM_SETTING, $0) }, range: PWM_RANGE)
+                        }
+                        SettingStepper(label: "Wait before dropping", value: drop.wait, unit: "s", step: 1.0, onSet: { placeDrop($0) }, range: WAIT_RANGE)
+                        Text(DROP_NOTE)
+                            .font(.bodySmall)
+                            .foregroundStyle(theme.colors.onSurfaceVariant)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 case .Mode:
                     HStack(spacing: Space.s2) {
                         ForEach(Array(CAMERA_MODES.enumerated()), id: \.offset) { at, label in
@@ -236,9 +285,9 @@ struct WaypointActions: View {
         case .Gimbal: setCamera("specifyGimbal", true)
         case .Mode: setCamera("specifyCameraMode", true)
         case .Turn: setYaw(0.0)
-        case .Drop: addDrop()
+        case .Drop: placeDrop(0)
         }
-        editing = offer.kind == .Drop ? nil : offer.kind
+        editing = offer.kind
     }
 
     private func remove(_ kind: ActionKind) {
@@ -252,15 +301,25 @@ struct WaypointActions: View {
         }
     }
 
-    private func addDrop() {
+    private func placeDrop(_ wait: Double) {
         guard let drop else { return }
-        let after = index + 1
-        write { insertMissionItem(KIND_DROP, drop.latitude, drop.longitude, after).ok }
+        let waypoint = index
+        let placed = drop.index
+        write { invokeOk(PLACE_DROP, waypoint, placed, wait) }
+    }
+
+    private func remember(_ setting: String, _ value: Double) {
+        guard let drop else { return }
+        let waypoint = index
+        let placed = drop.index
+        let wait = drop.wait
+        write { setOk(setting, value) && invokeOk(PLACE_DROP, waypoint, placed, wait) }
     }
 
     private func removeDrop() {
         guard let at = drop?.index else { return }
-        write { removeMissionItem(at).ok }
+        let waypoint = index
+        write { invokeOk(REMOVE_DROP, waypoint, at) }
     }
 
     private func write(_ work: @escaping @Sendable () -> Bool) {

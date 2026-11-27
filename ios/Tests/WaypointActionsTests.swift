@@ -79,11 +79,22 @@ final class WaypointActionsTests: XCTestCase {
         XCTAssertEqual(41.0, legs[0].0.latitude, accuracy: 1e-9)
     }
 
+    func testAServoDropSaysWhichServoWhichPwmAndHowLongTheDroneWaitsFirst() {
+        let servo = dropRelease(1, 4, 2000)
+        XCTAssertEqual(dropText(servo, 10), "Servo 4 to 2000 · after 10 s")
+        XCTAssertEqual(dropText(dropRelease(0, 9, 1900), 0), "Gripper")
+        XCTAssertEqual(
+            activeActions(noHold, noTurn, nil, nil, waypointDrop(JSON.parse(#"{"drop":{"index":5,"wait":10}}"#), 47.1, 8.2), servo).map(\.value),
+            ["Servo 4 to 2000 · after 10 s"]
+        )
+    }
+
     func testAWaypointOffersADropUntilOneFollowsItThenShowsItAsAnAction() {
         let free = waypointDrop(JSON.parse(#"{"drop":{"index":null}}"#), 47.1, 8.2)
         let taken = waypointDrop(JSON.parse(#"{"drop":{"index":5}}"#), 47.1, 8.2)
         XCTAssertNil(waypointDrop(JSON.parse("{}"), 47.1, 8.2))
-        XCTAssertEqual(free, WaypointDrop(index: nil, latitude: 47.1, longitude: 8.2))
+        XCTAssertEqual(free, WaypointDrop(index: nil, wait: 0, latitude: 47.1, longitude: 8.2))
+        XCTAssertEqual(waypointDrop(JSON.parse(#"{"drop":{"index":6,"wait":10}}"#), 47.1, 8.2)?.wait, 10)
         XCTAssertEqual(offeredActions(noHold, noTurn, nil, nil, free).map(\.title), ["Hover", "Turn aircraft", "Drop payload"])
         XCTAssertEqual(offeredActions(noHold, noTurn, nil, nil, taken).map(\.title), ["Hover", "Turn aircraft"])
         XCTAssertEqual(activeActions(noHold, noTurn, nil, nil, taken).map(\.title), ["Drop payload"])
