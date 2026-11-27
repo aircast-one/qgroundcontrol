@@ -1794,7 +1794,7 @@ fn send() -> Value {
     if waiting_on_terrain(&document) {
         return refused(format!("Unable to Upload. {WAITING_ON_TERRAIN}"));
     }
-    let items = match crate::planitems::flatten(&plandoc::mission(&document)) {
+    let items = match crate::planitems::flatten(&plandoc::mission(&plandoc::as_flown(&document))) {
         Ok(items) => items,
         Err(reason) => return refused(reason),
     };
@@ -2250,8 +2250,8 @@ fn row_of_sequence(document: &Document, sequence: i64) -> Option<FlownRow> {
 fn flown_rows_document(planned: Option<&Document>, mission: &FlownMission) -> Document {
     let flown = flown_document(mission);
     planned
+        .map(plandoc::as_flown)
         .filter(|plan| sequence_count(plan) == sequence_count(&flown))
-        .cloned()
         .unwrap_or(flown)
 }
 

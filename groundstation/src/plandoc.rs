@@ -1674,6 +1674,7 @@ pub const WAIT_NEEDS_A_HOVER: &str =
     "Only a multirotor can wait over the point before it drops. A plane flies through its drop.";
 pub const WAIT_RANGE_SECONDS: std::ops::RangeInclusive<f64> = 0.0..=600.0;
 pub const WAIT_OUT_OF_RANGE: &str = "The wait before a drop is from 0 to 600 seconds.";
+pub const WAIT_TOO_SHORT: &str = "A wait before a drop is at least 1 second, or none. The drone needs that long to finish the camera actions before it drops.";
 pub const NOT_A_SERVO_DROP: &str =
     "This drop opens the gripper, which has no servo output or PWM of its own.";
 
@@ -1743,6 +1744,85 @@ pub fn drop_wait(doc: &Document, waypoint_visual: usize, drop_visual: usize) -> 
     }
 }
 
+const CMD_NAV_LAST: i64 = 95;
+const NAV_BEYOND_LAST: [i64; 3] = [213, 42702, 42703];
+pub const SHORTEST_DELAY_SECONDS: f64 = 1.0;
+const TIME_OF_DAY_UNUSED: f64 = -1.0;
+
+fn is_nav(command: i64) -> bool {
+    command <= CMD_NAV_LAST || NAV_BEYOND_LAST.contains(&command)
+}
+
+fn flown_commands_of(item: &Item) -> Vec<i64> {
+    match item {
+        Item::Simple(simple) => std::iter::once(simple.command)
+            .chain(simple.sections.iter().map(|section| section.command))
+            .collect(),
+        Item::Complex { .. } => vec![CMD_NAV_WAYPOINT],
+    }
+}
+
+fn queued_before(doc: &Document, at: usize) -> usize {
+    doc.items[..at]
+        .iter()
+        .rev()
+        .flat_map(|item| flown_commands_of(item).into_iter().rev())
+        .take_while(|command| !is_nav(*command))
+        .count()
+}
+
+fn runs_out_at_once(delay: &Simple) -> bool {
+    delay.command == CMD_NAV_DELAY
+        && delay.params[0].is_some_and(|seconds| seconds > 0.0 && seconds < SHORTEST_DELAY_SECONDS)
+}
+
+fn closing_delay() -> Item {
+    Item::Simple(mission_command(
+        CMD_NAV_DELAY,
+        [
+            SHORTEST_DELAY_SECONDS,
+            TIME_OF_DAY_UNUSED,
+            TIME_OF_DAY_UNUSED,
+            TIME_OF_DAY_UNUSED,
+            0.0,
+            0.0,
+            0.0,
+        ],
+    ))
+}
+
+pub fn as_flown(doc: &Document) -> Document {
+    if firmware(doc.firmware_type) != Firmware::ArduPilot {
+        return doc.clone();
+    }
+    let items: Vec<Item> = doc
+        .items
+        .iter()
+        .enumerate()
+        .map(|(at, item)| match item {
+            Item::Simple(delay) if runs_out_at_once(delay) && queued_before(doc, at) > 1 => {
+                Item::Simple(Simple {
+                    params: std::array::from_fn(|i| match i {
+                        0 => Some(SHORTEST_DELAY_SECONDS),
+                        _ => delay.params[i],
+                    }),
+                    ..delay.clone()
+                })
+            }
+            _ => item.clone(),
+        })
+        .collect();
+    let left_at_the_end = queued_before(doc, doc.items.len());
+    let flies = doc.items.iter().flat_map(flown_commands_of).any(is_nav);
+    Document {
+        items: items
+            .into_iter()
+            .chain((flies && left_at_the_end > 1).then(closing_delay))
+            .collect(),
+        ..doc.clone()
+    }
+}
+
 pub fn wait_offered(doc: &Document) -> bool {
     vehicle_class(doc.vehicle_type) == VehicleClass::MultiRotor
 }
@@ -1781,6 +1861,9 @@ fn with_wait(
     }
     if wait > 0.0 && !wait_offered(doc) {
         return Err(WAIT_NEEDS_A_HOVER.to_string());
+    }
+    if wait > 0.0 && wait < SHORTEST_DELAY_SECONDS {
+        return Err(WAIT_TOO_SHORT.to_string());
     }
     let timed = |doc: &Document, delay_visual: usize| {
         set_param(doc, delay_visual, 1, wait)
@@ -4149,6 +4232,133 @@ mod tests {
             crate::missionitems::letter(&json!({ "abbreviation": "S", "isSimpleItem": false })),
             None,
             "a pattern is a numbered stop"
+        );
+    }
+
+    #[test]
+    fn ardupilot_starts_only_the_first_command_left_after_the_last_place_so_a_mission_ending_in_several_is_closed_with_a_delay()
+     {
+        let servos = [bay(4, 1500.0)];
+        let aimed = [("specifyGimbal", json!(true)), ("cameraAction", json!(6))]
+            .iter()
+            .try_fold(route(2, ""), |doc, (property, value)| {
+                set_camera(&doc, 4, property, value)
+            })
+            .unwrap();
+        let dropping = place_drop(&aimed, 4, None, &QT_DEFAULTS, &servos).unwrap();
+        let sent = |doc: &Document| -> Vec<(i64, Option<f64>)> {
+            as_flown(doc)
+                .items
+                .iter()
+                .flat_map(|item| match item {
+                    Item::Simple(s) => std::iter::once(s)
+                        .chain(s.sections.iter())
+                        .map(|s| (s.command, s.params[0]))
+                        .collect(),
+                    Item::Complex { .. } => Vec::new(),
+                })
+                .skip(3)
+                .collect()
+        };
+        assert_eq!(
+            sent(&dropping),
+            [
+                (
+                    CMD_NAV_WAYPOINT,
+                    Some(crate::payloadcheck::DROP_HOLD_SECONDS)
+                ),
+                (CMD_DO_MOUNT_CONTROL, Some(0.0)),
+                (CMD_IMAGE_START_CAPTURE, Some(0.0)),
+                (SERVO, Some(4.0)),
+                (CMD_NAV_DELAY, Some(SHORTEST_DELAY_SECONDS))
+            ],
+            "tilt, photo and drop on the last waypoint: the photo and the drop are fetched one by one while a navigation command runs, so one is added for them to run under"
+        );
+        assert_eq!(
+            sent(&aimed).last(),
+            Some(&(CMD_NAV_DELAY, Some(SHORTEST_DELAY_SECONDS))),
+            "a tilt and a photo alone need it too"
+        );
+        let waited = place_drop(&aimed, 4, Some(10.0), &QT_DEFAULTS, &servos).unwrap();
+        assert_eq!(
+            sent(&waited)[3..],
+            [(CMD_NAV_DELAY, Some(10.0)), (SERVO, Some(4.0))],
+            "after a wait the drop is the one command left, and that one is started before the mission ends"
+        );
+        assert_eq!(
+            sent(&place_drop(&route(2, ""), 4, None, &QT_DEFAULTS, &servos).unwrap()).last(),
+            Some(&(SERVO, Some(4.0))),
+            "a drop alone on the last waypoint runs as it is"
+        );
+        let returning = insert_simple(
+            &dropping,
+            CMD_NAV_RETURN_TO_LAUNCH,
+            0.0,
+            0.0,
+            -1,
+            &QT_DEFAULTS,
+        );
+        let unchanged = |doc: &Document| save(&as_flown(doc)) == save(doc);
+        assert!(
+            unchanged(&returning),
+            "with a return after them the commands run on the way home"
+        );
+        let px4 = Document {
+            firmware_type: 12,
+            ..dropping.clone()
+        };
+        assert!(unchanged(&px4), "this is ArduPilot's mission runner");
+        let no_route = Document {
+            items: Vec::new(),
+            ..dropping.clone()
+        };
+        assert!(unchanged(&no_route));
+    }
+
+    #[test]
+    fn a_delay_that_would_end_at_once_is_held_a_second_so_the_commands_queued_before_it_all_run() {
+        let servos = [bay(4, 1500.0)];
+        let dropped = place_drop(&route(2, ""), 2, None, &QT_DEFAULTS, &servos).unwrap();
+        assert_eq!(
+            place_drop(&dropped, 2, Some(0.5), &QT_DEFAULTS, &servos).unwrap_err(),
+            WAIT_TOO_SHORT,
+            "ArduPilot drops the commands still queued when the next navigation command completes, so a drop's wait is a second or none"
+        );
+        let aimed = [("specifyGimbal", json!(true)), ("cameraAction", json!(6))]
+            .iter()
+            .try_fold(dropped, |doc, (property, value)| {
+                set_camera(&doc, 2, property, value)
+            })
+            .unwrap();
+        let by_hand = |seconds: f64| {
+            set_param(
+                &insert_simple(&aimed, CMD_NAV_DELAY, 0.0, 0.0, 3, &QT_DEFAULTS),
+                3,
+                1,
+                seconds,
+            )
+            .unwrap()
+        };
+        let delay_sent = |doc: &Document| match &as_flown(doc).items[2] {
+            Item::Simple(delay) => (delay.command, delay.params[0]),
+            Item::Complex { .. } => (0, None),
+        };
+        assert_eq!(
+            delay_sent(&by_hand(0.2)),
+            (CMD_NAV_DELAY, Some(SHORTEST_DELAY_SECONDS)),
+            "a tilt and a photo wait before this delay, and at 0.2 s the photo would be skipped"
+        );
+        assert_eq!(delay_sent(&by_hand(5.0)), (CMD_NAV_DELAY, Some(5.0)));
+        let bare = set_param(
+            &insert_simple(&route(2, ""), CMD_NAV_DELAY, 0.0, 0.0, 3, &QT_DEFAULTS),
+            3,
+            1,
+            0.2,
+        )
+        .unwrap();
+        assert!(
+            save(&as_flown(&bare)) == save(&bare),
+            "with nothing queued before it a short delay is left as the pilot wrote it"
         );
     }
 
