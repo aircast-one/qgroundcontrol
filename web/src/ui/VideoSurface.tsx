@@ -3,7 +3,7 @@ import { AppCommands, VideoCommands } from '@/bridge/BridgeCommands';
 import { Qgc } from '@/bridge/Qgc';
 import { settingControl, useQgcBool, useQgcPath, useQgcValue } from '@/bridge/QgcState';
 import { type NativePlayer, VIDEO_LOG, playNative, playsNatively } from '@/core/nativeVideo';
-import { recordStream } from '@/core/recorder';
+import { pictureStream, recordStream } from '@/core/recorder';
 import { playHls } from '@/core/hls';
 import { type PlaybackReport, playWhep } from '@/core/whep';
 import { useUpdatedRef } from '@/kotlin/Compose';
@@ -27,7 +27,7 @@ import { GIMBAL_INDICATOR_PATH, GimbalScreenControl, onScreenGimbal } from '@/ui
 import { wheelScale } from '@/ui/Map3dView';
 import { LocalNoVideoSize, NoVideoPanel, NoVideoSize, deviceNeeds, openCameraSetup, useCameraMissing } from '@/ui/NoVideoPanel';
 import { DEVICE_TELEMETRY, OFFLINE_SHEET, OFFLINE_STATUS_VIEW, type OfflineStatus, offlineStatus, openAddLink, openDeviceTelemetry } from '@/ui/OfflineStatusSheet';
-import { osdShadow } from '@/ui/Osd';
+import { OSD_SCRIM, osdShadow } from '@/ui/Osd';
 import { mainVideoStats } from '@/ui/OsdDetails';
 import { type PicturePress, type PictureSpot, PictureMark, usePictureHold } from '@/ui/PictureHold';
 import { ProximityRadarOverlay } from '@/ui/ProximityRadar';
@@ -36,7 +36,7 @@ import { TrackingBoxOverlay } from '@/ui/TrackingBoxOverlay';
 import { VideoArOverlay } from '@/ui/VideoAr';
 import { usePointerGestures } from '@/ui/VideoGestures';
 import { VideoStatsPill } from '@/ui/VideoStatsPill';
-import { BUFFERED_VIDEO_NOTE, TRY_LOW_LATENCY, VIDEO_VIEW, type SourceSize, type VideoReading, hlsEndpoint, nativeRecordingFile, streamUri, videoReading, whepEndpoint, whepRestarts } from '@/ui/VideoView';
+import { BUFFERED_RECORDING_REFUSED, BUFFERED_VIDEO_NOTE, BUFFERED_VIDEO_SHORT, TRY_LOW_LATENCY, VIDEO_VIEW, type SourceSize, type VideoReading, hlsEndpoint, nativeRecordingFile, streamUri, videoReading, whepEndpoint, whepRestarts } from '@/ui/VideoView';
 
 export const CAMERA_STEP_ZOOM = 'vehicle.cameraManager.currentCameraInstance.stepZoom';
 
@@ -375,10 +375,10 @@ const MainPane = ({
             <DetectionOverlay className="absolute inset-0 size-full" />
             <TrackingBoxOverlay className="absolute inset-0 size-full" />
             {expanded ? <VideoStatsPill className="absolute inset-0 size-full" /> : null}
-            {expanded ? <BufferedVideoNote /> : null}
             {groundSpot !== null ? <PictureMark spot={groundSpot} /> : null}
           </>
         ) : null}
+        {expanded ? <BufferedVideoNote channel={MAIN_VIDEO_CHANNEL} playing={decoding} text={BUFFERED_VIDEO_NOTE} /> : null}
       </div>
       {!decoding && synthetic && !expanded ? (
         <SyntheticThumb className="absolute inset-0" />
@@ -396,31 +396,26 @@ const MainPane = ({
 const SecondPane = ({ camera, className }: { camera: CameraEntry; className: string }) => {
   const page = useSyntheticPage();
   const show = () => showCamera(camera.slot);
+  const streamed = camera.source !== SYNTHETIC_SOURCE;
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      aria-label={`Second camera, ${camera.title}`}
-      aria-description={`Make ${camera.title} the main view`}
-      onClick={show}
-      onKeyDown={activate(show)}
-      className={`relative cursor-pointer overflow-hidden ${className}`}
-      style={{ marginInlineStart: PANE_DIVIDER }}
-    >
-      {camera.source === SYNTHETIC_SOURCE ? <SyntheticView className="absolute inset-0 size-full" aimable={false} /> : <VideoChannelSurface channel={PIP_VIDEO_CHANNEL} className="absolute inset-0 size-full" />}
-      {camera.status !== CameraStatus.Live ? (
-        <div className="absolute inset-0 flex items-center justify-center" style={{ background: aircast('outdoorBackground') }}>
-          <Text typography="labelLarge" color={aircast('outdoorForeground')}>
-            {camera.status.label}
+    <div className={`relative overflow-hidden ${className}`} style={{ marginInlineStart: PANE_DIVIDER }}>
+      <div role="button" tabIndex={0} aria-label={`Second camera, ${camera.title}`} aria-description={`Make ${camera.title} the main view`} onClick={show} onKeyDown={activate(show)} className="absolute inset-0 cursor-pointer">
+        {streamed ? <VideoChannelSurface channel={PIP_VIDEO_CHANNEL} className="absolute inset-0 size-full" /> : <SyntheticView className="absolute inset-0 size-full" aimable={false} />}
+        {camera.status !== CameraStatus.Live ? (
+          <div className="absolute inset-0 flex items-center justify-center" style={{ background: aircast('outdoorBackground') }}>
+            <Text typography="labelLarge" color={aircast('outdoorForeground')}>
+              {camera.status.label}
+            </Text>
+          </div>
+        ) : null}
+        <div className={`absolute start-0 top-0 flex items-center ${osdShadow()}`} style={{ padding: AircastSpace.s2, gap: AircastSpace.s1 }}>
+          <CameraStatusDot status={shownCameraStatus(camera, true, page)} />
+          <Text typography="labelMedium" color={aircast('outdoorForeground')} maxLines={1}>
+            {camera.short}
           </Text>
         </div>
-      ) : null}
-      <div className={`absolute start-0 top-0 flex items-center ${osdShadow()}`} style={{ padding: AircastSpace.s2, gap: AircastSpace.s1 }}>
-        <CameraStatusDot status={shownCameraStatus(camera, true, page)} />
-        <Text typography="labelMedium" color={aircast('outdoorForeground')} maxLines={1}>
-          {camera.short}
-        </Text>
       </div>
+      {streamed ? <BufferedVideoNote channel={PIP_VIDEO_CHANNEL} playing={camera.status === CameraStatus.Live} text={BUFFERED_VIDEO_SHORT} /> : null}
     </div>
   );
 };
@@ -448,18 +443,22 @@ export class PipSurfaces {
 
 const pipSurfaces = new PipSurfaces((shown) => void VideoCommands.setPipShown(shown));
 
-const BufferedVideoNote = () => {
-  const buffered = hlsEndpoint(useQgcPath(VIDEO_VIEW), MAIN_VIDEO_CHANNEL) !== null;
-  return buffered ? (
+export const BufferedVideoNote = ({ channel, playing, text }: { channel: number; playing: boolean; text: string }) => {
+  const buffered = hlsEndpoint(useQgcPath(VIDEO_VIEW), channel) !== null && playing;
+  return (
     <div role="status" className="pointer-events-none absolute inset-x-0 top-2 flex justify-center px-3">
-      <div className="pointer-events-auto flex items-center gap-2 rounded-shape-sm py-1 ps-3 pe-1" style={{ background: withAlpha(Color.Black, 0.6) }}>
-        <Text typography="labelMedium" color={Color.White}>
-          {BUFFERED_VIDEO_NOTE}
-        </Text>
-        <TextButton onClick={() => void VideoCommands.tryLowLatency()}>{TRY_LOW_LATENCY}</TextButton>
-      </div>
+      {buffered ? (
+        <div className="pointer-events-auto flex items-center gap-2 rounded-shape-sm py-1 ps-3 pe-1" style={{ background: OSD_SCRIM }}>
+          <Text typography="labelMedium" color={Color.White}>
+            {text}
+          </Text>
+          <TextButton className="underline" contentColor={Color.White} onClick={() => void VideoCommands.tryLowLatency(channel)}>
+            {TRY_LOW_LATENCY}
+          </TextButton>
+        </div>
+      ) : null}
     </div>
-  ) : null;
+  );
 };
 
 export const VideoChannelSurface = ({ channel, className }: { channel: number; className?: string }) => {
@@ -520,15 +519,20 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
           () => VideoCommands.reportRecording(false),
         );
     }
-    const stream = video.current?.srcObject;
-    if (recordingFile === null || !(stream instanceof MediaStream)) return undefined;
+    const element = video.current;
+    if (recordingFile === null || element === null) return undefined;
+    const stream = pictureStream(element, buffered !== null);
+    if (stream === null) {
+      if (buffered !== null) void VideoCommands.reportRecordingFailed(BUFFERED_RECORDING_REFUSED);
+      return undefined;
+    }
     const stop = recordStream(stream, recordingFile, (recording) => createDocument(recording.name, recording.type, recording));
     void VideoCommands.reportRecording(true);
     return () => {
       stop();
       void VideoCommands.reportRecording(false);
     };
-  }, [recordingFile, native]);
+  }, [recordingFile, native, buffered]);
   return native !== null ? (
     <canvas ref={canvas} className={`block bg-black object-fill ${className ?? ''}`} />
   ) : (

@@ -73,6 +73,10 @@ export const hlsEndpoint = (view: Json | null, channel: number): string | null =
 
 export const BUFFERED_VIDEO_NOTE = "Low-latency video can't get through this link, so this is buffered video, a few seconds behind.";
 
+export const BUFFERED_VIDEO_SHORT = 'Buffered video, a few seconds behind.';
+
+export const BUFFERED_RECORDING_REFUSED = 'This browser cannot record buffered video. Try low latency, then record.';
+
 export const TRY_LOW_LATENCY = 'Try low latency';
 
 export const streamUri = (view: Json | null, channel: number): string | null => {

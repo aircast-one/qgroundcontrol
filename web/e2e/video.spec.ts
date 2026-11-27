@@ -18,8 +18,8 @@ test('a WHEP camera plays in the Fly view', async ({ app }) => {
   await expect(app.getByText(/^Detections:/)).toHaveCount(0);
 });
 
-test('a WHEP camera whose WebRTC never connects over the link falls back to the same stream as buffered HLS, and says so', async ({ app }) => {
-  test.setTimeout(180_000);
+test('a WHEP camera whose WebRTC never connects over the link falls back to the same stream as buffered HLS, says so, records it and offers the way back', async ({ app }, testInfo) => {
+  test.setTimeout(270_000);
   const relayed = 'http://localhost:18889/fly/whep/e2e/whep';
   await app.route('http://localhost:18889/fly/whep/**', async (route) => {
     if (route.request().method() !== 'POST') return route.fulfill({ status: 200 });
@@ -34,8 +34,22 @@ test('a WHEP camera whose WebRTC never connects over the link falls back to the 
   await expect(note, 'two WebRTC attempts that never pair are enough to stop retrying them').toBeVisible({ timeout: 150_000 });
   const video = app.locator('video').first();
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.getVideoPlaybackQuality().totalVideoFrames), { message: 'the HLS twin of the same path plays', timeout: 30_000 }).toBeGreaterThan(0);
-  await app.getByRole('button', { name: 'Try low latency' }).click();
+  await app.getByRole('button', { name: 'Start recording' }).first().click();
+  const stop = app.getByRole('button', { name: 'Stop recording' }).first();
+  await expect(stop).toBeVisible({ timeout: 15_000 });
+  await expect(app.getByText(/^REC 00:00:(0[3-9]|[1-5]\d)$/).first()).toBeVisible({ timeout: 30_000 });
+  const saving = app.waitForEvent('download');
+  await stop.click();
+  const saved = await saving;
+  const file = testInfo.outputPath(saved.suggestedFilename());
+  await saved.saveAs(file);
+  expect((await readFile(file)).length, 'the buffered picture is recorded, not silently skipped').toBeGreaterThan(10_000);
+  const back = app.getByRole('button', { name: 'Try low latency' });
+  await expect(back, 'the way back is white on the scrim, not the near-black light-theme primary').toHaveCSS('color', 'rgb(255, 255, 255)');
+  await back.click();
   await expect(note).toHaveCount(0);
+  await expect.poll(async () => ((await coreView(app, 'view.video')) as { whepEndpoints?: (string | null)[] } | null)?.whepEndpoints?.[0] ?? null, { message: 'WebRTC is really tried again' }).toBe(relayed);
+  await expect(note, 'this link still cannot carry WebRTC, so one more failed attempt goes straight back to buffered').toBeVisible({ timeout: 90_000 });
 });
 
 test('the camera chip on the picture opens Video sources in one tap', async ({ app }) => {
