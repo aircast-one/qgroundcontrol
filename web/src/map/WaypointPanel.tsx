@@ -40,7 +40,7 @@ export const altitudeNote = (item: MissionItem, launch: number | null): string |
   return item.altitudeMode === ALT_MODE_AMSL && launch !== null ? `${frame ?? 'AMSL'} · launch is ${format('%,.0f', launch)} ${editUnits(item)}` : frame;
 };
 
-export const stripRows = (rows: readonly ItemRow[]): readonly ItemRow[] => rows.filter((it) => it.index !== HOME_ITEM);
+export const stripRows = (rows: readonly ItemRow[]): readonly ItemRow[] => rows.filter((it) => it.index !== HOME_ITEM && it.number !== '');
 
 const parsedColour = (text: string): string | null =>
   /^#[0-9a-fA-F]{6}$/.test(text) ? text : /^#[0-9a-fA-F]{8}$/.test(text) ? argb(Number.parseInt(text.slice(1), 16)) : null;

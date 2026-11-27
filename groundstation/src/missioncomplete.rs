@@ -206,9 +206,7 @@ const STOPPED_DETAIL: &str = "The aircraft left the mission before finishing it.
 pub fn title(finished: bool, reached: Progress, row: Option<&crate::coreplan::FlownRow>) -> String {
     match (finished, reached.waypoint > 0, row) {
         (true, ..) => COMPLETE_TITLE.to_string(),
-        (false, true, Some(row)) => {
-            format!("{STOPPED_TITLE} at {} {} of {}", row.name, row.at, row.of)
-        }
+        (false, true, Some(row)) => format!("{STOPPED_TITLE} at {}", row.place),
         (false, true, None) => format!(
             "{STOPPED_TITLE} at waypoint {} of {}",
             reached.waypoint, reached.of
@@ -230,7 +228,7 @@ pub fn resume_place(first: usize, row: Option<&crate::coreplan::FlownRow>) -> St
             let inside = row.within.map_or(String::new(), |(at, of)| {
                 format!(", at its waypoint {at} of {of}")
             });
-            format!("the {} ({} of {}){inside}", row.name, row.at, row.of)
+            format!("the {}{inside}", row.place)
         }
         None => format!("waypoint {first}"),
     }
@@ -303,29 +301,27 @@ mod tests {
     #[test]
     fn a_resume_names_the_plan_row_and_where_inside_a_pattern_it_starts() {
         let survey = crate::coreplan::FlownRow {
-            at: 2,
-            of: 3,
-            name: "survey".to_string(),
+            place: "survey 2 of 3".to_string(),
+            arrived: false,
             within: Some((14, 40)),
         };
         assert_eq!(
             resume_label(&resume_place(49, Some(&survey))),
-            "Resume from the survey (2 of 3), at its waypoint 14 of 40",
-            "the title names the survey as row 2 of 3, so the button must not fall back to the vehicle's command 49"
+            "Resume from the survey 2 of 3, at its waypoint 14 of 40",
+            "the title names the survey as stop 2 of 3, so the button must not fall back to the vehicle's command 49"
         );
         let waypoint = crate::coreplan::FlownRow {
-            at: 3,
-            of: 5,
-            name: "waypoint".to_string(),
+            place: "waypoint 3 of 5".to_string(),
+            arrived: false,
             within: None,
         };
         assert_eq!(
             resume_label(&resume_place(4, Some(&waypoint))),
-            "Resume from the waypoint (3 of 5)"
+            "Resume from the waypoint 3 of 5"
         );
         assert_eq!(
             interrupted_detail(&resume_place(49, Some(&survey)), 0),
-            "The aircraft left the mission before finishing it. Resuming flies it again from the survey (2 of 3), at its waypoint 14 of 40."
+            "The aircraft left the mission before finishing it. Resuming flies it again from the survey 2 of 3, at its waypoint 14 of 40."
         );
         assert_eq!(
             resume_label(&resume_place(4, None)),
@@ -418,9 +414,8 @@ mod tests {
             "ArduPilot still says complete when it arms again, and the mission flown after that is a new one"
         );
         let survey = crate::coreplan::FlownRow {
-            at: 2,
-            of: 3,
-            name: "survey".to_string(),
+            place: "survey 2 of 3".to_string(),
+            arrived: false,
             within: None,
         };
         assert_eq!(

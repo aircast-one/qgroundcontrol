@@ -65,10 +65,10 @@ describe('PlanStripTest', () => {
     const home = MissionItem({ index: 0, sequence: 0, latitude: 41.0, longitude: 44.0, command: 'Home', selected: false, altitude: NaN });
     const takeoff = MissionItem({ index: 1, sequence: 1, latitude: 41.0, longitude: 44.0, command: 'Takeoff', selected: false, altitude: 50.0, abbreviation: 'Takeoff' });
     const away = { ...takeoff, latitude: 41.001 };
-    const plain = MissionItem({ index: 2, sequence: 2, latitude: 41.0, longitude: 44.0, command: 'Waypoint', selected: false, altitude: 50.0 });
+    const plain = MissionItem({ index: 2, sequence: 2, stop: 1, latitude: 41.0, longitude: 44.0, command: 'Waypoint', selected: false, altitude: 50.0 });
     expect([homeCovered([home, takeoff]), homeCovered([home, away])]).toEqual([true, false]);
-    expect([itemSeal(home), itemSeal(takeoff), itemSeal(plain)]).toEqual(['H', 'T', '2']);
-    expect([itemTitle(takeoff), itemTitle(plain)]).toEqual(['Takeoff', 'Waypoint 2']);
+    expect([itemSeal(home), itemSeal(takeoff), itemSeal(plain)], 'the first waypoint after the takeoff is waypoint 1, not mission item 2').toEqual(['H', 'T', '1']);
+    expect([itemTitle(takeoff), itemTitle(plain)]).toEqual(['Takeoff', 'Waypoint 1']);
   });
 
   it("a template's pattern is the newest one, a rail pattern the one just inserted", () => {

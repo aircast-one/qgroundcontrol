@@ -19,7 +19,10 @@ final class SequenceLabelTests: XCTestCase {
     }
 
     func testTheRowsOfAPlanWithAFoldedSpeedLeaveNoGapBetweenThem() {
-        XCTAssertEqual(["0", "1", "2–3", "4"], itemRows([item(0, 0), item(1, 0), item(2, 1), item(4, 0)]).map(\.number))
+        let numbered = { (index: Int, sequence: Int, stop: Int?, folded: Int) in
+            MissionItem(index: index, sequence: sequence, stop: stop, latitude: 41.0, longitude: 44.0, command: "Waypoint", selected: false, altitude: 50.0, kind: "waypoint", foldedCommands: folded)
+        }
+        XCTAssertEqual(["H", "1", "2", ""], itemRows([numbered(0, 0, nil, 0), numbered(1, 1, 1, 0), numbered(2, 2, 2, 1), numbered(3, 4, nil, 0)]).map(\.number), "waypoints are numbered 1, 2, 3 whatever commands fold into them, and an action under a waypoint has no number of its own")
     }
 
     func testAnItemTheCoreWithheldTheSpanForIsNumberedPlainlyRatherThanGivenARange() {

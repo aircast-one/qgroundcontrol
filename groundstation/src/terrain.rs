@@ -546,18 +546,18 @@ pub fn markers(model: &Value) -> Vec<Value> {
         .unwrap_or_default();
     elements
         .iter()
-        .filter(|e| e.get("specifiesCoordinate") == Some(&Value::Bool(true)) && e.get("isStandaloneCoordinate") != Some(&Value::Bool(true)))
-        .map(|e| {
+        .zip(crate::missionitems::stops(&elements))
+        .filter(|(e, _)| e.get("specifiesCoordinate") == Some(&Value::Bool(true)) && e.get("isStandaloneCoordinate") != Some(&Value::Bool(true)))
+        .map(|(e, stop)| {
             let text = |key: &str| e.get(key).and_then(Value::as_str).unwrap_or_default();
             let sequence = e.get("sequenceNumber").and_then(Value::as_i64).unwrap_or(-1);
             let distance = e.get("distanceFromStart").and_then(Value::as_f64).unwrap_or(0.0);
             let flagged = |key: &str| e.get(key) == Some(&Value::Bool(true));
             let complex = e.get("isSimpleItem") == Some(&Value::Bool(false)) && !flagged("isSingleItem") && !flagged("homePosition");
-            let lettered = text("abbreviation").chars().next().filter(|c| !complex && *c > 'A' && *c < 'z');
             json!({
                 "sequence": sequence,
                 "distance": distance,
-                "label": lettered.map_or_else(|| sequence.to_string(), |c| c.to_string()),
+                "label": crate::missionitems::letter(e).map_or_else(|| stop.map_or_else(String::new, |n| n.to_string()), |c| c.to_string()),
                 "complex": complex.then(|| json!({
                     "endDistance": distance + e.get("complexDistance").and_then(Value::as_f64).unwrap_or(0.0),
                     "lastSequence": e.get("lastSequenceNumber").and_then(Value::as_i64).unwrap_or(sequence),
@@ -1305,8 +1305,8 @@ mod tests {
                 .iter()
                 .map(|m| m["label"].as_str().unwrap())
                 .collect::<Vec<_>>(),
-            ["L", "1", "4"],
-            "a complex item is numbered, and a standalone coordinate and an item with no coordinate get no marker"
+            ["L", "1", "2"],
+            "a complex item is numbered as the next stop, not by its mission sequence, and a standalone coordinate and an item with no coordinate get no marker"
         );
         assert_eq!(
             shown[2]["complex"],

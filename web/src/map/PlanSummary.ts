@@ -2,7 +2,7 @@ import type { FenceCircle, FencePolygon } from './FenceBridge';
 import type { MapHit } from './MissionEditing';
 import { LANDING_PLACE_APPROACH } from './MissionLayers';
 import type { MissionItem } from './PlanBridge';
-import { altitudeWithFrame } from './PlanItems';
+import { altitudeWithFrame, itemTitle } from './PlanItems';
 
 export const circleText = (circle: FenceCircle): string => circle.detailText;
 
@@ -11,7 +11,7 @@ export const selectionText = (selected: MapHit | null, items: readonly MissionIt
     case 'Waypoint': {
       const item = items.find((it) => it.index === selected.index);
       const altitude = item === undefined ? null : altitudeWithFrame(item);
-      return item === undefined || altitude === null ? null : `#${item.sequence} at ${altitude}`;
+      return item === undefined || altitude === null ? null : `${itemTitle(item)} at ${altitude}`;
     }
     case 'Circle':
     case 'CircleCentre':

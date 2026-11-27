@@ -11,7 +11,7 @@ final class InsertAfterSelectionTests: XCTestCase {
     }
 
     func testAnItemNotReadyToSendShowsAQuestionMarkSealLikeMissionItemEditor() {
-        let item = MissionItem(index: 2, sequence: 2, latitude: 41.0, longitude: 44.0, command: "Waypoint", selected: false, altitude: 50.0, kind: "waypoint", commandId: 16)
+        let item = MissionItem(index: 2, sequence: 2, stop: 2, latitude: 41.0, longitude: 44.0, command: "Waypoint", selected: false, altitude: 50.0, kind: "waypoint", commandId: 16)
         XCTAssertEqual(["2"], itemRows([item]).map(\.number))
         var unready = item
         unready.readyForSave = false

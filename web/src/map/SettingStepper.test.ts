@@ -51,8 +51,9 @@ describe('SettingStepperTest', () => {
     expect([clampNote(560.0, range, 'm'), clampNote(null, range, 'm'), clampNote(9000.0, null, 'm')]).toEqual([null, null, null]);
   });
 
-  it('the waypoint strip leaves out the planned home, which is not flown to', () => {
+  it('the waypoint strip leaves out the planned home, which is not flown to, and the actions, which are listed under their waypoint', () => {
     const rows = [0, 1, 2].map((it) => ItemRow({ index: it, number: `${it}`, name: 'Waypoint', detail: '', colour: '#ffffff', placed: true }));
-    expect(stripRows(rows).map((it: { index: number }) => it.index)).toEqual([1, 2]);
+    const action = ItemRow({ index: 3, number: '', name: 'Delay', detail: '', colour: '#ffffff', placed: false });
+    expect(stripRows([...rows, action]).map((it: { index: number }) => it.index)).toEqual([1, 2]);
   });
 });

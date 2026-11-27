@@ -5,14 +5,14 @@ import { selectionText } from './PlanSummary';
 import { TrackPoint } from './VehicleMap';
 
 const item = (index = 0, altitude = NaN) =>
-  MissionItem({ index, sequence: index + 1, latitude: 41.0, longitude: 44.0, command: 'Waypoint', selected: false, altitude, altitudeText: Number.isNaN(altitude) ? '' : `${Math.trunc(altitude)} m` });
+  MissionItem({ index, sequence: index + 1, stop: index - 1, latitude: 41.0, longitude: 44.0, command: 'Waypoint', selected: false, altitude, altitudeText: Number.isNaN(altitude) ? '' : `${Math.trunc(altitude)} m` });
 
 describe('PlanSummaryTest', () => {
   it('a selected waypoint shows its altitude against the number on its marker', () => {
     expect(
       selectionText({ kind: 'Waypoint', index: 3 }, [item(3, 75.0)], [], []),
-      'the map marker and the list row are labelled with the sequence, so naming the index here would point at a different item once a survey is in the plan',
-    ).toBe('#4 at 75 m');
+      'the map marker and the list row are labelled with the waypoint number, so naming the index or the mission sequence here would point at a different item',
+    ).toBe('Waypoint 2 at 75 m');
   });
 
   it('a selected circle shows its radius from either handle, spelled by the core', () => {

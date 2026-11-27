@@ -10,22 +10,12 @@ import { useKeyedState } from '@/kotlin/Compose';
 const MISSION_PROGRESS = 'view.missionProgress';
 const CARD_MAX_WIDTH = 360;
 
-export type PlanRow = { readonly at: number; readonly of: number; readonly name: string };
-
-export type MissionProgress = { readonly current: number; readonly last: number; readonly row: PlanRow | null; readonly fraction: number; readonly distance: string; readonly skipTo: number | null };
-
-const planRow = (view: Json): PlanRow | null => {
-  const at = optInt(view, 'row', 0);
-  const name = optText(view, 'rowName');
-  return at > 0 && name.trim() !== '' ? { at, of: optInt(view, 'rows', 0), name } : null;
-};
+export type MissionProgress = { readonly line: string; readonly fraction: number; readonly distance: string; readonly skipTo: number | null };
 
 export const missionProgress = (view: Json | null): MissionProgress | null =>
   view !== null && optBoolean(view, 'shown')
     ? {
-        current: optInt(view, 'current'),
-        last: optInt(view, 'last'),
-        row: planRow(view),
+        line: optText(view, 'line'),
         fraction: optDouble(view, 'fraction', 0.0),
         distance: [optText(view, 'distanceToNext'), optText(view, 'distanceUnits')].filter((part) => part.trim() !== '').join(' '),
         skipTo: optBoolean(view, 'canSkip') ? optInt(view, 'skipTo') : null,
@@ -33,7 +23,7 @@ export const missionProgress = (view: Json | null): MissionProgress | null =>
     : null;
 
 export const missionProgressLine = (progress: MissionProgress): string =>
-  [progress.row === null ? `To waypoint ${progress.current} of ${progress.last}` : `To ${progress.row.name} ${progress.row.at} of ${progress.row.of}`, progress.distance].filter((it) => it.trim() !== '').join(' · ');
+  [progress.line, progress.distance].filter((it) => it.trim() !== '').join(' · ');
 
 export const MissionProgressCard = ({ className }: { className?: string }) => {
   const view = useQgcPath(MISSION_PROGRESS);

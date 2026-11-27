@@ -49,17 +49,18 @@ final class TransectMarksTests: XCTestCase {
         XCTAssertEqual(gimbalWedges([looking, bare]).map(\.bearing), [120.0])
     }
 
-    func testAPatternItemGetsASecondMarkerAtItsExitLabelledWithItsLastSequenceNumber() {
+    func testAPatternItemGetsASecondMarkerAtItsExitLabelledWithItsOwnStopNumber() {
         let survey = withChanges(leg(2, complex: true)) {
             $0.exit = TrackPoint(latitude: 47.5, longitude: 8.1)
             $0.foldedCommands = 6
+            $0.stop = 1
         }
         let plain = withChanges(leg(3)) { $0.exit = TrackPoint(latitude: 47.6, longitude: 8.1) }
         let exits = exitMarkers([survey, plain])
         XCTAssertEqual(exits.map(\.0), [survey])
         XCTAssertEqual(exits.map(\.1), [TrackPoint(latitude: 47.5, longitude: 8.1)])
         let labels = missionFeatures([survey]).shapes.map { $0.getStringProperty(WAYPOINT_LABEL_PROPERTY) }
-        XCTAssertEqual(labels, ["2", "8"], "TransectStyleMapVisuals labels the exit with lastSequenceNumber")
+        XCTAssertEqual(labels, ["1", "1"], "entry and exit are the same stop, so both read 1, not mission sequences 2 and 8")
     }
 
     func testDraggingAFenceCornerLabelsEveryEdgeOfThatFenceWithItsLength() {

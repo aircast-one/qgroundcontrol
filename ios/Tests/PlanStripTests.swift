@@ -65,10 +65,10 @@ final class PlanStripTests: XCTestCase {
         let takeoff = MissionItem(index: 1, sequence: 1, latitude: 41.0, longitude: 44.0, command: "Takeoff", selected: false, altitude: 50.0, abbreviation: "Takeoff")
         var away = takeoff
         away.latitude = 41.001
-        let waypoint = MissionItem(index: 2, sequence: 2, latitude: 41.0, longitude: 44.0, command: "Waypoint", selected: false, altitude: 50.0)
+        let waypoint = MissionItem(index: 2, sequence: 2, stop: 1, latitude: 41.0, longitude: 44.0, command: "Waypoint", selected: false, altitude: 50.0)
         XCTAssertEqual([true, false], [homeCovered([home, takeoff]), homeCovered([home, away])])
-        XCTAssertEqual(["H", "T", "2"], [itemSeal(home), itemSeal(takeoff), itemSeal(waypoint)])
-        XCTAssertEqual(["Takeoff", "Waypoint 2"], [itemTitle(takeoff), itemTitle(waypoint)])
+        XCTAssertEqual(["H", "T", "1"], [itemSeal(home), itemSeal(takeoff), itemSeal(waypoint)], "the first waypoint after the takeoff is waypoint 1, not mission item 2")
+        XCTAssertEqual(["Takeoff", "Waypoint 1"], [itemTitle(takeoff), itemTitle(waypoint)])
     }
 
     func testATemplatesPatternIsTheNewestOneARailPatternTheOneJustInserted() {

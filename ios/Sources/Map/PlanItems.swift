@@ -42,14 +42,16 @@ func rallyAltitudeLabel(_ point: RallyPoint) -> String { "Alt \(point.altitudeUn
 func rallyAltitudeIsEditable(_ point: RallyPoint) -> Bool { !point.altitude.isNaN && !point.altitudePath.isBlank }
 
 func itemSeal(_ item: MissionItem) -> String {
-    item.index == HOME_ITEM ? HOME_SEAL : waypointLabel(item.sequence, false, abbreviation: item.complexPattern ? "" : item.abbreviation)
+    item.index == HOME_ITEM ? HOME_SEAL : waypointLabel(item.stop, false, abbreviation: item.complexPattern ? "" : item.abbreviation)
 }
 
 func itemTitle(_ item: MissionItem) -> String {
     let name = sentenceCase(item.command.ifBlank("Item"))
     let seal = itemSeal(item)
-    return seal.allSatisfy(\.isNumber) ? "\(name) \(seal)" : name
+    return !seal.isEmpty && seal.allSatisfy(\.isNumber) ? "\(name) \(seal)" : name
 }
+
+func firstLowercased(_ text: String) -> String { text.prefix(1).lowercased() + text.dropFirst() }
 
 func sequenceLabel(_ item: MissionItem) -> String {
     item.foldedCommands > 0 ? "\(item.sequence)\u{2013}\(item.sequence + item.foldedCommands)" : "\(item.sequence)"
@@ -74,13 +76,12 @@ func itemRows(_ items: [MissionItem], _ stats: [Int: SurveyStats] = [:]) -> [Ite
     items.map { item in
         ItemRow(
             index: item.index,
-            number: item.readyForSave ? sequenceLabel(item) : NOT_READY_SEAL,
+            number: item.readyForSave ? itemSeal(item) : NOT_READY_SEAL,
             name: item.command.ifBlank("Item \(item.sequence)"),
             detail: itemDetail(item, stats[item.index]),
             colour: waypointColour(item.kind, item.commandId),
             placed: item.placed,
-            readyForSave: item.readyForSave,
-            seal: item.readyForSave ? itemSeal(item) : NOT_READY_SEAL
+            readyForSave: item.readyForSave
         )
     }
 }
@@ -135,7 +136,7 @@ func selectionSequence(_ selected: MapHit?, _ items: [MissionItem]) -> Int? {
 func addingAfterText(_ selected: MapHit?, _ items: [MissionItem]) -> String? {
     missionItemIndex(selected).flatMap { index in items.first { $0.index == index } }.map { item in
         let takeoff = items.first { $0.kind == "takeoff" && $0.index > item.index }
-        return pastRouteEnd(item.index, items).map { "Tap the map to add before #\($0.sequence)" } ?? "Tap the map to add after #\((takeoff ?? item).sequence)"
+        return pastRouteEnd(item.index, items).map { "Tap the map to add before \(itemTitle($0))" } ?? "Tap the map to add after \(itemTitle(takeoff ?? item))"
     }
 }
 
@@ -152,7 +153,7 @@ func legText(_ item: MissionItem) -> String? {
 
 func movedText(_ hit: MapHit, _ items: [MissionItem]) -> String {
     switch hit {
-    case .Waypoint(let index): items.first { $0.index == index }.map { "Moved #\($0.sequence)" } ?? "Moved an item"
+    case .Waypoint(let index): items.first { $0.index == index }.map { "Moved \(firstLowercased(itemTitle($0)))" } ?? "Moved an item"
     case .FenceVertex: "Moved a fence corner"
     case .SurveyVertex: "Moved a survey corner"
     case .Rally: "Moved a rally point"

@@ -64,12 +64,12 @@ describe('TransectMarksTest', () => {
     expect(-90.0 <= LOOKS_DOWN_PITCH && -20.0 > LOOKS_DOWN_PITCH).toBe(true);
   });
 
-  it('a pattern item gets a second marker at its exit labelled with its last sequence number', () => {
-    const survey = { ...leg(2, true), exit: { latitude: 47.5, longitude: 8.1 }, foldedCommands: 6 };
+  it('a pattern item gets a second marker at its exit labelled with its own stop number', () => {
+    const survey = { ...leg(2, true), stop: 1, exit: { latitude: 47.5, longitude: 8.1 }, foldedCommands: 6 };
     const plain = { ...leg(3), exit: { latitude: 47.6, longitude: 8.1 } };
     expect(exitMarkers([survey, plain])).toEqual([[survey, { latitude: 47.5, longitude: 8.1 }]]);
     const labels = missionFeatures([survey]).features.map((it) => it.properties?.[WAYPOINT_LABEL_PROPERTY]);
-    expect(labels, 'TransectStyleMapVisuals labels the exit with lastSequenceNumber').toEqual(['2', '8']);
+    expect(labels, 'entry and exit are the same stop, so both read 1, not mission sequences 2 and 8').toEqual(['1', '1']);
   });
 
   it('dragging a fence corner labels every edge of that fence with its length', () => {

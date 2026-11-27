@@ -80,6 +80,7 @@ func planShape(_ json: JSON?) -> [String] {
 struct MissionItem: Equatable {
     var index: Int
     var sequence: Int
+    var stop: Int? = nil
     var latitude: Double
     var longitude: Double
     var command: String
@@ -186,6 +187,7 @@ func allMissionItems(_ json: JSON?) -> [MissionItem] {
         return MissionItem(
             index: index,
             sequence: element["sequence"].int(index),
+            stop: element["stop"].int,
             latitude: at?.latitude ?? .nan,
             longitude: at?.longitude ?? .nan,
             command: element["name"].string,

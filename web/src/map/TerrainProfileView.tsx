@@ -203,7 +203,7 @@ const Chart = ({
       {profile.markers.map((marker, index) => {
         const start = markerX(marker.distance, profile, w);
         const end = marker.endDistance === null ? null : markerX(marker.endDistance, profile, w);
-        const labels = [[start, marker.label] as const, ...(end === null ? [] : [[end, String(marker.lastSequence ?? marker.sequence)] as const])];
+        const labels = [[start, marker.label] as const, ...(end === null ? [] : [[end, marker.label] as const])];
         const chosen = marker.sequence === selectedSequence;
         return (
           <g key={`marker${index}`}>

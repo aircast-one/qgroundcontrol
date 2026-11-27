@@ -119,7 +119,7 @@ test('a new plan from a template is untitled, so saving it does not write over t
   await planMenu(app, 'New plan…');
   await app.getByRole('dialog').filter({ hasText: 'New plan' }).getByRole('button', { name: 'Survey', exact: true }).click();
   await app.getByRole('dialog').filter({ hasText: 'Start a new plan?' }).getByRole('button', { name: 'Start new plan', exact: true }).click();
-  await expect(app.getByRole('button', { name: /^\d+–\d+ Survey / })).toBeVisible({ timeout: 30_000 });
+  await expect(app.getByRole('button', { name: /^\d+ Survey / }), 'a survey is one numbered stop, not the run of mission items it generates').toBeVisible({ timeout: 30_000 });
   await expect(app.getByText('Untitled plan', { exact: true }), 'the survey used to keep the replaced plan’s name').toBeVisible();
   const saving = app.waitForEvent('download');
   await planMenu(app, 'Save as…');

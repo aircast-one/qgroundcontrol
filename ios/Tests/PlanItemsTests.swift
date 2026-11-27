@@ -2,7 +2,7 @@ import XCTest
 @testable import Aircast
 
 private func mission(_ index: Int, _ sequence: Int, _ latitude: Double, _ longitude: Double, _ command: String, _ altitude: Double, _ change: (inout MissionItem) -> Void = { _ in }) -> MissionItem {
-    var item = MissionItem(index: index, sequence: sequence, latitude: latitude, longitude: longitude, command: command, selected: false, altitude: altitude)
+    var item = MissionItem(index: index, sequence: sequence, stop: sequence, latitude: latitude, longitude: longitude, command: command, selected: false, altitude: altitude)
     change(&item)
     return item
 }
@@ -233,17 +233,17 @@ final class SelectionSequenceTests: XCTestCase {
 final class AddingAfterTextTests: XCTestCase {
     private let plan = [
         mission(0, 0, 41.0, 44.0, "Mission Start", 0.0) { $0.kind = "settings" },
-        mission(2, 5, 41.0, 44.0, "Waypoint", 50.0) { $0.kind = "waypoint" },
+        mission(2, 5, 41.0, 44.0, "Waypoint", 50.0) { $0.kind = "waypoint"; $0.stop = 2 },
     ]
 
-    func testTheLineNamesTheSequenceTheOperatorSeesOnTheMarker() {
-        XCTAssertEqual("Tap the map to add after #5", addingAfterText(.Waypoint(index: 2), plan))
+    func testTheLineNamesTheWaypointByTheNumberOnItsMarker() {
+        XCTAssertEqual("Tap the map to add after Waypoint 2", addingAfterText(.Waypoint(index: 2), plan))
     }
 
     func testWithTheReturnSelectedTheLineSaysTheNewItemGoesBeforeIt() {
-        let returning = plan + [mission(3, 6, 41.0, 44.0, "Return to launch", .nan) { $0.kind = "land"; $0.endsRoute = true }]
-        XCTAssertEqual("Tap the map to add before #6", addingAfterText(.Waypoint(index: 3), returning))
-        XCTAssertEqual("Tap the map to add after #5", addingAfterText(.Waypoint(index: 2), returning))
+        let returning = plan + [mission(3, 6, 41.0, 44.0, "Return to launch", .nan) { $0.kind = "land"; $0.endsRoute = true; $0.stop = nil; $0.abbreviation = "Return" }]
+        XCTAssertEqual("Tap the map to add before Return to launch", addingAfterText(.Waypoint(index: 3), returning))
+        XCTAssertEqual("Tap the map to add after Waypoint 2", addingAfterText(.Waypoint(index: 2), returning))
     }
 
     func testWithNothingSelectedTheInsertionPointIsTheEndAndNeedsNoLine() {

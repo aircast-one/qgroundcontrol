@@ -25,6 +25,14 @@ pub fn shown(armed: bool, mode: &str, mission_mode: &str, progress: &Progress) -
         && (1..=progress.last).contains(&progress.current)
 }
 
+pub fn progress_line(row: Option<&crate::coreplan::FlownRow>, progress: &Progress) -> String {
+    match row {
+        Some(row) if row.arrived => format!("At {}", row.place),
+        Some(row) => format!("To {}", row.place),
+        None => format!("Mission item {} of {}", progress.current, progress.last),
+    }
+}
+
 pub fn fraction(progress: &Progress) -> f64 {
     (progress.current as f64 / progress.last.max(1) as f64).clamp(0.0, 1.0)
 }
@@ -87,9 +95,7 @@ pub fn mission_progress_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "shown": visible,
         "current": progress.current,
         "last": progress.last,
-        "row": row.as_ref().map(|r| r.at),
-        "rows": row.as_ref().map(|r| r.of),
-        "rowName": row.as_ref().map(|r| r.name.clone()),
+        "line": progress_line(row.as_ref(), &progress),
         "fraction": fraction(&progress),
         "distanceToNext": distance.get("valueString").cloned().unwrap_or(Value::Null),
         "distanceUnits": distance.get("units").cloned().unwrap_or(Value::Null),

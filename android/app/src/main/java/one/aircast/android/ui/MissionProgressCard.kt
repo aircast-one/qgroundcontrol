@@ -27,12 +27,11 @@ import org.json.JSONObject
 private const val MISSION_PROGRESS = "view.missionProgress"
 private val CARD_MAX_WIDTH = 360.dp
 
-internal data class MissionProgress(val current: Int, val last: Int, val fraction: Float, val distance: String, val skipTo: Int?)
+internal data class MissionProgress(val line: String, val fraction: Float, val distance: String, val skipTo: Int?)
 
 internal fun missionProgress(view: JSONObject?): MissionProgress? = view?.takeIf { it.optBoolean("shown") }?.let {
     MissionProgress(
-        current = it.optInt("current"),
-        last = it.optInt("last"),
+        line = it.optText("line"),
         fraction = it.optDouble("fraction", 0.0).toFloat(),
         distance = listOf(it.optText("distanceToNext"), it.optText("distanceUnits")).filter { part -> part.isNotBlank() }.joinToString(" "),
         skipTo = it.optInt("skipTo").takeIf { _ -> it.optBoolean("canSkip") },
@@ -40,7 +39,7 @@ internal fun missionProgress(view: JSONObject?): MissionProgress? = view?.takeIf
 }
 
 internal fun missionProgressLine(progress: MissionProgress): String =
-    listOf("To waypoint ${progress.current} of ${progress.last}", progress.distance).filter { it.isNotBlank() }.joinToString(" · ")
+    listOf(progress.line, progress.distance).filter { it.isNotBlank() }.joinToString(" · ")
 
 @Composable
 fun MissionProgressCard(modifier: Modifier = Modifier) {

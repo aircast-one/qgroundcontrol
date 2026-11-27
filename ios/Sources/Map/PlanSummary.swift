@@ -10,7 +10,7 @@ func selectionText(
 ) -> String? {
     switch selected {
     case .Waypoint(let index):
-        items.first { $0.index == index }.flatMap { item in altitudeWithFrame(item).map { "#\(item.sequence) at \($0)" } }
+        items.first { $0.index == index }.flatMap { item in altitudeWithFrame(item).map { "\(itemTitle(item)) at \($0)" } }
     case .Circle(let index), .CircleCentre(let index), .CircleRadius(let index):
         circles.first { $0.index == index }.map(circleText)
     case .FenceVertex(let polygon, let vertex):

@@ -11,7 +11,7 @@ vi.mock('@/core/client', async (importOriginal) => ({ ...(await importOriginal<t
 
 const called = vi.mocked(call);
 
-const item = (index: number, command = 'Waypoint') => MissionItem({ index, sequence: index, latitude: 1, longitude: 1, command, selected: false });
+const item = (index: number, command = 'Waypoint') => MissionItem({ index, sequence: index, stop: index, latitude: 1, longitude: 1, command, selected: false });
 
 const items = [item(0, 'Mission Start'), item(1), item(2), item(3)];
 

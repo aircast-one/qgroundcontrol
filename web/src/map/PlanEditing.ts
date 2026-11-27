@@ -128,7 +128,7 @@ export const usePlanEditing = ({
   };
 
   const removeItem = async (item: MissionItem): Promise<void> => {
-    busy.value = `Removing #${item.sequence}`;
+    busy.value = `Removing ${replaceFirstCharLower(itemTitle(item))}`;
     const outcome = await removeMissionItem(item.index);
     if (outcome.ok) removals.value += 1;
     selected.value = outcome.ok ? selectionAfterRemove(item.index, allItems.length) : null;

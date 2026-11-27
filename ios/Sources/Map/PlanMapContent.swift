@@ -17,6 +17,7 @@ private let PATTERN_KINDS: Set = [KIND_SURVEY, KIND_CORRIDOR, KIND_STRUCTURE]
 private let FALLBACK_FENCE_DEGREES = 0.002
 private let SURVEY_FIT_INSET = 0.8
 private let ITEM_MARKER_SIZE: CGFloat = 40
+private let ACTION_MARKER_SIZE: CGFloat = 12
 private let GRID_SLIDER_WIDTH: CGFloat = 220
 private let PANEL_TOP = "panelTop"
 
@@ -1262,7 +1263,7 @@ struct PlanMapContent: View {
 
     private func removeItem(_ item: MissionItem) {
         Task { @MainActor in
-            busy = "Removing #\(item.sequence)"
+            busy = "Removing \(firstLowercased(itemTitle(item)))"
             let index = item.index
             let outcome = await offMain { removeMissionItem(index) }
             selected = outcome.ok ? selectionAfterRemove(item.index, allItems.count) : nil
@@ -1479,7 +1480,7 @@ private struct ItemRowView: View {
                         .lineLimit(1)
                         .foregroundStyle(row.readyForSave ? theme.colors.surface : theme.aircast.warning)
                 }
-                .frame(width: ITEM_MARKER_SIZE, height: ITEM_MARKER_SIZE)
+                .frame(width: row.number.isEmpty ? ACTION_MARKER_SIZE : ITEM_MARKER_SIZE, height: row.number.isEmpty ? ACTION_MARKER_SIZE : ITEM_MARKER_SIZE)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(sentenceCase(row.name)).font(.titleMedium).lineLimit(1)
                     if !row.detail.isBlank {
@@ -1491,10 +1492,10 @@ private struct ItemRowView: View {
                 Image(.chevronRight).foregroundStyle(theme.colors.onSurfaceVariant)
             }
             .foregroundStyle(selected ? theme.colors.onSecondaryContainer : theme.colors.onSurface)
-            .padding(.leading, 16)
+            .padding(.leading, row.number.isEmpty ? 56 : 16)
             .padding(.trailing, 12)
             .padding(.vertical, 8)
-            .frame(minHeight: 72)
+            .frame(minHeight: row.number.isEmpty ? 56 : 72)
             .background(selected ? theme.colors.secondaryContainer : theme.colors.surfaceContainerLow)
             .contentShape(Rectangle())
         }

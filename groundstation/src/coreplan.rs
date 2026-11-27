@@ -2049,9 +2049,8 @@ fn sequence_count(document: &Document) -> i64 {
 }
 
 pub struct FlownRow {
-    pub at: i64,
-    pub of: i64,
-    pub name: String,
+    pub place: String,
+    pub arrived: bool,
     pub within: Option<(usize, usize)>,
 }
 
@@ -2093,16 +2092,36 @@ fn waypoint_within(document: &Document, at: i64, sequence: i64) -> Option<(usize
 
 fn row_of_sequence(document: &Document, sequence: i64) -> Option<FlownRow> {
     let at = visual_index_of_sequence(document, sequence).filter(|at| *at > 0)?;
-    let name = crate::missionitems::document_reads(document, -1)
-        .ok()?
-        .get(usize::try_from(at).ok()?)?
-        .get("commandName")?
-        .as_str()?
-        .to_lowercase();
+    let row = usize::try_from(at).ok()?;
+    let reads = crate::missionitems::document_reads(document, -1).ok()?;
+    let stops = crate::missionitems::stops(&reads);
+    let total = stops.iter().flatten().count();
+    let name = |index: usize| {
+        reads
+            .get(index)
+            .and_then(|read| read.get("commandName"))
+            .and_then(Value::as_str)
+            .map(str::to_lowercase)
+    };
+    let stop_place = |index: usize| {
+        Some(format!(
+            "{} {} of {total}",
+            name(index)?,
+            stops.get(index).copied().flatten()?
+        ))
+    };
+    let own = name(row)?;
+    let attached = (0..row).rev().find(|index| stops[*index].is_some());
+    let positioned = crate::read::flag(&reads[row], "specifiesCoordinate")
+        || crate::missionitems::letter(&reads[row]).is_some();
+    let (place, arrived) = match (stops[row], attached) {
+        (Some(_), _) => (stop_place(row)?, false),
+        (None, Some(index)) if !positioned => (format!("{} · {own}", stop_place(index)?), true),
+        _ => (own, false),
+    };
     Some(FlownRow {
-        at,
-        of: document.items.len() as i64,
-        name,
+        place,
+        arrived,
         within: waypoint_within(document, at, sequence),
     })
 }
@@ -5259,30 +5278,38 @@ mod tests {
         let vehicle = flown_document(&mission);
         let takeoff = row_of_sequence(&vehicle, 1).unwrap();
         assert_eq!(
-            (takeoff.at, takeoff.of, takeoff.name.as_str()),
-            (1, 4, "takeoff")
+            (takeoff.place.as_str(), takeoff.arrived),
+            ("takeoff", false),
+            "a takeoff is named, not numbered"
         );
         let after_mount = row_of_sequence(&vehicle, 4).unwrap();
         assert_eq!(
-            (after_mount.at, after_mount.of),
-            (3, 4),
-            "sequence 4 follows the waypoint whose speed setting is sequence 3, so it is the third row of four, not waypoint 4 of 5"
+            after_mount.place, "waypoint 2 of 2",
+            "sequence 4 follows the waypoint whose speed setting is sequence 3, so it is the second of two waypoints, not waypoint 4 of 5"
+        );
+        assert_eq!(
+            row_of_sequence(&vehicle, 5).unwrap().place,
+            "return to launch",
+            "the return is named"
         );
         assert!(row_of_sequence(&vehicle, 0).is_none(), "home is not a row");
         let survey =
             plandoc::load(include_str!("../tests/fixtures/survey-upload.plan"), 2).unwrap();
-        let rows = survey.items.len() as i64;
         let midway = visual_spans(&survey)
             .iter()
             .find(|(first, last)| last > first && *first > 0)
             .map(|(first, last)| (first + last) / 2)
             .unwrap();
         let surveyed = row_of_sequence(&survey, midway).unwrap();
-        assert_eq!(surveyed.of, rows, "a survey counts as one row");
-        assert_eq!(surveyed.name, "survey");
-        let (first, last) = visual_spans(&survey)[usize::try_from(surveyed.at).unwrap()];
+        assert!(
+            surveyed.place.starts_with("survey "),
+            "a survey is one numbered stop, whichever of its commands is flying: {}",
+            surveyed.place
+        );
+        let surveyed_at = visual_index_of_sequence(&survey, midway).unwrap();
+        let (first, last) = visual_spans(&survey)[usize::try_from(surveyed_at).unwrap()];
         let Some(plandoc::Item::Complex { kind, json, .. }) =
-            survey.items.get(usize::try_from(surveyed.at - 1).unwrap())
+            survey.items.get(usize::try_from(surveyed_at - 1).unwrap())
         else {
             panic!("the survey row is a pattern")
         };

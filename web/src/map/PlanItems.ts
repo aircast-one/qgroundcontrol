@@ -9,7 +9,7 @@ import { type Survey, SurveyBridge, type SurveyStats } from './SurveyBridge';
 import { metresBetween } from './TerrainProfile';
 import type { TrackPoint } from './VehicleMap';
 import { TAP } from '@/kotlin/Platform';
-import { format } from '@/kotlin/Std';
+import { format, replaceFirstCharLower } from '@/kotlin/Std';
 
 export const NO_POSITION = 'no position';
 export const AFTER_THE_ROUTE_ENDS = 'after the route ends';
@@ -50,7 +50,7 @@ export const rallyAltitudeLabel = (point: RallyPoint): string => `Alt ${blankToN
 export const rallyAltitudeIsEditable = (point: RallyPoint): boolean => !Number.isNaN(point.altitude) && point.altitudePath.trim() !== '';
 
 export const itemSeal = (item: MissionItem): string =>
-  item.index === HOME_ITEM ? HOME_SEAL : waypointLabel(item.sequence, false, item.complexPattern ? '' : item.abbreviation);
+  item.index === HOME_ITEM ? HOME_SEAL : waypointLabel(item.stop, false, item.complexPattern ? '' : item.abbreviation);
 
 export const LAUNCH_NAME = 'Launch';
 
@@ -59,7 +59,7 @@ const itemName = (item: MissionItem): string | null => (item.index === HOME_ITEM
 export const itemTitle = (item: MissionItem): string => {
   const name = sentenceCase(itemName(item) ?? 'Item');
   const seal = itemSeal(item);
-  return /^\p{Nd}*$/u.test(seal) ? `${name} ${seal}` : name;
+  return /^\p{Nd}+$/u.test(seal) ? `${name} ${seal}` : name;
 };
 
 export const sequenceLabel = (item: MissionItem): string =>
@@ -82,13 +82,12 @@ export const itemRows = (items: readonly MissionItem[], stats: ReadonlyMap<numbe
   items.map((item) =>
     ItemRow({
       index: item.index,
-      number: item.readyForSave ? sequenceLabel(item) : NOT_READY_SEAL,
+      number: item.readyForSave ? itemSeal(item) : NOT_READY_SEAL,
       name: itemName(item) ?? `Item ${item.sequence}`,
       detail: itemDetail(item, stats.get(item.index) ?? null),
       colour: waypointColour(item.kind, item.commandId),
       placed: item.placed,
       readyForSave: item.readyForSave,
-      seal: item.readyForSave ? itemSeal(item) : NOT_READY_SEAL,
     }),
   );
 
@@ -159,7 +158,7 @@ export const addingAfterText = (selected: MapHit | null, items: readonly Mission
   if (item === undefined) return null;
   const end = pastRouteEnd(item.index, items);
   const takeoff = items.find((it) => it.kind === KIND_TAKEOFF && it.index > item.index);
-  return end === null ? `${TAP} the map to add after #${(takeoff ?? item).sequence}` : `${TAP} the map to add before #${end.sequence}`;
+  return end === null ? `${TAP} the map to add after ${itemTitle(takeoff ?? item)}` : `${TAP} the map to add before ${itemTitle(end)}`;
 };
 
 export const legText = (item: MissionItem): string | null => {
@@ -177,7 +176,7 @@ export const movedText = (hit: MapHit, items: readonly MissionItem[]): string =>
   switch (hit.kind) {
     case 'Waypoint': {
       const item = items.find((it) => it.index === hit.index);
-      return item === undefined ? 'Moved an item' : `Moved #${item.sequence}`;
+      return item === undefined ? 'Moved an item' : `Moved ${replaceFirstCharLower(itemTitle(item))}`;
     }
     case 'FenceVertex': return 'Moved a fence corner';
     case 'SurveyVertex': return 'Moved a survey corner';

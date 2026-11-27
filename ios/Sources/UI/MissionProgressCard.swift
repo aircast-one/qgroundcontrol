@@ -4,8 +4,7 @@ private let MISSION_PROGRESS = "view.missionProgress"
 private let CARD_MAX_WIDTH: CGFloat = 360
 
 struct MissionProgress: Equatable {
-    var current: Int
-    var last: Int
+    var line: String
     var fraction: Double
     var distance: String
     var skipTo: Int?
@@ -14,8 +13,7 @@ struct MissionProgress: Equatable {
 func missionProgress(_ view: JSON?) -> MissionProgress? {
     guard let view, view["shown"].bool else { return nil }
     return MissionProgress(
-        current: view["current"].int(0),
-        last: view["last"].int(0),
+        line: view["line"].string,
         fraction: view["fraction"].double(0),
         distance: [view["distanceToNext"].string, view["distanceUnits"].string].filter { !$0.isBlank }.joined(separator: " "),
         skipTo: view["canSkip"].bool ? view["skipTo"].int(0) : nil
@@ -23,7 +21,7 @@ func missionProgress(_ view: JSON?) -> MissionProgress? {
 }
 
 func missionProgressLine(_ progress: MissionProgress) -> String {
-    ["To waypoint \(progress.current) of \(progress.last)", progress.distance].filter { !$0.isBlank }.joined(separator: " \u{00B7} ")
+    [progress.line, progress.distance].filter { !$0.isBlank }.joined(separator: " \u{00B7} ")
 }
 
 struct MissionProgressCard: View {

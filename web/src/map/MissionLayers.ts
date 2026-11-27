@@ -162,8 +162,8 @@ export const legLabels = (items: readonly MissionItem[]): readonly (readonly [Tr
           return [{ latitude: (start.latitude + to.latitude) / 2, longitude: (start.longitude + to.longitude) / 2 }, to.distanceText] as const;
         });
 
-export const waypointLabel = (sequence: number, crowded: boolean, abbreviation: string = ''): string =>
-  crowded ? '' : lettered(abbreviation) ? abbreviation.slice(0, 1) : sequence.toString();
+export const waypointLabel = (stop: number | null, crowded: boolean, abbreviation: string = ''): string =>
+  crowded ? '' : lettered(abbreviation) ? abbreviation.slice(0, 1) : (stop?.toString() ?? '');
 
 export const sideLabel = (crowded: boolean, abbreviation: string): string => (!crowded && lettered(abbreviation) && abbreviation.length > 1 ? abbreviation : '');
 
@@ -228,7 +228,7 @@ export const missionFeatures = (items: readonly MissionItem[], selectedIndex: nu
       const quiet = hushed(isCrowded, sequence, selectedSequence);
       return pointFeature(at.longitude, at.latitude, {
         [WAYPOINT_ID_PROPERTY]: item.index,
-        [WAYPOINT_LABEL_PROPERTY]: item.index === HOME_ITEM && !exit && !quiet ? HOME_SEAL : waypointLabel(sequence, quiet, letters),
+        [WAYPOINT_LABEL_PROPERTY]: item.index === HOME_ITEM && !exit && !quiet ? HOME_SEAL : waypointLabel(item.stop, quiet, letters),
         [WAYPOINT_SIDE_LABEL_PROPERTY]: side !== null && !quiet ? side : sideLabel(quiet, letters),
         [WAYPOINT_RADIUS_PROPERTY]: markerRadius(quiet, selected),
         [WAYPOINT_STROKE_PROPERTY]: markerStroke(isCrowded, selected),

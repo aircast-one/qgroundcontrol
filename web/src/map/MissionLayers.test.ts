@@ -188,7 +188,7 @@ describe('MarkerDensityTest', () => {
   });
 
   it('every waypoint carries its own size, so the layer needs no zoom rule', () => {
-    const items = Array.from({ length: 81 }, (_, it) => MissionItem({ index: it, sequence: it, latitude: 41.0 + it * 0.001, longitude: 44.0, command: 'Waypoint', selected: false, kind: 'waypoint' }));
+    const items = Array.from({ length: 81 }, (_, it) => MissionItem({ index: it, sequence: it, stop: it, latitude: 41.0 + it * 0.001, longitude: 44.0, command: 'Waypoint', selected: false, kind: 'waypoint' }));
     const features = missionFeatures(items, 3);
     expect(features.features.length).toBe(81);
     expect(property(features, 0, WAYPOINT_RADIUS_PROPERTY)).toBe(CROWDED_RADIUS);
@@ -197,7 +197,7 @@ describe('MarkerDensityTest', () => {
   });
 
   it('in a crowd the selected item and its neighbours keep their numbers', () => {
-    const items = Array.from({ length: 81 }, (_, it) => MissionItem({ index: it, sequence: it, latitude: 41.0 + it * 0.001, longitude: 44.0, command: 'Waypoint', selected: false, kind: 'waypoint' }));
+    const items = Array.from({ length: 81 }, (_, it) => MissionItem({ index: it, sequence: it, stop: it, latitude: 41.0 + it * 0.001, longitude: 44.0, command: 'Waypoint', selected: false, kind: 'waypoint' }));
     const features = missionFeatures(items, 40);
     expect([38, 39, 40, 41, 42].map((at) => property(features, at, WAYPOINT_LABEL_PROPERTY))).toEqual(['38', '39', '40', '41', '42']);
     expect([37, 43].map((at) => property(features, at, WAYPOINT_LABEL_PROPERTY))).toEqual(['', '']);

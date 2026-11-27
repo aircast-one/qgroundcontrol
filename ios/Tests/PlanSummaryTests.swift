@@ -3,14 +3,14 @@ import XCTest
 
 final class PlanSummaryTests: XCTestCase {
     private func item(_ index: Int = 0, altitude: Double = .nan) -> MissionItem {
-        MissionItem(index: index, sequence: index + 1, latitude: 41.0, longitude: 44.0, command: "Waypoint", selected: false, altitude: altitude, altitudeText: altitude.isNaN ? "" : "\(Int(altitude)) m")
+        MissionItem(index: index, sequence: index + 1, stop: index - 1, latitude: 41.0, longitude: 44.0, command: "Waypoint", selected: false, altitude: altitude, altitudeText: altitude.isNaN ? "" : "\(Int(altitude)) m")
     }
 
     func testASelectedWaypointShowsItsAltitudeAgainstTheNumberOnItsMarker() {
         XCTAssertEqual(
-            "#4 at 75 m",
+            "Waypoint 2 at 75 m",
             selectionText(.Waypoint(index: 3), [item(3, altitude: 75.0)], [], []),
-            "the map marker and the list row are labelled with the sequence, so naming the index here would point at a different item once a survey is in the plan"
+            "the map marker and the list row are labelled with the waypoint number, so naming the index or the mission sequence here would point at a different item"
         )
     }
 

@@ -176,7 +176,7 @@ final class IsLandingPatternTests: XCTestCase {
     }
 
     func testALandingPatternIsMarkedAtItsApproachAndTouchdownLikeQgcsVisuals() throws {
-        let item = MissionItem(index: 3, sequence: 7, latitude: 47.0, longitude: 8.0, command: "Landing Pattern", selected: false, altitude: 30.0, kind: KIND_LAND, foldedCommands: 4)
+        let item = MissionItem(index: 3, sequence: 7, stop: 3, latitude: 47.0, longitude: 8.0, command: "Landing Pattern", selected: false, altitude: 30.0, kind: KIND_LAND, foldedCommands: 4)
         let pattern = LandingPattern(
             index: 3,
             landing: TrackPoint(latitude: 47.0, longitude: 8.0),
@@ -186,7 +186,7 @@ final class IsLandingPatternTests: XCTestCase {
             loiterClockwise: true
         )
         let marks = missionFeatures([item], landings: [pattern]).shapes
-        XCTAssertEqual(marks.map { $0.getStringProperty(WAYPOINT_LABEL_PROPERTY) }, ["7", "11"])
+        XCTAssertEqual(marks.map { $0.getStringProperty(WAYPOINT_LABEL_PROPERTY) }, ["3", "3"], "both ends carry the pattern's own stop number, not mission sequences 7 and 11")
         XCTAssertEqual(marks.map { $0.getStringProperty(WAYPOINT_SIDE_LABEL_PROPERTY) }, ["Approach", "Land"])
         let loiter = missionFeatures([item], landings: [withChanges(pattern) { $0.loiterToAltitude = true }]).shapes.first?.getStringProperty(WAYPOINT_SIDE_LABEL_PROPERTY)
         XCTAssertEqual(loiter, "Loiter")

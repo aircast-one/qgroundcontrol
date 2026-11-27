@@ -1,4 +1,4 @@
-import { type Json, type JsonArray, arrayJSONObject, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
+import { type Json, type JsonArray, arrayJSONObject, isNull, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { coerceAtLeast, replaceFirstCharUpper } from '@/kotlin/Std';
 import { altitudeModePath } from './AltitudeModes';
 import { coordinateJson, invokeAnswer, invokeOk, invokeRefusal, refusalIn, setOk, setRefusal, settingJson } from './BridgeCalls';
@@ -90,6 +90,7 @@ export const planShape = (json: Json | null): readonly string[] => {
 export type MissionItem = {
   index: number;
   sequence: number;
+  stop: number | null;
   latitude: number;
   longitude: number;
   command: string;
@@ -137,6 +138,7 @@ export type MissionItem = {
 type MissionItemRequired = Pick<MissionItem, 'index' | 'sequence' | 'latitude' | 'longitude' | 'command' | 'selected'>;
 
 export const MissionItem = (fields: MissionItemRequired & Partial<MissionItem>): MissionItem => ({
+  stop: null,
   altitude: NaN,
   exit: null,
   routed: true,
@@ -211,6 +213,7 @@ export const allMissionItems = (json: Json | null): readonly MissionItem[] => {
       MissionItem({
         index,
         sequence: optInt(element, 'sequence', index),
+        stop: isNull(element, 'stop') ? null : optInt(element, 'stop'),
         latitude: at?.latitude ?? NaN,
         longitude: at?.longitude ?? NaN,
         command: optText(element, 'name'),

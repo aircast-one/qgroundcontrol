@@ -25,7 +25,7 @@ test('a return goes on the end of the route, and a later tap still lands before 
   await app.getByRole('button', { name: 'Done' }).click();
   await app.getByRole('button', { name: 'Waypoint 3' }).click();
   await app.getByRole('button', { name: 'Return', exact: true }).click();
-  const lastRow = app.getByRole('button', { name: /^\d+(–\d+)? (Launch|Takeoff|Waypoint|Return to launch)\b/ }).last();
+  const lastRow = app.getByRole('button', { name: /^(H|T|R|\d+) (Launch|Takeoff|Waypoint|Return to launch)\b/ }).last();
   await expect(lastRow, 'with a waypoint selected, the return used to go in after it and strand the rest of the route').toHaveAccessibleName(/Return to launch/);
   await app.getByRole('button', { name: 'Done' }).click();
   const drawn = await itemCount(app);
@@ -44,9 +44,9 @@ test('with the new return still selected, a tap on the map lands before it, wher
   await tapPlanMission(app);
   await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
   await app.getByRole('button', { name: 'Return', exact: true }).click();
-  const lastRow = app.getByRole('button', { name: /^\d+(–\d+)? (Launch|Takeoff|Waypoint|Return to launch)\b/ }).last();
+  const lastRow = app.getByRole('button', { name: /^(H|T|R|\d+) (Launch|Takeoff|Waypoint|Return to launch)\b/ }).last();
   await expect(lastRow).toHaveAccessibleName(/Return to launch/);
-  await expect(app.getByText(/the map to add before #\d+/)).toBeVisible();
+  await expect(app.getByText(/the map to add before Return to launch/), 'the hint names the item, not its mission sequence').toBeVisible();
   const drawn = await itemCount(app);
   const box = await app.getByRole('region', { name: 'Map' }).boundingBox();
   if (box === null) throw new Error('plan map is not on screen');
@@ -66,12 +66,13 @@ test('with the launch selected, a new waypoint goes after the takeoff, never ahe
   await tapPlanMission(app);
   await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
   await app.getByRole('button', { name: 'Done' }).click();
-  await app.getByRole('button', { name: /^0 Launch\b/ }).click();
+  await app.getByRole('button', { name: /^H Launch\b/ }).click();
   const drawn = await itemCount(app);
   expect(JSON.stringify(await coreCall(app, 'mission.insert', 'waypoint', 47.398, 8.546, 1)), 'with the launch selected the head inserts at index 1').toContain('"ok":true');
   await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(drawn + 1);
-  await expect(app.getByRole('button', { name: /^1 Takeoff\b/ }), 'Oleg’s plan read Launch, Waypoint, Takeoff: a waypoint added after the launch went in before the takeoff').toBeVisible();
-  await expect(app.getByRole('button', { name: /^2 Waypoint\b/ })).toBeVisible();
+  const rows = app.getByRole('button', { name: /^(H|T|\d+) (Launch|Takeoff|Waypoint)\b/ });
+  await expect(rows.nth(1), 'Oleg’s plan read Launch, Waypoint, Takeoff: a waypoint added after the launch went in before the takeoff').toHaveAccessibleName(/^T Takeoff\b/);
+  await expect(rows.nth(2)).toHaveAccessibleName(/^1 Waypoint\b/);
 });
 
 test('the raw view of a waypoint reads in plain words and its command list changes the command', async ({ app }) => {
@@ -89,7 +90,7 @@ test('the raw view of a waypoint reads in plain words and its command list chang
   await app.getByRole('button', { name: 'Command, Waypoint' }).click();
   await app.getByRole('menuitem', { name: 'Delay', exact: true }).click();
   await expect(app.getByText('That change was not accepted.'), 'picking a command from the list was refused for every command').toHaveCount(0);
-  await expect(app.getByRole('button', { name: /^3 Delay\b/i })).toBeVisible({ timeout: 15_000 });
+  await expect(app.getByRole('button', { name: /^Delay\b/i }), 'a delay has no position, so it has no number of its own').toBeVisible({ timeout: 15_000 });
 });
 
 test('the profile chart and the launch row read heights from the launch, not above sea level', async ({ vehicle }) => {
@@ -101,7 +102,7 @@ test('the profile chart and the launch row read heights from the launch, not abo
   await expect(chart, 'the band of heights is read from the launch, as the waypoints are').toHaveAccessibleName(/m above launch · /, { timeout: 30_000 });
   await expect(vehicle.getByText('Height above launch (m)')).toBeVisible();
   await expect(vehicle.getByText(/^Height AMSL/)).toHaveCount(0);
-  await expect(vehicle.getByRole('button', { name: /^0 Launch Ground -?[\d,.]+ m AMSL/ }), 'the launch row is the ground’s own height, and says so').toBeVisible();
+  await expect(vehicle.getByRole('button', { name: /^H Launch Ground -?[\d,.]+ m AMSL/ }), 'the launch row is the ground’s own height, and says so').toBeVisible();
 });
 
 test('a plan being drawn survives a reload of the page', async ({ app }) => {
@@ -177,7 +178,7 @@ test('a waypoint deletes from the plan through its editor', async ({ app }) => {
   await app.keyboard.down('Delete');
   await app.keyboard.up('Delete');
   await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(drawn - 2);
-  await expect(app.getByRole('button', { name: 'Waypoint 3' }).first(), 'a held Delete removed one waypoint, not two').toBeVisible();
+  await expect(app.getByRole('button', { name: 'Waypoint 2' }).first(), 'a held Delete removed one waypoint, not two').toBeVisible();
   await app.keyboard.press('ControlOrMeta+z');
   await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(drawn - 1);
 });
@@ -194,10 +195,10 @@ test('a waypoint moves down the list and back up', async ({ app }) => {
   await expect(app.getByRole('button', { name: /^4 Waypoint 51\.0 m/ })).toBeVisible({ timeout: 15_000 });
   await app.getByRole('button', { name: 'Move waypoint 4 up' }).click();
   await expect(app.getByRole('button', { name: /^3 Waypoint 51\.0 m/ })).toBeVisible({ timeout: 15_000 });
-  await app.getByRole('button', { name: /^2 Waypoint / }).click();
-  await expect(app.getByRole('button', { name: 'Move waypoint 2 down' })).toBeVisible();
-  await expect(app.getByRole('button', { name: 'Move waypoint 2 up' }), 'nothing trades places with the takeoff').toHaveCount(0);
-  await app.getByRole('button', { name: /^1 Takeoff/ }).click();
+  await app.getByRole('button', { name: /^1 Waypoint / }).click();
+  await expect(app.getByRole('button', { name: 'Move waypoint 1 down' })).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Move waypoint 1 up' }), 'nothing trades places with the takeoff').toHaveCount(0);
+  await app.getByRole('button', { name: /^T Takeoff/ }).click();
   await expect(app.getByRole('button', { name: /^Move takeoff/ }), 'the takeoff keeps its place').toHaveCount(0);
 });
 
@@ -310,8 +311,9 @@ test('after undoing a move, the selected waypoint shows its own actions, not the
   await app.getByRole('menuitem', { name: 'Photo' }).click();
   await app.getByRole('dialog').filter({ hasText: 'Take photo' }).getByRole('button', { name: 'Done' }).click();
   await expect(app.getByRole('button', { name: 'Take photo', exact: true })).toBeVisible();
-  await app.getByRole('button', { name: /^Move waypoint 3(–\d+)? up$/ }).click();
-  await expect(app.getByRole('button', { name: /^2–\d+ Waypoint / })).toBeVisible({ timeout: 15_000 });
+  await app.getByRole('button', { name: 'Move waypoint 3 up' }).click();
+  await expect(app.getByRole('button', { name: 'Delete waypoint 2' }), 'the moved waypoint is now the second').toBeVisible({ timeout: 15_000 });
+  await expect(app.getByRole('button', { name: 'Take photo', exact: true })).toBeVisible();
   await app.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(app.getByRole('button', { name: /^2 Waypoint / })).toBeVisible({ timeout: 15_000 });
   await expect(app.getByRole('button', { name: 'Delete waypoint 2' })).toBeVisible();
@@ -426,7 +428,7 @@ test.describe('on a phone', () => {
   test('the plan tools sit above the open sheet, where a tap reaches them', async ({ vehicle }) => {
     await openPlanAtVehicle(vehicle);
     await vehicle.getByRole('button', { name: 'Waypoint', exact: true }).click();
-    await expect(vehicle.getByText('Waypoint 2', { exact: true }), 'the open waypoint editor fills the sheet').toBeVisible();
+    await expect(vehicle.getByText('Waypoint 1', { exact: true }), 'the open waypoint editor fills the sheet').toBeVisible();
     const uncovered = async (name: string) => {
       const tool = vehicle.getByRole('button', { name, exact: true });
       await expect(tool).toBeInViewport({ ratio: 1 });
@@ -475,5 +477,5 @@ test('a right-click on the plan map asks before it adds, and adds the waypoint a
   expect(await itemCount(app), 'nothing is added until the pilot picks it').toBe(before);
   await app.getByRole('menuitem', { name: 'Add waypoint here' }).click();
   await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(before + 1);
-  await expect(app.getByRole('button', { name: `Waypoint ${before + 1}` }).first(), 'it lands last, after the route already drawn').toBeVisible();
+  await expect(app.getByRole('button', { name: `Waypoint ${before}` }).first(), 'it lands last, after the route already drawn: the takeoff takes no number, so it is waypoint as many as there were items').toBeVisible();
 });

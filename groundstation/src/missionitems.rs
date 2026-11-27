@@ -21,7 +21,7 @@ const LOITER_TIME: i64 = 19;
 const LOITER_TO_ALT: i64 = 31;
 const VTOL_TAKEOFF: i64 = 84;
 
-const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude,missionVehicleYaw,showLoiterRadius,loiterRadius,missionGimbalYaw,missionGimbalPitch,dropsPayload,heightAboveLaunch,heightAboveLaunchLowest,heightAboveLaunchHighest";
+const FIELDS: &str = "isSingleItem,lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude,missionVehicleYaw,showLoiterRadius,loiterRadius,missionGimbalYaw,missionGimbalPitch,dropsPayload,heightAboveLaunch,heightAboveLaunchLowest,heightAboveLaunchHighest";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
@@ -66,27 +66,28 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     )
     .unwrap_or(-1);
     let listed = backend.value_fields("plan.missionController.visualItems", FIELDS);
-    let items: Vec<Value> = match listed.get("elements").and_then(Value::as_array) {
-        Some(elements) => elements
-            .iter()
-            .enumerate()
-            .map(|(index, element)| item(element, index as i64, &vertical, &horizontal, &speed))
-            .collect(),
+    let reads: Vec<Value> = match listed.get("elements").and_then(Value::as_array) {
+        Some(elements) => elements.clone(),
         None => (0..count)
             .map(|index| {
-                item(
-                    &backend.value_fields(
-                        &format!("plan.missionController.visualItems.{index}"),
-                        FIELDS,
-                    ),
-                    index,
-                    &vertical,
-                    &horizontal,
-                    &speed,
+                backend.value_fields(
+                    &format!("plan.missionController.visualItems.{index}"),
+                    FIELDS,
                 )
             })
             .collect(),
     };
+    let items: Vec<Value> = reads
+        .iter()
+        .zip(stops(&reads))
+        .enumerate()
+        .map(|(index, (read, stop))| {
+            with_stop(
+                item(read, index as i64, &vertical, &horizontal, &speed),
+                stop,
+            )
+        })
+        .collect();
     let items: Vec<Value> = match walked(&items) {
         true => items,
         false => items.into_iter().map(unwalked).collect(),
@@ -149,8 +150,33 @@ fn abbreviation(command: i64) -> &'static str {
         85 => "VTOL Land",
         201 | 195 => "ROI",
         19 | 18 | 17 | 31 => "Loiter",
+        RETURN_TO_LAUNCH => "Return",
         _ => "",
     }
+}
+
+pub fn letter(read: &Value) -> Option<char> {
+    let complex = read.get("isSimpleItem") == Some(&Value::Bool(false))
+        && !flag(read, "isSingleItem")
+        && !flag(read, "homePosition");
+    text(read, "abbreviation")
+        .chars()
+        .next()
+        .filter(|c| !complex && *c > 'A' && *c < 'z')
+}
+
+pub fn stops(reads: &[Value]) -> Vec<Option<i64>> {
+    reads
+        .iter()
+        .scan(0, |count, read| {
+            let stop = !flag(read, "homePosition")
+                && flag(read, "specifiesCoordinate")
+                && !flag(read, "isStandaloneCoordinate")
+                && letter(read).is_none();
+            *count += i64::from(stop);
+            Some(stop.then_some(*count))
+        })
+        .collect()
 }
 
 struct Leg {
@@ -852,6 +878,11 @@ fn with_geometry(mut listed: Value, geometry: Value) -> Value {
     listed
 }
 
+fn with_stop(mut listed: Value, stop: Option<i64>) -> Value {
+    listed["stop"] = json!(stop);
+    listed
+}
+
 fn latitude_longitude(points: Option<&Value>) -> Vec<Value> {
     points
         .and_then(Value::as_array)
@@ -927,12 +958,15 @@ pub fn document_view(
         crate::plandoc::Item::Complex { kind, json, .. } => document_geometry(kind, json, vertical),
         crate::plandoc::Item::Simple(_) => Value::Null,
     }));
-    let items: Vec<Value> = document_reads(doc, selected)?
-        .into_iter()
+    let reads = document_reads(doc, selected)?;
+    let numbers = stops(&reads);
+    let items: Vec<Value> = reads
+        .iter()
         .zip(shapes)
+        .zip(numbers)
         .enumerate()
-        .map(|(index, (read, geometry))| {
-            let listed = item(&read, index as i64, vertical, horizontal, speed);
+        .map(|(index, ((read, geometry), stop))| {
+            let listed = with_stop(item(read, index as i64, vertical, horizontal, speed), stop);
             match geometry.is_null() {
                 true => listed,
                 false => with_geometry(listed, geometry),

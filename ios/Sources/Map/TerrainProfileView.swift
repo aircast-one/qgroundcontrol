@@ -188,7 +188,7 @@ struct TerrainProfileView: View {
                 }
                 profile.markers.forEach { marker in
                     let start = markerX(marker.distance, profile, width)
-                    let ends = marker.endDistance.map { [(markerX($0, profile, width), "\(marker.lastSequence ?? marker.sequence)")] } ?? []
+                    let ends = marker.endDistance.map { [(markerX($0, profile, width), marker.label)] } ?? []
                     if let end = marker.endDistance {
                         let band = measured(marker.pattern)
                         let right = markerX(end, profile, width)

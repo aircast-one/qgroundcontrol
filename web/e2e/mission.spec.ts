@@ -68,7 +68,7 @@ test('an ArduCopter mission left with Return names its waypoint and offers to re
   const done = leftOverAction(app);
   await expect(done).toBeVisible({ timeout: 180_000 });
   await expect(done.getByText(/^Mission stopped at waypoint [3-9] of \d+$/)).toBeVisible();
-  await expect(done.getByRole('button', { name: /^Resume from the waypoint \(\d+ of \d+\)$/ }), 'the title names a plan row, so the button names one too rather than the vehicle command number').toBeVisible();
+  await expect(done.getByRole('button', { name: /^Resume from the waypoint \d+ of \d+$/ }), 'the title names a waypoint by its number, so the button does too rather than the vehicle command number').toBeVisible();
 });
 
 test('the mission card over the picture leaves the home readings clear and names a distance only once the vehicle reports one', async ({ app }) => {

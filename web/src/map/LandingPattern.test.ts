@@ -219,7 +219,7 @@ describe('IsLandingPatternTest', () => {
   });
 
   it("a landing pattern is marked at its approach and touchdown like QGC's visuals", () => {
-    const item = MissionItem({ index: 3, sequence: 7, latitude: 47.0, longitude: 8.0, command: 'Landing Pattern', selected: false, altitude: 30.0, kind: KIND_LAND, foldedCommands: 4 });
+    const item = MissionItem({ index: 3, sequence: 7, stop: 3, latitude: 47.0, longitude: 8.0, command: 'Landing Pattern', selected: false, altitude: 30.0, kind: KIND_LAND, foldedCommands: 4 });
     const pattern = LandingPattern({
       index: 3,
       landing: { latitude: 47.0, longitude: 8.0 },
@@ -229,9 +229,9 @@ describe('IsLandingPatternTest', () => {
       loiterClockwise: true,
     });
     const marks = missionFeatures([item], null, [pattern]).features.map((it) => [it.properties?.[WAYPOINT_LABEL_PROPERTY], it.properties?.[WAYPOINT_SIDE_LABEL_PROPERTY]]);
-    expect(marks).toEqual([
-      ['7', 'Approach'],
-      ['11', 'Land'],
+    expect(marks, 'both ends carry the pattern\'s own stop number, not mission sequences 7 and 11').toEqual([
+      ['3', 'Approach'],
+      ['3', 'Land'],
     ]);
     const loiter = missionFeatures([item], null, [{ ...pattern, loiterToAltitude: true }]).features[0]?.properties?.[WAYPOINT_SIDE_LABEL_PROPERTY];
     expect(loiter).toBe('Loiter');

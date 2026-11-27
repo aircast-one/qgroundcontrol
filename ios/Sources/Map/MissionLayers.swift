@@ -142,8 +142,8 @@ func legLabels(_ items: [MissionItem]) -> [(TrackPoint, String)] {
         }
 }
 
-func waypointLabel(_ sequence: Int, _ crowded: Bool, abbreviation: String = "") -> String {
-    crowded ? "" : lettered(abbreviation) ? String(abbreviation.prefix(1)) : String(sequence)
+func waypointLabel(_ stop: Int?, _ crowded: Bool, abbreviation: String = "") -> String {
+    crowded ? "" : lettered(abbreviation) ? String(abbreviation.prefix(1)) : stop.map(String.init) ?? ""
 }
 
 func sideLabel(_ crowded: Bool, _ abbreviation: String) -> String {
@@ -214,7 +214,7 @@ func missionFeatures(_ items: [MissionItem], selectedIndex: Int? = nil, landings
         let selected = marker.item.index == selectedIndex
         return pointFeature(marker.at, attributes: [
             WAYPOINT_ID_PROPERTY: marker.item.index,
-            WAYPOINT_LABEL_PROPERTY: marker.item.index == HOME_ITEM && !marker.exit && !isCrowded ? HOME_SEAL : waypointLabel(marker.sequence, isCrowded, abbreviation: lettered),
+            WAYPOINT_LABEL_PROPERTY: marker.item.index == HOME_ITEM && !marker.exit && !isCrowded ? HOME_SEAL : waypointLabel(marker.item.stop, isCrowded, abbreviation: lettered),
             WAYPOINT_SIDE_LABEL_PROPERTY: (isCrowded ? nil : marker.side) ?? sideLabel(isCrowded, lettered),
             WAYPOINT_RADIUS_PROPERTY: markerRadius(isCrowded, selected),
             WAYPOINT_STROKE_PROPERTY: markerStroke(isCrowded, selected),

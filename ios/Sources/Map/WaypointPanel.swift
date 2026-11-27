@@ -11,7 +11,7 @@ func altitudeRange(_ units: String) -> ClosedRange<Double> {
     0.0...(units == FEET ? ALTITUDE_CEILING_FEET : ALTITUDE_CEILING_METRES)
 }
 
-func stripRows(_ rows: [ItemRow]) -> [ItemRow] { rows.filter { $0.index != HOME_ITEM } }
+func stripRows(_ rows: [ItemRow]) -> [ItemRow] { rows.filter { $0.index != HOME_ITEM && !$0.number.isEmpty } }
 
 struct WaypointStrip: View {
     let rows: [ItemRow]

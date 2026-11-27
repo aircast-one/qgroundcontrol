@@ -39,8 +39,8 @@ import { SurveyStats, surveyStats } from './SurveyBridge';
 const waypoint = (index: number): MapHit => ({ kind: 'Waypoint', index });
 
 describe('PlanItemsTest', () => {
-  const item = (index: number, sequence: number, name: string, altitude = 50.0, kind = 'waypoint', commandId = 16) =>
-    MissionItem({ index, sequence, latitude: 41.0, longitude: 44.0, command: name, selected: false, altitude, kind, commandId, altitudeText: Number.isNaN(altitude) ? '' : `${Math.trunc(altitude)} m` });
+  const item = (index: number, sequence: number, name: string, altitude = 50.0, kind = 'waypoint', commandId = 16, stop: number | null = sequence) =>
+    MissionItem({ index, sequence, stop, latitude: 41.0, longitude: 44.0, command: name, selected: false, altitude, kind, commandId, altitudeText: Number.isNaN(altitude) ? '' : `${Math.trunc(altitude)} m` });
 
   it("a survey's area and photos move from the sheet line into tiles", () => {
     const survey = { ...item(4, 4, 'Survey'), cameraShots: 1043 };
@@ -236,11 +236,11 @@ describe('SelectionSequenceTest', () => {
 describe('AddingAfterTextTest', () => {
   const plan = [
     MissionItem({ index: 0, sequence: 0, latitude: 41.0, longitude: 44.0, command: 'Mission Start', selected: false, altitude: 0.0, kind: 'settings' }),
-    MissionItem({ index: 2, sequence: 5, latitude: 41.0, longitude: 44.0, command: 'Waypoint', selected: false, altitude: 50.0, kind: 'waypoint' }),
+    MissionItem({ index: 2, sequence: 5, stop: 2, latitude: 41.0, longitude: 44.0, command: 'Waypoint', selected: false, altitude: 50.0, kind: 'waypoint' }),
   ];
 
-  it('the line names the sequence the operator sees on the marker', () => {
-    expect(addingAfterText(waypoint(2), plan)).toBe('Tap the map to add after #5');
+  it('the line names the waypoint by the number on its marker, not its mission sequence', () => {
+    expect(addingAfterText(waypoint(2), plan)).toBe('Tap the map to add after Waypoint 2');
   });
 
   it('with nothing selected the insertion point is the end and needs no line', () => {
@@ -248,14 +248,14 @@ describe('AddingAfterTextTest', () => {
   });
 
   it('with the launch selected the line names the takeoff, since nothing is flown before it', () => {
-    const takingOff = [plan[0]!, MissionItem({ index: 1, sequence: 1, latitude: 41.0, longitude: 44.0, command: 'Takeoff', selected: false, altitude: 5.0, kind: 'takeoff' }), plan[1]!];
-    expect(addingAfterText(waypoint(0), takingOff)).toBe('Tap the map to add after #1');
+    const takingOff = [plan[0]!, MissionItem({ index: 1, sequence: 1, latitude: 41.0, longitude: 44.0, command: 'Takeoff', selected: false, altitude: 5.0, kind: 'takeoff', abbreviation: 'Takeoff' }), plan[1]!];
+    expect(addingAfterText(waypoint(0), takingOff)).toBe('Tap the map to add after Takeoff');
   });
 
   it('with the return selected the line says the new item goes before it', () => {
-    const returning = [...plan, MissionItem({ index: 3, sequence: 6, latitude: 41.0, longitude: 44.0, command: 'Return to launch', selected: false, altitude: NaN, kind: 'land', endsRoute: true })];
-    expect(addingAfterText(waypoint(3), returning)).toBe('Tap the map to add before #6');
-    expect(addingAfterText(waypoint(2), returning)).toBe('Tap the map to add after #5');
+    const returning = [...plan, MissionItem({ index: 3, sequence: 6, latitude: 41.0, longitude: 44.0, command: 'Return to launch', selected: false, altitude: NaN, kind: 'land', endsRoute: true, abbreviation: 'Return' })];
+    expect(addingAfterText(waypoint(3), returning)).toBe('Tap the map to add before Return to launch');
+    expect(addingAfterText(waypoint(2), returning)).toBe('Tap the map to add after Waypoint 2');
   });
 
   it('a fence vertex does not move the insertion point, so it says nothing', () => {
@@ -413,8 +413,8 @@ describe('InsertAfterSelectionTest', () => {
   });
 
   it('an item not ready to send shows a question mark seal like MissionItemEditor', () => {
-    const item = MissionItem({ index: 2, sequence: 2, latitude: 41.0, longitude: 44.0, command: 'Waypoint', selected: false, altitude: 50.0, kind: 'waypoint', commandId: 16 });
-    expect(itemRows([item])[0]!.number).toBe('2');
+    const item = MissionItem({ index: 2, sequence: 2, stop: 1, latitude: 41.0, longitude: 44.0, command: 'Waypoint', selected: false, altitude: 50.0, kind: 'waypoint', commandId: 16 });
+    expect(itemRows([item])[0]!.number).toBe('1');
     expect(itemRows([{ ...item, readyForSave: false }])[0]!.number).toBe(NOT_READY_SEAL);
   });
 });
@@ -431,10 +431,10 @@ describe('ItemCountTextTest', () => {
 });
 
 describe('MovedNoticeTest', () => {
-  const items = [MissionItem({ index: 4, sequence: 72, latitude: 41.0, longitude: 44.0, command: 'Waypoint', selected: false, altitude: 50.0, kind: 'waypoint' })];
+  const items = [MissionItem({ index: 4, sequence: 72, stop: 3, latitude: 41.0, longitude: 44.0, command: 'Waypoint', selected: false, altitude: 50.0, kind: 'waypoint' })];
 
-  it('a moved waypoint is named by the number on its marker', () => {
-    expect(movedText(waypoint(4), items)).toBe('Moved #72');
+  it('a moved waypoint is named by the number on its marker, not its mission sequence', () => {
+    expect(movedText(waypoint(4), items)).toBe('Moved waypoint 3');
   });
 
   it('an item the list no longer holds still says something happened', () => {
@@ -465,8 +465,10 @@ describe('SequenceLabelTest', () => {
     expect(sequenceLabel(item(4, 212))).toBe('4–216');
   });
 
-  it('the rows of a plan with a folded speed leave no gap between them', () => {
-    expect(itemRows([item(0, 0), item(1, 0), item(2, 1), item(4, 0)]).map((it) => it.number)).toEqual(['0', '1', '2–3', '4']);
+  it('waypoints are numbered 1, 2, 3 in the list whatever commands fold into them, and an action under a waypoint has no number of its own', () => {
+    const numbered = (index: number, sequence: number, stop: number | null, folded = 0) =>
+      MissionItem({ index, sequence, stop, latitude: 41.0, longitude: 44.0, command: 'Waypoint', selected: false, altitude: 50.0, kind: 'waypoint', foldedCommands: folded });
+    expect(itemRows([numbered(0, 0, null), numbered(1, 1, 1), numbered(2, 2, 2, 1), numbered(3, 4, null)]).map((it) => it.number)).toEqual(['H', '1', '2', '']);
   });
 
   it('an item the core withheld the span for is numbered plainly rather than given a range', () => {
@@ -485,6 +487,7 @@ describe('AltitudeFrameTest', () => {
     MissionItem({
       index: 2,
       sequence: 2,
+      stop: 2,
       latitude: 41.0,
       longitude: 44.0,
       command: 'Waypoint',
@@ -530,8 +533,8 @@ describe('AltitudeFrameTest', () => {
   it('the summary chip carries the frame too, being the other place a height is spelled', () => {
     const amsl = item('AMSL', '541 m');
 
-    expect(selectionText({ kind: 'Waypoint', index: 2 }, [amsl], [], [])).toBe('#2 at 541 m AMSL');
-    expect(selectionText({ kind: 'Waypoint', index: 2 }, [item('')], [], [])).toBe('#2 at 50.0 m');
+    expect(selectionText({ kind: 'Waypoint', index: 2 }, [amsl], [], [])).toBe('Waypoint 2 at 541 m AMSL');
+    expect(selectionText({ kind: 'Waypoint', index: 2 }, [item('')], [], [])).toBe('Waypoint 2 at 50.0 m');
   });
 
   it('a frame neither head has heard of is shown, not swallowed into the default', () => {
