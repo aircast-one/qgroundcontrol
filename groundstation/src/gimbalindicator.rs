@@ -327,7 +327,10 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
                     let (pitch, yaw) = stick_rates(x, y, speed);
                     crate::guided::dispatch(
                         backend,
-                        Some(op("rates", json!({ "pitch": pitch, "yaw": yaw }))),
+                        Some(op(
+                            "rates",
+                            json!({ "pitch": pitch, "yaw": yaw, "held": true }),
+                        )),
                         vehicle,
                         &qt_path("sendRate"),
                         "[]",
@@ -635,6 +638,47 @@ mod tests {
             )["shown"],
             false,
             "no gimbal, no indicator"
+        );
+    }
+
+    #[test]
+    fn a_stick_deflection_is_marked_held_so_the_core_stops_it_when_the_head_goes_quiet() {
+        struct Core(std::cell::RefCell<Vec<Value>>);
+        impl Backend for Core {
+            fn get(&self, _p: &str) -> String {
+                json!({ "kind": "null" }).to_string()
+            }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicle" => json!({ "kind": "object", "id": 1 }),
+                    "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                json!({ "ok": false }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+            fn core_guided(&self, action: &Value) -> Option<Result<(), String>> {
+                self.0.borrow_mut().push(action.clone());
+                Some(Ok(()))
+            }
+        }
+        let core = Core(std::cell::RefCell::default());
+        assert_eq!(run(&core, GIMBAL_STICK, "[1, 0]")["ok"], true);
+        let sent = core.0.take();
+        assert_eq!(
+            (
+                sent[0]["op"].clone(),
+                sent[0]["held"].clone(),
+                sent[0]["yaw"].clone()
+            ),
+            (json!("rates"), json!(true), json!(STICK_SPEED_DEFAULT)),
+            "the heads resend a held deflection every 100 ms, and the core stops a rate marked held when that stops"
         );
     }
 

@@ -176,7 +176,23 @@ pub(crate) fn on_core(backend: &dyn Backend, mut action: Value) -> Option<bool> 
     backend.core_guided(&action).map(|started| started.is_ok())
 }
 
+pub fn override_action(channel: Option<i64>, pwm: Option<i64>, held: Option<bool>) -> Value {
+    let then = held.map(|release| match release {
+        true => "release",
+        false => "centre",
+    });
+    json!({ "action": "rcOverride", "channel": channel, "pwm": pwm, "held": then })
+}
+
 pub fn set(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    send(backend, path, args, None)
+}
+
+pub fn hold(backend: &dyn Backend, path: &str, args: &str, release: bool) -> Value {
+    send(backend, path, args, Some(release))
+}
+
+fn send(backend: &dyn Backend, path: &str, args: &str, held: Option<bool>) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let whole = |i: usize| {
         given
@@ -194,8 +210,7 @@ pub fn set(backend: &dyn Backend, path: &str, args: &str) -> Value {
     ) {
         return json!({ "ok": false, "refusal": token, "reason": reason });
     }
-    let action = json!({ "action": "rcOverride", "channel": channel, "pwm": pwm });
-    let dispatched = on_core(backend, action).unwrap_or_else(|| {
+    let dispatched = on_core(backend, override_action(channel, pwm, held)).unwrap_or_else(|| {
         flag(
             &object(&backend.invoke(path, &json!([channel, pwm]).to_string())),
             "ok",
@@ -239,6 +254,25 @@ pub fn release(backend: &dyn Backend, path: &str, args: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_held_stick_s_override_tells_the_core_what_to_do_when_the_head_goes_quiet() {
+        assert_eq!(
+            override_action(Some(13), Some(2000), Some(true))["held"],
+            "release",
+            "a working radio gets the channel back"
+        );
+        assert_eq!(
+            override_action(Some(13), Some(2000), Some(false))["held"],
+            "centre",
+            "a receiverless drone keeps the override, centred, so Radio Failsafe is not tripped"
+        );
+        assert_eq!(
+            override_action(Some(9), Some(2000), None)["held"],
+            Value::Null,
+            "a switch stays where the operator put it"
+        );
+    }
 
     #[test]
     fn an_override_goes_only_to_a_channel_the_operator_put_a_control_on() {

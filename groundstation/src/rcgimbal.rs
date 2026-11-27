@@ -95,10 +95,16 @@ pub fn stick(backend: &dyn Backend, x: f64, y: f64) -> Option<Value> {
                     crate::rcoverride::RELEASE_CHANNEL,
                     &json!([channel]).to_string(),
                 ),
-                false => crate::rcoverride::set(
+                false if *pwm == centre => crate::rcoverride::set(
                     backend,
                     crate::rcoverride::SET,
                     &json!([channel, pwm]).to_string(),
+                ),
+                false => crate::rcoverride::hold(
+                    backend,
+                    crate::rcoverride::SET,
+                    &json!([channel, pwm]).to_string(),
+                    radio,
                 ),
             })
             .find(|sent| !flag(sent, "ok"))

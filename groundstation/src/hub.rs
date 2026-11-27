@@ -446,6 +446,9 @@ pub struct Vehicle {
     roi_frame: u8,
     pub comm_lost_enabled: bool,
     gimbal_rate_due: Option<u64>,
+    gimbal_stick_due: Option<u64>,
+    gimbal_stops_left: u8,
+    rc_held: BTreeMap<u8, (u64, bool)>,
     pub gimbals: crate::gimbal::Gimbals,
     pub link_states: Vec<(LinkId, u64, bool)>,
     link_check_due_ms: Option<u64>,
@@ -730,6 +733,9 @@ impl Vehicle {
             roi_frame: guidedcmd::FRAME_GLOBAL_RELATIVE_ALT,
             comm_lost_enabled: true,
             gimbal_rate_due: None,
+            gimbal_stick_due: None,
+            gimbal_stops_left: 0,
+            rc_held: BTreeMap::new(),
             gimbals: crate::gimbal::Gimbals::default(),
             link_states: Vec::new(),
             link_check_due_ms: None,
@@ -3259,6 +3265,8 @@ impl Vehicle {
             .copied()
             .filter(|channel| self.rc_override.contains_key(channel))
             .collect();
+        self.rc_held
+            .retain(|channel, _| !channels.contains(channel));
         if released.is_empty() {
             return Vec::new();
         }
@@ -3271,9 +3279,32 @@ impl Vehicle {
         self.send_rc_override()
     }
 
-    fn tick_rc_override(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
-        if !self.rc_due.is_some_and(|due| now_ms >= due) {
+    fn expire_rc_held(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        let (released, centred): (Vec<(u8, bool)>, Vec<(u8, bool)>) = self
+            .rc_held
+            .iter()
+            .filter(|(_, (due, _))| now_ms >= *due)
+            .map(|(channel, (_, release))| (*channel, *release))
+            .partition(|(_, release)| *release);
+        if released.is_empty() && centred.is_empty() {
             return Vec::new();
+        }
+        centred.iter().for_each(|(channel, _)| {
+            self.rc_held.remove(channel);
+            self.rc_override
+                .insert(*channel, crate::joystick::PWM_CENTER as u16);
+        });
+        let channels: Vec<u8> = released.iter().map(|(channel, _)| *channel).collect();
+        match channels.is_empty() {
+            true => self.send_rc_override(),
+            false => self.release_rc_overrides(&channels),
+        }
+    }
+
+    fn tick_rc_override(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        let expired = self.expire_rc_held(now_ms);
+        if !self.rc_due.is_some_and(|due| now_ms >= due) {
+            return expired;
         }
         self.rc_due = Some(now_ms + RC_OVERRIDE_PERIOD_MS);
         let sent = self.send_rc_override();
@@ -3293,7 +3324,7 @@ impl Vehicle {
         if self.rc_override.is_empty() {
             self.rc_due = None;
         }
-        sent
+        expired.into_iter().chain(sent).collect()
     }
 
     pub(crate) fn target_for_autodrop(
@@ -3977,7 +4008,14 @@ impl Vehicle {
                         "An RC override takes a channel number and a PWM value.".to_string()
                     );
                 };
-                return self.set_rc_override(channel, pwm, now_ms);
+                let sent = self.set_rc_override(channel, pwm, now_ms)?;
+                match action.get("held").and_then(Value::as_str) {
+                    Some(then) => self
+                        .rc_held
+                        .insert(channel, (now_ms + GIMBAL_STICK_HOLD_MS, then == "release")),
+                    None => self.rc_held.remove(&channel),
+                };
+                return Ok(sent);
             }
             Some("autodropStop") => {
                 let running = matches!(self.autodrop, Some(crate::autodrop::State::Waiting { .. }));
@@ -5374,10 +5412,18 @@ impl Vehicle {
                 .collect();
             bytes.extend(expired);
         }
+        if self.gimbal_stick_due.is_some_and(|due| now_ms >= due) {
+            let stop = json!({ "action": "gimbal", "op": "rates", "pitch": 0.0, "yaw": 0.0 });
+            bytes.extend(self.gimbal_action(&stop, now_ms).unwrap_or_default());
+        }
         if self.gimbal_rate_due.is_some_and(|due| now_ms >= due) {
             log::debug!(target: crate::gimbal::COMMAND_LOG, r#"command {{"op":"ratesRepeat"}}"#);
             let outs = self.gimbals.set_rates(None, None, now_ms);
             bytes.extend(self.gimbal_outs(outs, now_ms).unwrap_or_default());
+            self.gimbal_stops_left = self.gimbal_stops_left.saturating_sub(1);
+            if self.gimbal_stops_left > 0 {
+                self.gimbal_rate_due = Some(now_ms + GIMBAL_RATE_REPEAT_MS);
+            }
         }
         let stalled = self.calibrate.tick(now_ms);
         bytes.extend(self.follow_calibration(stalled, now_ms));
@@ -7937,6 +7983,7 @@ impl Vehicle {
         use crate::gimbal::Out;
         if outs.contains(&Out::StopRateRepeat) {
             self.gimbal_rate_due = None;
+            self.gimbal_stick_due = None;
         }
         if outs.contains(&Out::StartRateRepeat) {
             self.gimbal_rate_due = Some(now_ms + GIMBAL_RATE_REPEAT_MS);
@@ -8042,6 +8089,7 @@ impl Vehicle {
                 "rates" => {
                     let rate =
                         |key: &str| action.get(key).and_then(Value::as_f64).map(|v| v as f32);
+                    self.gimbal_stick_due = flag("held").then_some(now_ms + GIMBAL_STICK_HOLD_MS);
                     gimbals.set_rates(rate("pitch"), rate("yaw"), now_ms)
                 }
                 "acquire" => gimbals.acquire_control(),
@@ -8104,7 +8152,19 @@ impl Vehicle {
                 other => return Err(format!("Unknown gimbal action {other:?}")),
             }
         };
-        self.gimbal_outs(outs, now_ms)
+        let stopped = outs.contains(&crate::gimbal::Out::StopRateRepeat)
+            && outs.iter().any(|out| {
+                matches!(out, crate::gimbal::Out::SetAttitudeRates { pitch_rate, yaw_rate, .. } if *pitch_rate == 0.0 && *yaw_rate == 0.0)
+            });
+        let sent = self.gimbal_outs(outs, now_ms);
+        self.gimbal_stops_left = match stopped {
+            true => GIMBAL_STOP_REPEATS,
+            false => 0,
+        };
+        if stopped {
+            self.gimbal_rate_due = Some(now_ms + GIMBAL_RATE_REPEAT_MS);
+        }
+        sent
     }
 
     pub fn snapshot(&self) -> Value {
@@ -8217,7 +8277,8 @@ const STORAGE_RESET_FACTORY: f64 = 3.0;
 const STORAGE_MISSION_UNTOUCHED: f64 = -1.0;
 
 const GIMBAL_RATE_REPEAT_MS: u64 = 500;
-
+const GIMBAL_STICK_HOLD_MS: u64 = 400;
+const GIMBAL_STOP_REPEATS: u8 = 2;
 fn sensor_parameter(name: &str) -> bool {
     name.starts_with("CAL_") || name.starts_with("SENS_")
 }
@@ -9899,6 +9960,155 @@ mod tests {
         assert!(
             aimed(second, -31.0, 60.0),
             "a drag streams aims 50 ms apart; as COMMAND_LONGs every one after the first was refused as a duplicate until the ack came back, and the gimbal stalled after 5 degrees"
+        );
+    }
+
+    fn hub_with_a_gimbal() -> Hub {
+        use mavlink::dialects::ardupilotmega::{
+            GIMBAL_DEVICE_ATTITUDE_STATUS_DATA, GIMBAL_MANAGER_INFORMATION_DATA,
+            GIMBAL_MANAGER_STATUS_DATA,
+        };
+        let mut hub = Hub::default();
+        let from = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        hub.on_frame(origin(0), &from, &copter_heartbeat(0, false), 0, 0);
+        hub.vehicles.values_mut().for_each(|v| v.connected = true);
+        [
+            copter_heartbeat(0, false),
+            MavMessage::GIMBAL_MANAGER_INFORMATION(GIMBAL_MANAGER_INFORMATION_DATA {
+                gimbal_device_id: 1,
+                ..Default::default()
+            }),
+            MavMessage::GIMBAL_MANAGER_STATUS(GIMBAL_MANAGER_STATUS_DATA {
+                gimbal_device_id: 1,
+                ..Default::default()
+            }),
+            MavMessage::GIMBAL_DEVICE_ATTITUDE_STATUS(GIMBAL_DEVICE_ATTITUDE_STATUS_DATA {
+                gimbal_device_id: 1,
+                q: [1.0, 0.0, 0.0, 0.0],
+                ..Default::default()
+            }),
+        ]
+        .iter()
+        .for_each(|message| {
+            hub.on_frame(origin(0), &from, message, 0, 0);
+        });
+        hub
+    }
+
+    fn gimbal_rates(frames: &[Vec<u8>]) -> Vec<(f32, f32)> {
+        frames
+            .iter()
+            .filter_map(|bytes| match decode(bytes) {
+                MavMessage::GIMBAL_MANAGER_SET_ATTITUDE(m) => Some((
+                    m.angular_velocity_y.to_degrees().round(),
+                    m.angular_velocity_z.to_degrees().round(),
+                )),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_held_stick_the_head_stops_refreshing_is_stopped_by_the_core_and_the_stop_is_repeated() {
+        let mut hub = hub_with_a_gimbal();
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        let held =
+            json!({ "action": "gimbal", "op": "rates", "pitch": 30.0, "yaw": 0.0, "held": true });
+        assert_eq!(
+            gimbal_rates(&vehicle.gimbal_action(&held, 0).unwrap()),
+            vec![(30.0, 0.0)]
+        );
+        assert_eq!(gimbal_rates(&vehicle.pump_with(200, None, 0)), vec![]);
+        vehicle.gimbal_action(&held, 300).unwrap();
+        assert_eq!(
+            gimbal_rates(&vehicle.pump_with(600, None, 0)),
+            vec![],
+            "a head that keeps sending its deflection every 100 ms keeps the gimbal turning"
+        );
+        assert_eq!(
+            gimbal_rates(&vehicle.pump_with(700, None, 0)),
+            vec![(0.0, 0.0)],
+            "the stop was lost, landed before a stale deflection, or the page went away: 400 ms with no refresh and the core stops the gimbal itself instead of repeating the rate for the rest of the flight"
+        );
+        assert_eq!(
+            [1_200, 1_700, 2_200, 2_700]
+                .into_iter()
+                .flat_map(|t| gimbal_rates(&vehicle.pump_with(t, None, 0)))
+                .collect::<Vec<_>>(),
+            vec![(0.0, 0.0), (0.0, 0.0)],
+            "the stop is an unacknowledged message, so it goes out twice more in case the first was dropped on the link"
+        );
+
+        let stick = json!({ "action": "gimbal", "op": "rates", "pitch": 0.0, "yaw": 10.0 });
+        vehicle.gimbal_action(&stick, 3_000).unwrap();
+        assert_eq!(
+            [3_500, 4_000, 4_500]
+                .into_iter()
+                .flat_map(|t| gimbal_rates(&vehicle.pump_with(t, None, 0)))
+                .collect::<Vec<_>>(),
+            vec![(0.0, 10.0); 3],
+            "a gamepad axis reports on change only, so its rate keeps repeating until the axis centres"
+        );
+        vehicle
+            .gimbal_action(
+                &json!({ "action": "gimbal", "op": "rates", "pitch": 0.0, "yaw": 0.0 }),
+                4_600,
+            )
+            .unwrap();
+        vehicle
+            .gimbal_action(
+                &json!({ "action": "gimbal", "op": "aim", "pitch": -30.0, "bodyYaw": 45.0 }),
+                4_700,
+            )
+            .unwrap();
+        assert_eq!(
+            gimbal_rates(&vehicle.pump_with(5_200, None, 0)),
+            vec![],
+            "an aim sent right after letting go is not cancelled by a repeated stop"
+        );
+    }
+
+    #[test]
+    fn a_held_camera_channel_the_head_stops_refreshing_goes_back_to_the_radio_or_to_centre() {
+        let mut hub = hub_with_a_gimbal();
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        let hold = |channel: u8, pwm: i64, then: &str| json!({ "action": "rcOverride", "channel": channel, "pwm": pwm, "held": then });
+        vehicle
+            .start_guided(&hold(13, 2000, "release"), 1_000)
+            .unwrap();
+        vehicle
+            .start_guided(&hold(14, 1000, "centre"), 1_000)
+            .unwrap();
+        vehicle
+            .start_guided(
+                &json!({ "action": "rcOverride", "channel": 9, "pwm": 2000 }),
+                1_000,
+            )
+            .unwrap();
+        vehicle
+            .start_guided(&hold(13, 2000, "release"), 1_300)
+            .unwrap();
+        vehicle.tick_rc_override(1_400);
+        assert_eq!(
+            (vehicle.rc_override.get(&13), vehicle.rc_override.get(&14)),
+            (Some(&2000), Some(&1500)),
+            "the pan was refreshed and keeps turning; the tilt was not, and on a drone with no receiver letting the channel go trips Radio Failsafe, so it is centred instead"
+        );
+        vehicle.tick_rc_override(1_700);
+        assert_eq!(
+            vehicle.rc_override.get(&13),
+            Some(&(u16::MAX - 1)),
+            "with a working radio the unrefreshed channel is handed back to it"
+        );
+        vehicle.tick_rc_override(60_000);
+        assert_eq!(
+            vehicle.rc_override.get(&9),
+            Some(&2000),
+            "a switch the operator set stays set: only a held stick expires"
         );
     }
 
