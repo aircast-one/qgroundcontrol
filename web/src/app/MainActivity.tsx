@@ -99,7 +99,7 @@ export type Tab = { readonly name: 'Fly' | 'Plan' | 'Analyze'; readonly ordinal:
 
 const TAB_VALUES = {
   Fly: { name: 'Fly', ordinal: 0, label: 'Fly', icon: 'ic_flight' },
-  Plan: { name: 'Plan', ordinal: 1, label: 'Plan', icon: 'ic_map' },
+  Plan: { name: 'Plan', ordinal: 1, label: 'Plan', icon: 'ic_route' },
   Analyze: { name: 'Analyze', ordinal: 2, label: 'Analyze', icon: 'ic_analytics' },
 } as const satisfies Record<string, Tab>;
 

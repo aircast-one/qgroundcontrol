@@ -24,7 +24,7 @@ enum Tab: String, CaseIterable {
     var icon: Icon {
         switch self {
         case .Fly: .flight
-        case .Plan: .map
+        case .Plan: .route
         case .Analyze: .analytics
         }
     }

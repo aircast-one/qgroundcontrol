@@ -135,7 +135,7 @@ internal fun visibleTabs(advanced: Boolean): List<Tab> = Tab.entries.filter { ad
 
 enum class Tab(val label: String, @DrawableRes val icon: Int) {
     Fly("Fly", R.drawable.ic_flight),
-    Plan("Plan", R.drawable.ic_map),
+    Plan("Plan", R.drawable.ic_route),
     Analyze("Analyze", R.drawable.ic_analytics);
 
     companion object {

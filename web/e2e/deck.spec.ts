@@ -14,6 +14,15 @@ test('on a desktop the Fly menu leads with Plan, keeps the aircraft and its setu
   await Promise.all(screen.map((name) => expect(section('Screen').getByRole('button', { name, exact: true })).toBeVisible()));
 });
 
+test('Plan in the Fly menu has its own route glyph, so it no longer looks like the map button beside it', async ({ vehicle }) => {
+  const glyph = (button: Locator) => button.locator('svg path').first().getAttribute('d');
+  const mapGlyph = await glyph(vehicle.getByRole('button', { name: 'Map', exact: true }));
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
+  const planGlyph = await glyph(vehicle.getByRole('dialog').getByRole('button', { name: 'Plan', exact: true }));
+  expect(planGlyph).not.toBeNull();
+  expect(planGlyph, 'Oleg read the two as the same map and could not tell which one plans a mission').not.toEqual(mapGlyph);
+});
+
 test('Calibrate in the Fly menu opens the sensor calibrations', async ({ vehicle }) => {
   await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByRole('region', { name: 'Aircraft' }).getByRole('button', { name: 'Calibrate', exact: true }).click();
