@@ -46,6 +46,13 @@ import android.content.Context
 import android.content.res.Configuration
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -145,6 +152,67 @@ internal fun loadFlyView(context: Context): FlyView =
 internal fun saveFlyView(context: Context, view: FlyView) =
     context.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE).edit().putString(FLY_VIEW_KEY, view.name).apply()
 
+private const val PIP_PLACE_KEY = "pipPlace"
+private const val PIP_SCALE_KEY = "pipScale"
+private const val PIP_SMALLEST = 0.6f
+private const val PIP_WIDEST_SHARE = 0.7f
+
+internal fun pipWithin(moved: Offset, room: Size): Offset = Offset(moved.x.coerceIn(0f, maxOf(0f, room.width)), moved.y.coerceIn(minOf(0f, -room.height), 0f))
+
+internal fun storedPipPlace(text: String?): Offset {
+    val parts = text.orEmpty().split(",")
+    return parts.mapNotNull { it.toFloatOrNull()?.takeIf(Float::isFinite) }.takeIf { it.size == 2 && parts.size == 2 }?.let { (x, y) -> Offset(x, y) } ?: Offset.Zero
+}
+
+internal fun storedPipScale(text: String?): Float = text?.toFloatOrNull()?.takeIf { it.isFinite() && it > 0f } ?: 1f
+
+internal fun pipLargestScale(base: Size, space: Size): Float = maxOf(PIP_SMALLEST, minOf(space.width * PIP_WIDEST_SHARE / base.width, space.height / base.height))
+
+internal fun pipScaleWithin(scale: Float, largest: Float): Float = scale.coerceIn(PIP_SMALLEST, maxOf(PIP_SMALLEST, largest))
+
+internal fun scaledPip(base: Size, scale: Float): Size = Size(Math.round(base.width * scale).toFloat(), Math.round(base.height * scale).toFloat())
+
+internal class PipFrameState(private val prefs: android.content.SharedPreferences) {
+    var placed by mutableStateOf(storedPipPlace(prefs.getString(PIP_PLACE_KEY, null)))
+        private set
+    var scale by mutableStateOf(storedPipScale(prefs.getString(PIP_SCALE_KEY, null)))
+        private set
+    var adjusting by mutableStateOf(false)
+        private set
+
+    fun adjust(moved: Offset, zoom: Float) {
+        adjusting = true
+        placed += moved
+        scale *= zoom
+    }
+
+    fun keep(place: Offset, size: Float) {
+        adjusting = false
+        placed = place
+        scale = size
+        prefs.edit().putString(PIP_PLACE_KEY, "${place.x},${place.y}").putString(PIP_SCALE_KEY, size.toString()).apply()
+    }
+}
+
+internal fun Modifier.pipGestures(onAdjust: (Offset, Float) -> Unit, onEnd: () -> Unit): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false)
+        var travelled = Offset.Zero
+        var adjusted = false
+        do {
+            val event = awaitPointerEvent()
+            val pan = event.calculatePan()
+            travelled += pan
+            if (adjusted || event.changes.count { it.pressed } >= 2 || travelled.getDistance() > viewConfiguration.touchSlop) {
+                onAdjust(if (adjusted) pan else travelled, event.calculateZoom())
+                adjusted = true
+                event.changes.filter { it.positionChanged() }.map { it.consume() }
+            }
+        } while (event.changes.any { it.pressed })
+        if (adjusted) onEnd()
+    }
+}
+
 @Composable
 internal fun flyIsPortrait(): Boolean =
     LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -195,12 +263,33 @@ internal fun FlyScreen(
         if (view == FlyView.ThreeD) one.aircast.map.Viewer3DPane(Modifier.fillMaxSize())
         val minimapCollapsed = mapIsPip && MINIMAP_KEY in layout.hidden && !layout.editing
         val thumbShape = if (minimapCollapsed) CircleShape else MaterialTheme.shapes.medium
+        val pipContext = LocalContext.current
+        val pip = remember { PipFrameState(pipContext.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE)) }
+        val pipDensity = LocalDensity.current.density
+        val thumbLead = if (minimapCollapsed) 0.dp else bottomLead
+        val thumbBase = if (minimapCollapsed) MAP_LAYERS_SIZE else MINIMAP_THUMB
+        val pipSpace = Size(
+            boxSize.width / pipDensity - (thumbLead + AircastSpace.s3 * 2 + cutoutStart + cutoutEnd).value,
+            (boxHeight - AircastSpace.s3 * 2 - STATUS_ROW_HEIGHT - AircastSpace.s4).value,
+        )
+        val pipScale = if (minimapCollapsed) 1f else pipScaleWithin(pip.scale, pipLargestScale(Size(thumbBase.value, thumbBase.value), pipSpace))
+        val thumb = scaledPip(Size(thumbBase.value, thumbBase.value), pipScale).width.dp
+        val pipMoved = pipWithin(pip.placed, Size(pipSpace.width - thumb.value, pipSpace.height - thumb.value))
+        val keepPip by rememberUpdatedState({ pip.keep(pipMoved, pipScale) })
+        val pipScalable by rememberUpdatedState(!minimapCollapsed)
+        val pipDrag = if (layout.editing) Modifier else remember {
+            Modifier.pipGestures(
+                onAdjust = { moved, zoom -> pip.adjust(moved / pipDensity, if (pipScalable) zoom else 1f) },
+                onEnd = { keepPip() },
+            )
+        }
         val thumbAt = Modifier
             .align(Alignment.BottomStart)
             .windowInsetsPadding(WindowInsets.displayCutout)
-            .padding(start = if (minimapCollapsed) 0.dp else bottomLead)
+            .padding(start = thumbLead)
             .padding(AircastSpace.s3)
-            .size(if (minimapCollapsed) MAP_LAYERS_SIZE else MINIMAP_THUMB)
+            .offset(pipMoved.x.dp, pipMoved.y.dp)
+            .size(thumb)
         val thumbPlace = thumbAt.clip(thumbShape)
 
         if (view != FlyView.ThreeD) {
@@ -213,13 +302,13 @@ internal fun FlyScreen(
         val cutout = WindowInsets.displayCutout
         val thumbFrame = with(density) {
             Rect(
-                Offset(cutout.getLeft(this, LocalLayoutDirection.current) + (AircastSpace.s3 + bottomLead).toPx(), boxSize.height - cutout.getBottom(this) - (AircastSpace.s3 + MINIMAP_THUMB).toPx()),
-                Size(MINIMAP_THUMB.toPx(), MINIMAP_THUMB.toPx()),
+                Offset(cutout.getLeft(this, LocalLayoutDirection.current) + (AircastSpace.s3 + bottomLead + pipMoved.x.dp).toPx(), boxSize.height - cutout.getBottom(this) - (AircastSpace.s3 + thumb - pipMoved.y.dp).toPx()),
+                Size(thumb.toPx(), thumb.toPx()),
             )
         }
         val pipNow = videoIsPip && !fullScreen
         val videoTarget = if (pipNow) thumbFrame else Rect(Offset.Zero, boxSize.toSize())
-        val frame = rememberVideoFrame(videoTarget, holding = false)
+        val frame = rememberVideoFrame(videoTarget, holding = pip.adjusting)
         val cameras = rememberCameraStepper()
         val dragAims by rememberUpdatedState(rememberDragAims())
         val syntheticAims by rememberUpdatedState(rememberSyntheticAims())
@@ -268,17 +357,17 @@ internal fun FlyScreen(
         )
         if (minimapCollapsed) Surface(
             onClick = { onView(FlyView.Map) },
-            modifier = Modifier.zIndex(2f).then(thumbAt).semantics { contentDescription = "Map" },
+            modifier = Modifier.zIndex(2f).then(thumbAt).then(pipDrag).semantics { contentDescription = "Map" },
             shape = CircleShape,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
             Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_map), contentDescription = null) }
-        } else if (mapIsPip) Box(Modifier.zIndex(2f).then(thumbAt)) {
+        } else if (mapIsPip) Box(Modifier.zIndex(2f).then(thumbAt).then(pipDrag)) {
             LayoutWidget(MINIMAP_KEY, movable = false, name = MINIMAP_NAME) {
                 Box(
                     Modifier
-                        .size(MINIMAP_THUMB)
+                        .size(thumb)
                         .clip(thumbShape)
                         .clickable(onClickLabel = "Show the map") { onView(FlyView.Map) }
                         .semantics { contentDescription = "Map" },
@@ -288,7 +377,9 @@ internal fun FlyScreen(
         if (videoIsPip && hasVideo) Box(
             Modifier
                 .zIndex(3f)
-                .then(thumbPlace)
+                .then(thumbAt)
+                .then(pipDrag)
+                .clip(thumbShape)
                 .border(2.dp, MaterialTheme.colorScheme.onSurface, thumbShape)
                 .clickable(onClickLabel = "Show the video") { onView(FlyView.Video) }
                 .semantics { contentDescription = "Video" },
@@ -409,7 +500,7 @@ internal fun FlyScreen(
                 CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { cameraSwitch(mapIsPip, Modifier) }
             }
             if (hasVehicle() && !flyScreen.guidedPanelOpen) {
-            val besideThumb = if (thumbShown && !minimapCollapsed) MINIMAP_THUMB else 0.dp
+            val besideThumb = if (thumbShown && !minimapCollapsed && pipMoved == Offset.Zero) thumb else 0.dp
             Box(
                 Modifier
                     .zIndex(2f)
