@@ -29,6 +29,14 @@ class OverlayLayoutTest {
     fun `a named badge says what it shows or hides`() {
         assertEquals("Show mini map", badgeLabel(hidden = true, name = "Mini map"))
         assertEquals("Hide", badgeLabel(hidden = false, name = null))
+        assertEquals("a reading's badge takes it off the screen rather than dimming it", "Remove", badgeLabel(hidden = false, name = null, removes = true))
+    }
+
+    @Test
+    fun `an item steps bigger or smaller than normal and stops at each end, and only a known size is read back`() {
+        assertEquals(listOf(0.85f, 1.25f, 2f, null), listOf(0.7f, 1f, 1.5f, 2f).map(::largerItemSize))
+        assertEquals("below normal is where a crowded screen needs it", listOf(null, 0.7f, 0.85f, 1.5f), listOf(0.7f, 0.85f, 1f, 2f).map(::smallerItemSize))
+        assertEquals(mapOf("headingTape" to 0.7f), storedSizes(mapOf("OverlayRigSize-headingTape" to "0.7", "OverlayRigSize-orbit" to "9", "OverlayRigOffset-orbit" to "1,1")))
     }
 
     @Test

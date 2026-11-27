@@ -349,7 +349,7 @@ internal fun FlyScreen(
                                     content = status,
                                 )
                             }
-                            LayoutWidget(HEADING_TAPE_KEY, Modifier.align(Alignment.CenterHorizontally)) { HeadingTape() }
+                            LayoutWidget(HEADING_TAPE_KEY, Modifier.align(Alignment.CenterHorizontally), resizable = true) { HeadingTape() }
                             TrafficBanner()
                             UpdateBanner()
                             Row(

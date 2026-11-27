@@ -64,11 +64,17 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.res.painterResource
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.annotation.DrawableRes
+import one.aircast.android.R
 import kotlinx.coroutines.delay
 
 private const val LAYOUT_STORE = "fly-overlay-layout"
 private const val HIDDEN_PREFIX = "OverlayRigHidden-"
 private const val OFFSET_PREFIX = "OverlayRigOffset-"
+private const val SIZE_PREFIX = "OverlayRigSize-"
 private const val LANDSCAPE_SUFFIX = "@landscape"
 private const val HIDDEN_ALPHA = 0.35f
 private const val JIGGLE_DEGREES = 1.2f
@@ -102,7 +108,7 @@ internal const val BATTERY_BAR_KEY = "batteryBar"
 
 internal fun batteryBarPillText(hidden: Boolean): String = "Battery bar: ${if (hidden) "Hidden" else "Shown"}"
 
-internal fun badgeLabel(hidden: Boolean, name: String?): String = listOfNotNull(if (hidden) "Show" else "Hide", name?.lowercase()).joinToString(" ")
+internal fun badgeLabel(hidden: Boolean, name: String?, removes: Boolean = false): String = listOfNotNull(if (hidden) "Show" else if (removes) "Remove" else "Hide", name?.lowercase()).joinToString(" ")
 
 private val HIDDEN_BY_DEFAULT = listOf(MINIMAP_KEY)
 
@@ -119,6 +125,22 @@ internal class OverlayLayoutState(private val prefs: SharedPreferences) {
     var valueSize by mutableStateOf(ValueSize.Default)
     var offsets by mutableStateOf(storedOffsets(stored))
         private set
+    var sizes by mutableStateOf(storedSizes(stored))
+        private set
+
+    fun resize(key: String, size: Float) {
+        prefs.edit().putString(SIZE_PREFIX + key, size.toString()).apply()
+        sizes = sizes + (key to size)
+    }
+
+    fun forget(keys: List<String>) {
+        val placed = keys.flatMap { listOf(it, orientedKey(it, true)) }
+        val names = placed.flatMap { listOf(OFFSET_PREFIX + it, HIDDEN_PREFIX + it) } + keys.map { SIZE_PREFIX + it }
+        names.fold(prefs.edit()) { edit, name -> edit.remove(name) }.apply()
+        sizes = sizes - keys.toSet()
+        offsets = offsets - placed.toSet()
+        hidden = hidden - keys.toSet()
+    }
 
     fun startEditing() {
         editing = true
@@ -154,6 +176,7 @@ internal class OverlayLayoutState(private val prefs: SharedPreferences) {
         hidden = hiddenKeys(emptyMap<String, Any>())
         indicatorOrder = emptyList()
         offsets = emptyMap()
+        sizes = emptyMap()
     }
 }
 
@@ -203,6 +226,17 @@ internal fun hiddenKeys(stored: Map<String, *>): Set<String> =
         stored.filter { (key, value) -> key.startsWith(HIDDEN_PREFIX) && value == true }.keys.map { it.removePrefix(HIDDEN_PREFIX) }
 
 internal fun withHidden(hidden: Set<String>, key: String, hide: Boolean): Set<String> = if (hide) hidden + key else hidden - key
+
+internal val ITEM_SIZES = listOf(0.7f, 0.85f, 1f, 1.25f, 1.5f, 2f)
+
+internal fun largerItemSize(size: Float): Float? = ITEM_SIZES.firstOrNull { it > size }
+
+internal fun smallerItemSize(size: Float): Float? = ITEM_SIZES.lastOrNull { it < size }
+
+internal fun storedSizes(stored: Map<String, *>): Map<String, Float> =
+    stored.filterKeys { it.startsWith(SIZE_PREFIX) }.mapNotNull { (key, value) ->
+        (value as? String)?.toFloatOrNull()?.takeIf { it in ITEM_SIZES }?.let { key.removePrefix(SIZE_PREFIX) to it }
+    }.toMap()
 
 
 
@@ -338,12 +372,16 @@ internal fun LayoutWidget(
     badgeSpot: BadgeSpot = BadgeSpot.Inside,
     dragsWith: String? = null,
     name: String? = null,
+    resizable: Boolean = false,
+    onRemove: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     val flyScreen = LocalFlyScreenState.current
     val layout = flyScreen.layout
     val editing = layout.editing
     val hidden = key in layout.hidden
+    val scale = layout.sizes[key]?.takeIf { resizable } ?: 1f
+    val unscaled = LocalDensity.current
     if (hidden && !editing) return
     val avoided = LocalAvoidedByVideoMessage.current
     val placedKey = layoutKey(key)
@@ -367,12 +405,14 @@ internal fun LayoutWidget(
                 .then(if (decorated) Modifier.border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.medium) else Modifier)
                 .alpha(if (hidden) HIDDEN_ALPHA else 1f)
                 .then(if (LocalFlyOsd.current) Modifier.osdShadow() else Modifier),
-        ) { content() }
+        ) {
+            if (scale == 1f) content() else CompositionLocalProvider(LocalDensity provides Density(unscaled.density * scale, unscaled.fontScale), content = content)
+        }
         if (decorated && (movable || dragsWith != null)) LayoutDragArea(dragsWith ?: key, Modifier.matchParentSize())
         val badgeAt = Modifier.align(badgeSpot.alignment).offset(BADGE_SIZE * badgeSpot.x, BADGE_SIZE * badgeSpot.y).then(if (name == null) Modifier.width(BADGE_SIZE) else Modifier.wrapContentWidth(Alignment.End, unbounded = true)).height(BADGE_SIZE)
         if (decorated && badged && hideable) Surface(
-            onClick = { layout.setHidden(key, !hidden) },
-            modifier = badgeAt.semantics { contentDescription = badgeLabel(hidden, name) },
+            onClick = { if (onRemove != null && !hidden) onRemove() else layout.setHidden(key, !hidden) },
+            modifier = badgeAt.semantics { contentDescription = badgeLabel(hidden, name, onRemove != null) },
             shape = CircleShape,
             color = if (hidden) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.inverseSurface,
             contentColor = if (hidden) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.inverseOnSurface,
@@ -392,6 +432,25 @@ internal fun LayoutWidget(
         ) {
             Icon(Icons.Default.Lock, contentDescription = "Always shown", modifier = Modifier.padding(5.dp))
         }
+        if (decorated && resizable && !hidden) {
+            SizeBadge(largerItemSize(scale), "Make bigger", R.drawable.ic_open_in_full, Modifier.align(Alignment.TopStart).offset(-BADGE_SIZE / 2, -BADGE_SIZE / 2)) { layout.resize(key, it) }
+            SizeBadge(smallerItemSize(scale), "Make smaller", R.drawable.ic_close_fullscreen, Modifier.align(Alignment.BottomStart).offset(-BADGE_SIZE / 2, BADGE_SIZE / 2)) { layout.resize(key, it) }
+        }
+    }
+}
+
+@Composable
+private fun SizeBadge(to: Float?, label: String, @DrawableRes icon: Int, modifier: Modifier, onSize: (Float) -> Unit) {
+    if (to == null) return
+    Surface(
+        onClick = { onSize(to) },
+        modifier = modifier.size(BADGE_SIZE),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.inverseSurface,
+        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+        shadowElevation = 2.dp,
+    ) {
+        Icon(painterResource(icon), contentDescription = label, modifier = Modifier.padding(5.dp))
     }
 }
 

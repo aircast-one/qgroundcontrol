@@ -80,6 +80,8 @@ internal fun withInstrument(chosen: List<String>, name: String): List<String> =
 
 internal fun selectionId(selection: String): String = if ('/' in selection) selection else "vehicle/$selection"
 
+internal fun readingKey(id: String): String = "reading:$id"
+
 internal fun movedInstrument(chosen: List<String>, index: Int, by: Int): List<String> =
     (index + by).takeIf { it in chosen.indices && index in chosen.indices }
         ?.let { to -> chosen.mapIndexed { i, name -> when (i) { index -> chosen[to]; to -> chosen[index]; else -> name } } }

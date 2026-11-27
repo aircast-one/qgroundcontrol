@@ -331,10 +331,27 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
         }
         if (stacked) {
             val (speeds, places) = shown.partition { osdIsSpeed(it.label) }
-            Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                if (silent) StaleNote(stale)
-                if (speeds.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4), verticalArrangement = Arrangement.spacedBy(2.dp)) { speeds.map { reading(it, MaterialTheme.typography.headlineMedium) } }
-                if (places.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4), verticalArrangement = Arrangement.spacedBy(2.dp)) { places.map { reading(it, MaterialTheme.typography.displaySmall) } }
+            val sized: @Composable (Instrument, TextStyle) -> Unit = { instrument, style ->
+                if (instrument.id.isBlank()) reading(instrument, style)
+                else LayoutWidget(
+                    readingKey(instrument.id),
+                    movable = false,
+                    badgeSpot = BadgeSpot.AboveTopEnd,
+                    resizable = true,
+                    onRemove = chosen.takeIf { paths -> paths.any { selectionId(it) == instrument.id } }?.let { paths ->
+                        {
+                            change(paths.filter { selectionId(it) != instrument.id })
+                            flyScreen.layout.forget(listOf(readingKey(instrument.id)))
+                        }
+                    },
+                ) { reading(instrument, style) }
+            }
+            CompositionLocalProvider(LocalFlyOsd provides false) {
+                Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (silent) StaleNote(stale)
+                    if (speeds.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4), verticalArrangement = Arrangement.spacedBy(2.dp)) { speeds.map { sized(it, MaterialTheme.typography.headlineMedium) } }
+                    if (places.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4), verticalArrangement = Arrangement.spacedBy(2.dp)) { places.map { sized(it, MaterialTheme.typography.displaySmall) } }
+                }
             }
         } else {
             FlowRow(

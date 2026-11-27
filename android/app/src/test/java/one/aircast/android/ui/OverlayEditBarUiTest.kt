@@ -14,6 +14,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -112,6 +113,35 @@ class OverlayEditBarUiTest {
         assertTrue(BATTERY_BAR_KEY in layout.hidden)
         rule.onNodeWithText("Battery bar: Hidden").performClick()
         assertFalse(BATTERY_BAR_KEY in layout.hidden)
+    }
+
+    @Test
+    fun `a reading over the picture is made bigger and smaller from its own badges, and its cross removes it and forgets its size`() {
+        val removed = mutableListOf<String>()
+        layout.editing = true
+        show {
+            Box(Modifier.size(300.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                LayoutWidget("reading:vehicle/groundSpeed", movable = false, resizable = true, onRemove = { removed += "groundSpeed" }) { Box(Modifier.size(80.dp).testTag("reading")) }
+            }
+        }
+        val normal = rule.onNodeWithTag("reading").fetchSemanticsNode().size.width
+        rule.onNodeWithContentDescription("Make bigger").performClick()
+        rule.onNodeWithContentDescription("Make bigger").performClick()
+        assertEquals(1.5f, layout.sizes["reading:vehicle/groundSpeed"])
+        assertEquals((normal * 1.5f).toInt(), rule.onNodeWithTag("reading").fetchSemanticsNode().size.width)
+        listOf(1.25f, 1f, 0.85f, 0.7f).map { size ->
+            rule.onNodeWithContentDescription("Make smaller").performClick()
+            assertEquals(size, layout.sizes["reading:vehicle/groundSpeed"])
+        }
+        rule.onNodeWithContentDescription("Make smaller").assertDoesNotExist()
+        assertEquals(storedSizes(RuntimeEnvironment.getApplication().getSharedPreferences("overlay-edit-bar-test", 0).all), layout.sizes)
+        rule.onNodeWithContentDescription("Remove").performClick()
+        assertEquals(listOf("groundSpeed"), removed)
+        layout.forget(listOf("reading:vehicle/groundSpeed"))
+        assertEquals(emptyMap<String, Float>(), layout.sizes)
+        layout.resize("headingTape", 2f)
+        layout.reset()
+        assertEquals(emptyMap<String, Float>(), layout.sizes)
     }
 
     @Test
