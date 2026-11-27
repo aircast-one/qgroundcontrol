@@ -413,9 +413,11 @@ pub fn whep_endpoint(uri: &str) -> Option<String> {
 }
 
 const BUFFERED_AFTER_FAILURES: u32 = 2;
+const BUFFERED_START_BUDGETS: u32 = 2;
+const PLAYS_HLS: bool = cfg!(any(target_family = "wasm", test));
 
-pub fn falls_back_to_buffered(browser: bool, failures: u32, buffered: bool, uri: &str) -> bool {
-    browser && failures >= BUFFERED_AFTER_FAILURES && !buffered && hls_twin(uri).is_some()
+pub fn falls_back_to_buffered(browser: bool, failures: u32, uri: &str) -> bool {
+    browser && failures >= BUFFERED_AFTER_FAILURES && hls_twin(uri).is_some()
 }
 
 pub fn hls_twin(uri: &str) -> Option<String> {
@@ -752,7 +754,6 @@ fn object(host: &Host) -> Value {
         "pipPipeline": pipeline_for(host, PIP_CHANNEL),
         "whepEndpoints": (0..VIDEO_CHANNELS).map(|channel| whep_for(host, channel)).collect::<Vec<_>>(),
         "hlsEndpoints": (0..VIDEO_CHANNELS).map(|channel| hls_for(host, channel)).collect::<Vec<_>>(),
-        "bufferedVideo": hls_for(host, MAIN_CHANNEL).is_some(),
         "streamUris": (0..VIDEO_CHANNELS).map(|channel| stream_for(host, channel)).collect::<Vec<_>>(),
         "whepRestarts": host.channels.iter().map(|channel| channel.restarts).collect::<Vec<_>>(),
         "deviceCamera": crate::videostate::device_camera(&uri),
@@ -889,13 +890,19 @@ pub fn whep_restarts() -> Value {
         .unwrap_or(Value::Null)
 }
 
-fn restart(host: &mut Host, now_ms: u64) {
-    host.channels[MAIN_CHANNEL].restarts += 1;
-    if !host.channels[MAIN_CHANNEL].wanted {
-        host.channels[MAIN_CHANNEL].restart_at_ms = None;
-        let outs = host.state.start_receiver(MAIN_RECEIVER);
+fn restart(host: &mut Host, channel: usize, now_ms: u64) {
+    RESTART[channel].store(true, std::sync::atomic::Ordering::Relaxed);
+    host.channels[channel].restarts += 1;
+    if !host.channels[channel].wanted {
+        host.channels[channel].restart_at_ms = None;
+        let outs = host.state.start_receiver(CHANNEL_RECEIVERS[channel]);
         apply(host, outs, now_ms);
     }
+}
+
+fn try_low_latency(host: &mut Host, channel: usize, now_ms: u64) {
+    host.channels[channel].buffered = None;
+    restart(host, channel, now_ms);
 }
 
 fn served() -> bool {
@@ -1062,11 +1069,22 @@ fn report(
         played.progress = Some(Watch::fresh(now_ms));
     }
     let buffers = source.unwrap_or(frames);
-    let (progress, stall) = stalled(played.progress, buffers, frames, played.timeout_s, now_ms);
+    let uri = host.state.desired_uri(receiver);
+    let buffered = played.buffered.as_ref() == Some(&uri);
+    let timeout_s = match buffered {
+        true => played.timeout_s * BUFFERED_START_BUDGETS,
+        false => played.timeout_s,
+    };
+    let (progress, stall) = stalled(played.progress, buffers, frames, timeout_s, now_ms);
     played.progress = progress;
     if stall {
-        let uri = host.state.desired_uri(receiver);
-        let problem = stream_problem(&uri, buffers, frames, error);
+        let problem = match buffered {
+            true => format!(
+                "The buffered video from {} did not play either.",
+                place(&uri)
+            ),
+            false => stream_problem(&uri, buffers, frames, error),
+        };
         log::warn!(
             "Video channel {channel} stalled after {buffers} source buffers and {frames} frames: {problem}"
         );
@@ -1084,17 +1102,22 @@ fn report(
         .into_iter()
         .flatten()
         .collect();
-        if falls_back_to_buffered(
-            cfg!(target_family = "wasm"),
-            host.state.reconnect_attempts(receiver),
-            host.channels[channel].buffered.is_some(),
-            &uri,
-        ) {
-            log::warn!(
-                "Video channel {channel}: WebRTC never held, playing the buffered HLS twin of {uri}"
-            );
-            host.channels[channel].buffered = Some(uri);
-        }
+        let falls_back = match buffered {
+            true => frames > 0,
+            false => {
+                falls_back_to_buffered(PLAYS_HLS, host.state.reconnect_attempts(receiver), &uri)
+            }
+        };
+        log::warn!(
+            "Video channel {channel}: {} for {uri}",
+            match (buffered, falls_back) {
+                (false, true) => "WebRTC never held, playing the buffered HLS twin",
+                (true, false) => "the buffered HLS twin never played, back to WebRTC",
+                (true, true) => "the buffered HLS twin stalled, retrying it",
+                (false, false) => "retrying WebRTC",
+            }
+        );
+        host.channels[channel].buffered = falls_back.then_some(uri);
         apply(host, outs, now_ms);
         return;
     }
@@ -1265,15 +1288,21 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             Some(json!({ "ok": true }))
         }
         "video.restart" => {
-            RESTART[MAIN_CHANNEL].store(true, std::sync::atomic::Ordering::Relaxed);
-            restart(host, crate::hub::now_ms());
+            restart(host, MAIN_CHANNEL, crate::hub::now_ms());
             Some(json!({ "ok": true }))
         }
         "video.tryLowLatency" => {
-            host.channels[MAIN_CHANNEL].buffered = None;
-            RESTART[MAIN_CHANNEL].store(true, std::sync::atomic::Ordering::Relaxed);
-            restart(host, crate::hub::now_ms());
-            Some(json!({ "ok": true }))
+            let channel = given
+                .get(0)
+                .and_then(Value::as_u64)
+                .map_or(MAIN_CHANNEL, |channel| channel as usize);
+            match channel < VIDEO_CHANNELS {
+                true => {
+                    try_low_latency(host, channel, crate::hub::now_ms());
+                    Some(json!({ "ok": true }))
+                }
+                false => Some(json!({ "ok": false, "reason": "There is no such video channel." })),
+            }
         }
         "video.reportRecording" => {
             let active = given.get(0).and_then(Value::as_bool).unwrap_or(false);
@@ -1384,20 +1413,16 @@ mod tests {
         assert_eq!(hls_twin("rtsp://100.88.231.116:8554/viewpro"), None);
         let uri = "http://100.88.231.116:8889/viewpro/whep";
         assert!(
-            !falls_back_to_buffered(true, 1, false, uri),
+            !falls_back_to_buffered(true, 1, uri),
             "one lost attempt is still worth a WebRTC retry"
         );
         assert!(
-            falls_back_to_buffered(true, 2, false, uri),
+            falls_back_to_buffered(true, 2, uri),
             "the second one in a row falls back"
         );
         assert!(
-            !falls_back_to_buffered(false, 5, false, uri),
+            !falls_back_to_buffered(false, 5, uri),
             "the native heads' WHEP has no HLS player to fall back to"
-        );
-        assert!(
-            !falls_back_to_buffered(true, 5, true, uri),
-            "already buffered"
         );
     }
 
@@ -1762,7 +1787,7 @@ mod tests {
             "a desktop head pulls any wanted stream itself"
         );
         assert_eq!(object(&host)["whepRestarts"], json!([0, 0]));
-        restart(&mut host, 0);
+        restart(&mut host, MAIN_CHANNEL, 0);
         assert_eq!(
             object(&host)["whepRestarts"],
             json!([1, 0]),
@@ -2081,6 +2106,123 @@ mod tests {
             (signal(&silent), silent.channels[PIP_CHANNEL].wanted),
             (json!("noSignal"), false),
             "nothing decoded inside the budget is still a stream that delivers nothing"
+        );
+    }
+
+    const WHEP_PAIR: &str = r#"[{"name":"Front","source":"WebRTC (WHEP) Video Stream","url":"http://falcon:8889/front/whep"},{"name":"Belly","source":"WebRTC (WHEP) Video Stream","url":"http://falcon:8889/belly/whep"}]"#;
+    const FRONT_HLS: &str = "http://falcon:8888/front/index.m3u8";
+    const BELLY_HLS: &str = "http://falcon:8888/belly/index.m3u8";
+
+    fn played(
+        host: &mut Host,
+        channel: usize,
+        from_ms: u64,
+        until_ms: u64,
+        frames: impl Fn(u64) -> i64,
+    ) {
+        (from_ms..=until_ms).step_by(500).for_each(|now| {
+            restart_due(host, now);
+            let running = host.channels[channel].wanted;
+            report(
+                host,
+                channel,
+                running,
+                frames(now),
+                640,
+                360,
+                None,
+                false,
+                "",
+                now,
+            );
+        });
+    }
+
+    fn endpoints(host: &Host, channel: usize) -> (Value, Value) {
+        let view = object(host);
+        (
+            view["whepEndpoints"][channel].clone(),
+            view["hlsEndpoints"][channel].clone(),
+        )
+    }
+
+    #[test]
+    fn a_buffered_twin_that_never_plays_hands_the_camera_back_to_webrtc() {
+        let mut host = hosted(WHEP_PAIR, 0, false);
+        played(&mut host, MAIN_CHANNEL, 500, 21_000, |_| 0);
+        assert_eq!(
+            endpoints(&host, MAIN_CHANNEL),
+            (Value::Null, json!(FRONT_HLS)),
+            "two WebRTC attempts in a row never showed a frame, so the buffered twin plays"
+        );
+        played(&mut host, MAIN_CHANNEL, 21_500, 30_000, |_| 0);
+        assert_eq!(
+            endpoints(&host, MAIN_CHANNEL).1,
+            json!(FRONT_HLS),
+            "an HLS muxer started on demand over a bad uplink gets twice the WebRTC start budget"
+        );
+        played(&mut host, MAIN_CHANNEL, 30_500, 45_000, |_| 0);
+        assert_eq!(
+            endpoints(&host, MAIN_CHANNEL),
+            (json!("http://falcon:8889/front/whep"), Value::Null),
+            "the twin URL is only derived from the WHEP one: a device without it must not leave the viewer on a black buffered player for good, so WebRTC is tried again"
+        );
+        played(&mut host, MAIN_CHANNEL, 45_500, 60_000, |_| 0);
+        assert_eq!(
+            endpoints(&host, MAIN_CHANNEL).1,
+            json!(FRONT_HLS),
+            "and when WebRTC fails again the twin gets its turn, so whichever path comes up first is played"
+        );
+        played(&mut host, MAIN_CHANNEL, 60_500, 104_000, |now| {
+            (now.clamp(60_500, 70_000) - 60_500) as i64 / 100
+        });
+        assert_eq!(
+            endpoints(&host, MAIN_CHANNEL).1,
+            json!(FRONT_HLS),
+            "a twin that played and then stalled is retried as buffered video"
+        );
+    }
+
+    #[test]
+    fn after_one_camera_fell_back_to_buffered_the_next_camera_can_fall_back_too() {
+        let mut host = hosted(WHEP_PAIR, 0, false);
+        played(&mut host, MAIN_CHANNEL, 500, 21_000, |_| 0);
+        assert_eq!(endpoints(&host, MAIN_CHANNEL).1, json!(FRONT_HLS));
+        let outs = host.state.on_settings(Settings {
+            active_source: 1,
+            ..host.state.settings.clone()
+        });
+        apply(&mut host, outs, 21_000);
+        played(&mut host, MAIN_CHANNEL, 21_500, 22_000, |_| 0);
+        assert_eq!(
+            endpoints(&host, MAIN_CHANNEL),
+            (json!("http://falcon:8889/belly/whep"), Value::Null),
+            "the other camera starts on WebRTC"
+        );
+        played(&mut host, MAIN_CHANNEL, 22_500, 45_000, |_| 0);
+        assert_eq!(
+            endpoints(&host, MAIN_CHANNEL).1,
+            json!(BELLY_HLS),
+            "the first camera's fallback was remembered without its address, so the second could never fall back while its WebRTC failed forever"
+        );
+    }
+
+    #[test]
+    fn try_low_latency_gives_webrtc_one_attempt_on_the_channel_asked_and_falls_straight_back() {
+        let mut host = hosted(WHEP_PAIR, 0, true);
+        played(&mut host, PIP_CHANNEL, 500, 21_000, |_| 0);
+        assert_eq!(endpoints(&host, PIP_CHANNEL).1, json!(BELLY_HLS));
+        try_low_latency(&mut host, PIP_CHANNEL, 21_500);
+        assert_eq!(
+            endpoints(&host, PIP_CHANNEL),
+            (json!("http://falcon:8889/belly/whep"), Value::Null),
+            "a picture-in-picture camera that fell back has a way back too"
+        );
+        played(&mut host, PIP_CHANNEL, 22_000, 36_000, |_| 0);
+        assert_eq!(
+            endpoints(&host, PIP_CHANNEL).1,
+            json!(BELLY_HLS),
+            "the link has already failed twice, so one more failed WebRTC attempt goes straight back to buffered instead of costing two"
         );
     }
 
