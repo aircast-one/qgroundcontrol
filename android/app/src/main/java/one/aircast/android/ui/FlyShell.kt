@@ -114,6 +114,7 @@ private const val DECISION_LAYER = 4f
 private val MAP_SCALE_CLEARANCE = 88.dp
 private val STICK_FLOOR = MINIMAP_THUMB + AircastSpace.s3 * 2
 private val RAIL_SHUTTER_ROOM = 56.dp
+private val ATTITUDE_RAIL_CLEARANCE = 96.dp
 
 enum class FlyView(val label: String, @DrawableRes val icon: Int) {
     Video("Video", R.drawable.ic_videocam),
@@ -417,6 +418,9 @@ internal fun FlyScreen(
                     .osdShadow(),
             ) {
                 CompositionLocalProvider(LocalFlyOsd provides true) { TelemetryRow(valuesShown = true, chooser = false, compact = true, stacked = true) }
+            }
+            if (view != FlyView.ThreeD) Box(Modifier.zIndex(2f).align(Alignment.BottomEnd).padding(end = ATTITUDE_RAIL_CLEARANCE, bottom = AircastSpace.s3)) {
+                LayoutWidget(ATTITUDE_KEY, name = ATTITUDE_NAME, resizable = true) { AttitudeGauges() }
             }
             }
         }

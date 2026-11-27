@@ -302,8 +302,10 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
     }
 
     if (flyScreen.choosingReadings) {
+        val landscape = !flyIsPortrait()
         InstrumentSheet(
             chosen = chosen,
+            lead = if (landscape) ({ AttitudeChoice() }) else null,
             onToggle = { name ->
                 chosen = withInstrument(chosen, name)
                 writeChosen(context, vehicleClass, chosen)
@@ -1075,6 +1077,7 @@ private const val QUICK_LIST_HINT = "Shown first when you tap the mode"
 private fun InstrumentSheet(
     chosen: List<String>,
     title: String = "Instrument tiles",
+    lead: (@Composable () -> Unit)? = null,
     onToggle: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -1092,10 +1095,12 @@ private fun InstrumentSheet(
         Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 16.dp))
         Text(instrumentChoiceNote(chosen), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp))
         if (groups.isEmpty()) {
+            lead?.invoke()
             FootNote(emptyCatalogueText(connected))
             return@AircastSheet
         }
         LazyColumn(Modifier.fillMaxWidth()) {
+            lead?.let { item(key = "lead") { it() } }
             shownFirst(groups, shownAtOpen).forEach { group ->
                 item(key = "head${group.group}") { SectionHeader(sentenceCase(group.title)) }
                 items(group.facts, key = { it.path }) { fact ->

@@ -104,13 +104,17 @@ internal const val HEADING_TAPE_KEY = "headingTape"
 
 internal const val MINIMAP_NAME = "Mini map"
 
+internal const val ATTITUDE_KEY = "attitude"
+
+internal const val ATTITUDE_NAME = "Attitude and compass"
+
 internal const val BATTERY_BAR_KEY = "batteryBar"
 
 internal fun batteryBarPillText(hidden: Boolean): String = "Battery bar: ${if (hidden) "Hidden" else "Shown"}"
 
 internal fun badgeLabel(hidden: Boolean, name: String?, removes: Boolean = false): String = listOfNotNull(if (hidden) "Show" else if (removes) "Remove" else "Hide", name?.lowercase()).joinToString(" ")
 
-private val HIDDEN_BY_DEFAULT = listOf(MINIMAP_KEY)
+private val HIDDEN_BY_DEFAULT = listOf(MINIMAP_KEY, ATTITUDE_KEY)
 
 private const val INDICATOR_ORDER = "FlyViewIndicatorOrder"
 

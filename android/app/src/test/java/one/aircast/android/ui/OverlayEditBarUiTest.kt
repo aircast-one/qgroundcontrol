@@ -145,6 +145,24 @@ class OverlayEditBarUiTest {
     }
 
     @Test
+    fun `the attitude and compass pair starts hidden, and its row in Choose readings shows and hides it`() {
+        show {
+            androidx.compose.foundation.layout.Column {
+                AttitudeChoice()
+                LayoutWidget(ATTITUDE_KEY, name = ATTITUDE_NAME, resizable = true) { AttitudeGauges() }
+            }
+        }
+        rule.onNodeWithContentDescription("Attitude, pitch 0°, roll 0°").assertDoesNotExist()
+        rule.onNodeWithText(ATTITUDE_NAME).performClick()
+        assertFalse(ATTITUDE_KEY in layout.hidden)
+        rule.onNodeWithContentDescription("Attitude, pitch 0°, roll 0°").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Heading ").assertIsDisplayed()
+        rule.onNodeWithText(ATTITUDE_NAME).performClick()
+        assertTrue(ATTITUDE_KEY in layout.hidden)
+        rule.onNodeWithContentDescription("Attitude, pitch 0°, roll 0°").assertDoesNotExist()
+    }
+
+    @Test
     fun `in flight a hold on a widget starts layout editing`() {
         flying()
         show { LayoutWidget("orbit") { Box(Modifier.size(80.dp).testTag("orbit")) } }

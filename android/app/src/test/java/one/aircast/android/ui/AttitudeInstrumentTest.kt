@@ -43,4 +43,10 @@ class AttitudeInstrumentTest {
         assertEquals(40f, pitchOffset(45f, 20f))
         assertEquals(0f, pitchOffset(0f, 20f))
     }
+
+    @Test
+    fun `the horizon is read out as pitch and roll in whole degrees`() {
+        val read = attitude(JSONObject("""{"available":true,"roll":-12.6,"pitch":4.4,"heading":10}"""))!!
+        assertEquals("Attitude, pitch 4°, roll -13°", attitudeLabel(read))
+    }
 }
