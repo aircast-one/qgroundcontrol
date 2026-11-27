@@ -247,8 +247,8 @@ describe('AddingAfterTextTest', () => {
     expect(addingAfterText(null, plan)).toBeNull();
   });
 
-  it('with the launch selected the line names the takeoff, since nothing is flown before it', () => {
-    const takingOff = [plan[0]!, MissionItem({ index: 1, sequence: 1, latitude: 41.0, longitude: 44.0, command: 'Takeoff', selected: false, altitude: 5.0, kind: 'takeoff', abbreviation: 'Takeoff' }), plan[1]!];
+  it('with the launch selected the line names the row the core will add after, the takeoff that starts the route', () => {
+    const takingOff = [{ ...plan[0]!, addsAfter: 1 }, MissionItem({ index: 1, sequence: 1, latitude: 41.0, longitude: 44.0, command: 'Takeoff', selected: false, altitude: 5.0, kind: 'takeoff', abbreviation: 'Takeoff' }), plan[1]!];
     expect(addingAfterText(waypoint(0), takingOff)).toBe('Tap the map to add after Takeoff');
   });
 

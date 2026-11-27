@@ -91,6 +91,7 @@ export type MissionItem = {
   index: number;
   sequence: number;
   stop: number | null;
+  addsAfter: number;
   latitude: number;
   longitude: number;
   command: string;
@@ -139,6 +140,7 @@ type MissionItemRequired = Pick<MissionItem, 'index' | 'sequence' | 'latitude' |
 
 export const MissionItem = (fields: MissionItemRequired & Partial<MissionItem>): MissionItem => ({
   stop: null,
+  addsAfter: fields.index,
   altitude: NaN,
   exit: null,
   routed: true,
@@ -214,6 +216,7 @@ export const allMissionItems = (json: Json | null): readonly MissionItem[] => {
         index,
         sequence: optInt(element, 'sequence', index),
         stop: isNull(element, 'stop') ? null : optInt(element, 'stop'),
+        addsAfter: optInt(element, 'addsAfter', index),
         latitude: at?.latitude ?? NaN,
         longitude: at?.longitude ?? NaN,
         command: optText(element, 'name'),

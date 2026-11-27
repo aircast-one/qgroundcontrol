@@ -295,6 +295,12 @@ class AddingAfterTextTest {
     }
 
     @Test
+    fun `with the launch selected the line names the row the core will add after, the takeoff that starts the route`() {
+        val takingOff = listOf(plan[0].copy(addsAfter = 1), MissionItem(1, 1, 41.0, 44.0, "Takeoff", false, 5.0, kind = "takeoff", abbreviation = "Takeoff"), plan[1])
+        assertEquals("Tap the map to add after Takeoff", addingAfterText(MapHit.Waypoint(0), takingOff))
+    }
+
+    @Test
     fun `with the return selected the line says the new item goes before it`() {
         val returning = plan + MissionItem(3, 6, 41.0, 44.0, "Return to launch", false, Double.NaN, kind = "land", endsRoute = true, abbreviation = "Return")
         assertEquals("Tap the map to add before Return to launch", addingAfterText(MapHit.Waypoint(3), returning))

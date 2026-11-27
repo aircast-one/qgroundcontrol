@@ -240,6 +240,15 @@ final class AddingAfterTextTests: XCTestCase {
         XCTAssertEqual("Tap the map to add after Waypoint 2", addingAfterText(.Waypoint(index: 2), plan))
     }
 
+    func testWithTheLaunchSelectedTheLineNamesTheRowTheCoreWillAddAfter() {
+        let takingOff = [
+            mission(0, 0, 41.0, 44.0, "Mission Start", 0.0) { $0.kind = "settings"; $0.addsAfter = 1 },
+            mission(1, 1, 41.0, 44.0, "Takeoff", 5.0) { $0.kind = "takeoff"; $0.abbreviation = "Takeoff" },
+            plan[1],
+        ]
+        XCTAssertEqual("Tap the map to add after Takeoff", addingAfterText(.Waypoint(index: 0), takingOff))
+    }
+
     func testWithTheReturnSelectedTheLineSaysTheNewItemGoesBeforeIt() {
         let returning = plan + [mission(3, 6, 41.0, 44.0, "Return to launch", .nan) { $0.kind = "land"; $0.endsRoute = true; $0.stop = nil; $0.abbreviation = "Return" }]
         XCTAssertEqual("Tap the map to add before Return to launch", addingAfterText(.Waypoint(index: 3), returning))

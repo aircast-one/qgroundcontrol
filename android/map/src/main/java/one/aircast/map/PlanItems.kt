@@ -125,7 +125,8 @@ fun selectionSequence(selected: MapHit?, items: List<MissionItem>): Int? {
 fun addingAfterText(selected: MapHit?, items: List<MissionItem>): String? {
     val index = missionItemIndex(selected) ?: return null
     val item = items.firstOrNull { it.index == index } ?: return null
-    return pastRouteEnd(item.index, items)?.let { "Tap the map to add before ${itemTitle(it)}" } ?: "Tap the map to add after ${itemTitle(item)}"
+    val followed = items.firstOrNull { it.index == item.addsAfter } ?: item
+    return pastRouteEnd(item.index, items)?.let { "Tap the map to add before ${itemTitle(it)}" } ?: "Tap the map to add after ${itemTitle(followed)}"
 }
 
 fun legText(item: MissionItem): String? =

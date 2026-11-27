@@ -155,14 +155,17 @@ fn abbreviation(command: i64) -> &'static str {
     }
 }
 
-pub fn letter(read: &Value) -> Option<char> {
-    let complex = read.get("isSimpleItem") == Some(&Value::Bool(false))
+pub fn is_pattern(read: &Value) -> bool {
+    read.get("isSimpleItem") == Some(&Value::Bool(false))
         && !flag(read, "isSingleItem")
-        && !flag(read, "homePosition");
+        && !flag(read, "homePosition")
+}
+
+pub fn letter(read: &Value) -> Option<char> {
     text(read, "abbreviation")
         .chars()
         .next()
-        .filter(|c| !complex && *c > 'A' && *c < 'z')
+        .filter(|c| !is_pattern(read) && c.is_ascii_alphabetic())
 }
 
 pub fn stops(reads: &[Value]) -> Vec<Option<i64>> {
@@ -966,7 +969,9 @@ pub fn document_view(
         .zip(numbers)
         .enumerate()
         .map(|(index, ((read, geometry), stop))| {
-            let listed = with_stop(item(read, index as i64, vertical, horizontal, speed), stop);
+            let mut listed = with_stop(item(read, index as i64, vertical, horizontal, speed), stop);
+            listed["addsAfter"] =
+                json!(crate::plandoc::past_takeoff(doc, "waypoint", index as i64 + 1) - 1);
             match geometry.is_null() {
                 true => listed,
                 false => with_geometry(listed, geometry),

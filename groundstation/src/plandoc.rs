@@ -884,9 +884,13 @@ pub fn insert_simple(
 
 pub fn past_takeoff(doc: &Document, kind: &str, visual_index: i64) -> i64 {
     let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
-    let takeoff = doc.items.iter().position(|item| {
-        matches!(item, Item::Simple(simple) if commands.get(&simple.command).is_some_and(|c| c.is_takeoff))
-    });
+    let takeoff = doc
+        .items
+        .iter()
+        .position(|item| !rides_along(item))
+        .filter(|first_place| {
+            matches!(&doc.items[*first_place], Item::Simple(simple) if commands.get(&simple.command).is_some_and(|c| c.is_takeoff))
+        });
     match takeoff.map(|at| at as i64 + 1) {
         Some(takeoff) if kind != "takeoff" && (1..=takeoff).contains(&visual_index) => takeoff + 1,
         _ => visual_index,
@@ -1240,19 +1244,19 @@ pub fn command_at(
     let (at, current) = simple_at(doc, visual_index)?;
     let commands = cmdinfo::tree(firmware(doc.firmware_type), command_class_at(doc, at));
     let positioned = |id: i64| commands.get(&id).is_some_and(|c| c.specifies_coordinate);
-    let action = |item: &Item| {
-        matches!(item, Item::Simple(s) if !positioned(s.command)
-            && s.command != CMD_NAV_RETURN_TO_LAUNCH
-            && commands.get(&s.command).is_none_or(|c| !c.is_land))
-    };
-    match current.command != command && positioned(current.command) && !positioned(command) {
+    let lands = commands.get(&current.command).is_some_and(|c| c.is_land);
+    match current.command != command
+        && positioned(current.command)
+        && !positioned(command)
+        && !lands
+    {
         false => set_command(doc, visual_index, command, defaults).map(|changed| (changed, None)),
         true => {
             let added = visual_index
                 + 1
                 + doc.items[at + 1..]
                     .iter()
-                    .take_while(|item| action(item))
+                    .take_while(|item| rides_along(item))
                     .count();
             Some((
                 insert_simple(doc, command, 0.0, 0.0, added as i64, defaults),
@@ -4006,6 +4010,132 @@ mod tests {
             (heights(&lifted)[3..5].to_vec(), landed),
             (vec![attached[1], attached[0]], 4),
             "an attached command moves one place"
+        );
+    }
+
+    fn plan_with(vehicle_type: i64, commands: &[i64]) -> Document {
+        let items: Vec<String> = commands
+            .iter()
+            .enumerate()
+            .map(|(at, command)| match [16, 21, 22, 84, 19].contains(command) {
+                true => format!(
+                    r#"{{"type":"SimpleItem","autoContinue":true,"command":{command},"doJumpId":{},"frame":3,"params":[0,0,0,null,{},8.0,30]}}"#,
+                    at + 1,
+                    47.0 + at as f64 * 0.001
+                ),
+                false => format!(
+                    r#"{{"type":"SimpleItem","autoContinue":true,"command":{command},"doJumpId":{},"frame":2,"params":[1,5,-1,0,0,0,0]}}"#,
+                    at + 1
+                ),
+            })
+            .collect();
+        load(
+            &format!(
+                r#"{{"fileType":"Plan","version":1,"groundStation":"QGroundControl","mission":{{"version":2,"firmwareType":3,"vehicleType":{vehicle_type},"cruiseSpeed":15,"hoverSpeed":5,"plannedHomePosition":[47.0,8.0,500],"items":[{}]}},"geoFence":{{"version":2,"polygons":[],"circles":[]}},"rallyPoints":{{"version":2,"points":[]}}}}"#,
+                items.join(",")
+            ),
+            2,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn only_a_takeoff_that_starts_the_route_keeps_new_items_behind_it() {
+        let rover_leg_first = plan_with(2, &[16, 16, 16, 22, 16]);
+        assert_eq!(
+            (1..=5)
+                .map(|at| past_takeoff(&rover_leg_first, "waypoint", at))
+                .collect::<Vec<_>>(),
+            [1, 2, 3, 4, 5],
+            "a takeoff in the middle of the route moves nothing: a waypoint goes after the row that was selected"
+        );
+        let two_takeoffs = plan_with(2, &[22, 16, 21, 22, 16]);
+        assert_eq!(
+            [1, 2, 3, 4].map(|at| past_takeoff(&two_takeoffs, "waypoint", at)),
+            [2, 2, 3, 4],
+            "the second takeoff is an ordinary row; only the launch is sent past the first"
+        );
+        let servo_first = plan_with(2, &[183, 22, 16]);
+        assert_eq!(
+            [1, 2, 3].map(|at| past_takeoff(&servo_first, "waypoint", at)),
+            [3, 3, 3],
+            "a servo command ahead of the takeoff is no place, so the takeoff still starts the route"
+        );
+        assert_eq!(past_takeoff(&plan_with(20, &[84, 16]), "waypoint", 1), 2);
+        assert_eq!(past_takeoff(&plan_with(2, &[16, 16]), "waypoint", 1), 1);
+    }
+
+    #[test]
+    fn a_command_picked_on_a_waypoint_goes_before_a_jump_and_replaces_a_landing() {
+        let looped = plan_with(2, &[22, 16, 16, 177, 16, 21]);
+        let (with_servo, added) = command_at(&looped, 3, 183, &QT_DEFAULTS).unwrap();
+        assert_eq!(
+            (
+                added,
+                flown_commands(&with_servo)[2..5]
+                    .iter()
+                    .map(|it| it.0)
+                    .collect::<Vec<_>>()
+            ),
+            (Some(4), vec![16, 183, 177]),
+            "the servo runs on every lap, so it sits before the jump back, not after the last lap"
+        );
+        let (again, added) = command_at(&with_servo, 3, 178, &QT_DEFAULTS).unwrap();
+        assert_eq!(
+            (
+                added,
+                flown_commands(&again)[2..6]
+                    .iter()
+                    .map(|it| it.0)
+                    .collect::<Vec<_>>()
+            ),
+            (Some(5), vec![16, 183, 178, 177]),
+            "a second command follows the first, still before the jump"
+        );
+        let (landed, added) = command_at(&looped, 6, 183, &QT_DEFAULTS).unwrap();
+        assert_eq!(
+            (
+                added,
+                flown_commands(&landed)
+                    .iter()
+                    .map(|it| it.0)
+                    .collect::<Vec<_>>()
+            ),
+            (None, vec![22, 16, 16, 177, 16, 183]),
+            "nothing runs after a landing, so a command picked on it replaces it as Change command says"
+        );
+    }
+
+    #[test]
+    fn people_count_waypoints_and_letter_the_rest() {
+        let reads =
+            crate::missionitems::document_reads(&plan_with(2, &[22, 16, 183, 19, 16, 20]), -1)
+                .unwrap();
+        assert_eq!(
+            crate::missionitems::stops(&reads),
+            [None, None, Some(1), None, None, Some(2), None],
+            "home, the takeoff, a servo command, a loiter and the return take no number"
+        );
+        assert_eq!(
+            reads
+                .iter()
+                .map(crate::missionitems::letter)
+                .collect::<Vec<_>>(),
+            [Some('H'), Some('T'), None, None, Some('L'), None, Some('R')]
+        );
+        let lettered = |abbreviation: &str| {
+            crate::missionitems::letter(
+                &json!({ "abbreviation": abbreviation, "isSimpleItem": true }),
+            )
+        };
+        assert_eq!(
+            ["A", "z", "[", "_", "7", ""].map(lettered),
+            [Some('A'), Some('z'), None, None, None, None]
+        );
+        assert_eq!(
+            crate::missionitems::letter(&json!({ "abbreviation": "S", "isSimpleItem": false })),
+            None,
+            "a pattern is a numbered stop"
         );
     }
 

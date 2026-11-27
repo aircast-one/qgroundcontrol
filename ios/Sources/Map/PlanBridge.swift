@@ -81,6 +81,7 @@ struct MissionItem: Equatable {
     var index: Int
     var sequence: Int
     var stop: Int? = nil
+    var addsAfter: Int? = nil
     var latitude: Double
     var longitude: Double
     var command: String
@@ -126,7 +127,7 @@ struct MissionItem: Equatable {
 
     static func == (lhs: MissionItem, rhs: MissionItem) -> Bool {
         lhs.doubles.map(boxedBits) == rhs.doubles.map(boxedBits)
-            && lhs.index == rhs.index && lhs.sequence == rhs.sequence && lhs.command == rhs.command
+            && lhs.index == rhs.index && lhs.sequence == rhs.sequence && lhs.command == rhs.command && lhs.addsAfter == rhs.addsAfter
             && lhs.selected == rhs.selected && lhs.exit == rhs.exit && lhs.routed == rhs.routed && lhs.kind == rhs.kind
             && lhs.commandId == rhs.commandId && lhs.placed == rhs.placed && lhs.afterRouteEnds == rhs.afterRouteEnds
             && lhs.altitudeText == rhs.altitudeText && lhs.specifiesCoordinate == rhs.specifiesCoordinate
@@ -189,6 +190,7 @@ func allMissionItems(_ json: JSON?) -> [MissionItem] {
             index: index,
             sequence: element["sequence"].int(index),
             stop: element["stop"].int,
+            addsAfter: element["addsAfter"].int,
             latitude: at?.latitude ?? .nan,
             longitude: at?.longitude ?? .nan,
             command: element["name"].string,

@@ -131,6 +131,7 @@ data class MissionItem(
     val dropsPayload: Boolean = false,
     val drops: Boolean = false,
     val stop: Int? = null,
+    val addsAfter: Int? = null,
     val gimbalPitch: Double = Double.NaN,
 )
 
@@ -167,6 +168,7 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
             index = index,
             sequence = element.optInt("sequence", index),
             stop = if (element.isNull("stop")) null else element.optInt("stop"),
+            addsAfter = if (element.isNull("addsAfter")) null else element.optInt("addsAfter"),
             latitude = at?.latitude ?: Double.NaN,
             longitude = at?.longitude ?: Double.NaN,
             command = element.optText("name"),

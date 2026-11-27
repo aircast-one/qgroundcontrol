@@ -552,8 +552,7 @@ pub fn markers(model: &Value) -> Vec<Value> {
             let text = |key: &str| e.get(key).and_then(Value::as_str).unwrap_or_default();
             let sequence = e.get("sequenceNumber").and_then(Value::as_i64).unwrap_or(-1);
             let distance = e.get("distanceFromStart").and_then(Value::as_f64).unwrap_or(0.0);
-            let flagged = |key: &str| e.get(key) == Some(&Value::Bool(true));
-            let complex = e.get("isSimpleItem") == Some(&Value::Bool(false)) && !flagged("isSingleItem") && !flagged("homePosition");
+            let complex = crate::missionitems::is_pattern(e);
             json!({
                 "sequence": sequence,
                 "distance": distance,

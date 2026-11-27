@@ -2,7 +2,7 @@ import { FenceBridge, type FenceCircle, type FencePolygon, type RallyPoint, rall
 import type { MapHit } from './MissionEditing';
 import { AT_END, HOME_ITEM } from './MissionKinds';
 import { HOME_SEAL, LANDING_PLACE_APPROACH, draggedCircleRadius, draggedLoiterRadius, waypointColour, waypointLabel } from './MissionLayers';
-import { KIND_STRUCTURE, KIND_TAKEOFF, type MissionItem, PlanBridge, moveLandingPlace } from './PlanBridge';
+import { KIND_STRUCTURE, type MissionItem, PlanBridge, moveLandingPlace } from './PlanBridge';
 import { circleAround, polygonCentre, replaceShape, shapeMovedTo, shapeTarget, shapeVertices } from './PolygonTools';
 import { sentenceCase } from './SentenceCase';
 import { type Survey, SurveyBridge, type SurveyStats } from './SurveyBridge';
@@ -157,8 +157,8 @@ export const addingAfterText = (selected: MapHit | null, items: readonly Mission
   const item = index === null ? undefined : items.find((it) => it.index === index);
   if (item === undefined) return null;
   const end = pastRouteEnd(item.index, items);
-  const takeoff = items.find((it) => it.kind === KIND_TAKEOFF && it.index > item.index);
-  return end === null ? `${TAP} the map to add after ${itemTitle(takeoff ?? item)}` : `${TAP} the map to add before ${itemTitle(end)}`;
+  const followed = items.find((it) => it.index === item.addsAfter) ?? item;
+  return end === null ? `${TAP} the map to add after ${itemTitle(followed)}` : `${TAP} the map to add before ${itemTitle(end)}`;
 };
 
 export const legText = (item: MissionItem): string | null => {
