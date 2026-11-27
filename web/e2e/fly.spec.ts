@@ -72,8 +72,8 @@ test('with an arming check failing the mode name still opens the modes and the n
   await app.keyboard.press('Escape');
   await expect(why).toBeHidden();
   await app.setViewportSize({ width: 412, height: 860 });
+  await expect(note, 'portrait draws no note').toBeHidden();
   await expect(flightMode(app), 'the chip still says what blocks arming to a screen reader').toHaveAccessibleName(/Compass not calibrated/);
-  await expect(note).toBeHidden();
   await flightMode(app).click();
   await expect(why, 'portrait draws no note, so the red mode name is the one tap to its reason').toBeVisible();
   await app.keyboard.press('Escape');
