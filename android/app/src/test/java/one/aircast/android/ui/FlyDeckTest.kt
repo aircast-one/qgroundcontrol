@@ -6,9 +6,9 @@ import org.junit.Test
 
 class FlyDeckTest {
     @Test
-    fun groundOffersChecklistAndTakeoffAsPrimary() {
+    fun groundOffersChecklistArmAndTakeoffWithTakeoffPrimary() {
         assertEquals(
-            listOf(CHECKLIST to false, "takeoff" to true),
+            listOf(CHECKLIST to false, "arm" to false, "takeoff" to true),
             deckIds(setOf(CHECKLIST, "arm", "takeoff", "changeSpeed"), armed = false),
         )
     }
@@ -27,8 +27,8 @@ class FlyDeckTest {
     }
 
     @Test
-    fun armedOnTheGroundKeepsTheGroundDeck() {
-        assertEquals(listOf("takeoff" to true), deckIds(setOf("arm", "takeoff"), armed = true))
+    fun armedOnTheGroundKeepsTheGroundDeckWithDisarmBesideTakeoff() {
+        assertEquals(listOf("arm" to false, "takeoff" to true), deckIds(setOf("arm", "takeoff"), armed = true))
     }
 
     @Test
@@ -46,7 +46,7 @@ class FlyDeckTest {
 
     @Test
     fun `on the ground the deck is for taking off and the drop stays in the payload sheet`() {
-        assertEquals(listOf("takeoff" to true), deckIds(setOf("arm", "takeoff", RELEASE), armed = false))
+        assertEquals(listOf("arm" to false, "takeoff" to true), deckIds(setOf("arm", "takeoff", RELEASE), armed = false))
     }
 
     private val flying = deckIds(setOf("arm", PAUSE, "rtl", "land", RELEASE), armed = true)
@@ -71,8 +71,12 @@ class FlyDeckTest {
     }
 
     @Test
-    fun `the ground deck gives up the checklist before taking off`() {
-        assertEquals(listOf("takeoff"), bottomDeck(deckIds(setOf(CHECKLIST, "arm", "takeoff"), armed = false), 140.dp, 0.dp).deck.map { it.first })
+    fun `the ground deck gives up the checklist, then arm, before taking off`() {
+        val ground = deckIds(setOf(CHECKLIST, "arm", "takeoff"), armed = false)
+        assertEquals(
+            listOf(listOf(CHECKLIST, "arm", "takeoff"), listOf("arm", "takeoff"), listOf("takeoff")),
+            listOf(270.dp, 200.dp, 140.dp).map { width -> bottomDeck(ground, width, 0.dp).deck.map { it.first } },
+        )
     }
 
     @Test

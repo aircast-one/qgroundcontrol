@@ -5,10 +5,10 @@ final class FlyDeckTests: XCTestCase {
     private func ids(_ deck: [(String, Bool)]) -> [String] { deck.map(\.0) }
     private func primaries(_ deck: [(String, Bool)]) -> [Bool] { deck.map(\.1) }
 
-    func testGroundOffersChecklistAndTakeoffAsPrimary() {
+    func testGroundOffersChecklistArmAndTakeoffWithTakeoffPrimary() {
         let deck = deckIds([CHECKLIST, "arm", "takeoff", "changeSpeed"], false)
-        XCTAssertEqual(ids(deck), [CHECKLIST, "takeoff"])
-        XCTAssertEqual(primaries(deck), [false, true])
+        XCTAssertEqual(ids(deck), [CHECKLIST, "arm", "takeoff"])
+        XCTAssertEqual(primaries(deck), [false, false, true])
     }
 
     func testGroundWithoutTakeoffArmsAsPrimary() {
@@ -25,13 +25,13 @@ final class FlyDeckTests: XCTestCase {
 
     func testAGripperAddsDropToTheFlyingDeckInAnyModeButNotOnTheGround() {
         XCTAssertEqual(ids(deckIds(["arm", PAUSE, "rtl", "land", RELEASE], true)), [PAUSE, "rtl", "land", RELEASE])
-        XCTAssertEqual(ids(deckIds(["arm", "takeoff", RELEASE], false)), ["takeoff"])
+        XCTAssertEqual(ids(deckIds(["arm", "takeoff", RELEASE], false)), ["arm", "takeoff"])
     }
 
-    func testArmedOnTheGroundKeepsTheGroundDeck() {
+    func testArmedOnTheGroundKeepsTheGroundDeckWithDisarmBesideTakeoff() {
         let deck = deckIds(["arm", "takeoff"], true)
-        XCTAssertEqual(ids(deck), ["takeoff"])
-        XCTAssertEqual(primaries(deck), [true])
+        XCTAssertEqual(ids(deck), ["arm", "takeoff"])
+        XCTAssertEqual(primaries(deck), [false, true])
     }
 
     private let flying = deckIds(["arm", PAUSE, "rtl", "land", RELEASE], true)
@@ -52,8 +52,9 @@ final class FlyDeckTests: XCTestCase {
         XCTAssertEqual([288, 222, 156, 90, 40].map { ids(bottomDeck(flying, $0, 112).deck) }, [["rtl", "land", RELEASE], ["rtl", "land"], ["rtl"], [], []])
     }
 
-    func testTheGroundDeckGivesUpTheChecklistBeforeTakingOff() {
-        XCTAssertEqual(ids(bottomDeck(deckIds([CHECKLIST, "arm", "takeoff"], false), 140, 0).deck), ["takeoff"])
+    func testTheGroundDeckGivesUpTheChecklistThenArmBeforeTakingOff() {
+        let ground = deckIds([CHECKLIST, "arm", "takeoff"], false)
+        XCTAssertEqual([270, 200, 140].map { ids(bottomDeck(ground, $0, 0).deck) }, [[CHECKLIST, "arm", "takeoff"], ["arm", "takeoff"], ["takeoff"]])
     }
 
     func testADeckNotMeasuredYetShowsEveryAction() {

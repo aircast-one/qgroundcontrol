@@ -215,7 +215,7 @@ export type DeckIds = readonly (readonly [string, boolean])[];
 
 export const deckIds = (shown: ReadonlySet<string>, armed: boolean, payloadStrip: boolean): DeckIds => {
   const flying = armed && (shown.has('rtl') || shown.has('land'));
-  const ground = [CHECKLIST, shown.has('takeoff') ? 'takeoff' : 'arm'];
+  const ground = [CHECKLIST, 'arm', 'takeoff'];
   const flown = (flying ? [PAUSE, 'rtl', 'land'] : ground).filter((it) => shown.has(it));
   const primary = flying ? (flown.includes('rtl') ? 'rtl' : null) : (flown[flown.length - 1] ?? null);
   const chosen = flying && shown.has(RELEASE) && !payloadStrip ? [...flown, RELEASE] : flown;

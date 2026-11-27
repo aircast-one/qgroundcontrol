@@ -4,9 +4,10 @@ import { CHECKLIST, DeckEntry, type DeckIds, bottomDeck, deckColours, deckIds, d
 import { PAUSE, RELEASE } from './MoreActions';
 
 describe('FlyDeckTest', () => {
-  it('groundOffersChecklistAndTakeoffAsPrimary', () => {
+  it('groundOffersChecklistArmAndTakeoffWithTakeoffPrimary', () => {
     expect(deckIds(new Set([CHECKLIST, 'arm', 'takeoff', 'changeSpeed']), false, false)).toEqual([
       [CHECKLIST, false],
+      ['arm', false],
       ['takeoff', true],
     ]);
   });
@@ -23,8 +24,11 @@ describe('FlyDeckTest', () => {
     ]);
   });
 
-  it('armedOnTheGroundKeepsTheGroundDeck', () => {
-    expect(deckIds(new Set(['arm', 'takeoff']), true, false)).toEqual([['takeoff', true]]);
+  it('armedOnTheGroundKeepsTheGroundDeckWithDisarmBesideTakeoff', () => {
+    expect(deckIds(new Set(['arm', 'takeoff']), true, false)).toEqual([
+      ['arm', false],
+      ['takeoff', true],
+    ]);
   });
 
   it('a drop sits on the deck beside the flight actions in flight and never takes the primary slot', () => {
@@ -45,7 +49,10 @@ describe('FlyDeckTest', () => {
   });
 
   it('on the ground the deck is for taking off; the drop stays in the payload sheet', () => {
-    expect(deckIds(new Set(['arm', 'takeoff', RELEASE]), false, false)).toEqual([['takeoff', true]]);
+    expect(deckIds(new Set(['arm', 'takeoff', RELEASE]), false, false)).toEqual([
+      ['arm', false],
+      ['takeoff', true],
+    ]);
   });
 
   it('sliding across most of the button confirms as surely as holding it', () => {
@@ -93,8 +100,9 @@ describe('DeckFitTest', () => {
     expect([288, 222, 156, 90, 40].map((width) => ids(bottomDeck(flying, width, 112).deck))).toEqual([['rtl', 'land', RELEASE], ['rtl', 'land'], ['rtl'], [], []]);
   });
 
-  it('the ground deck gives up the checklist before taking off', () => {
-    expect(ids(bottomDeck(deckIds(new Set([CHECKLIST, 'arm', 'takeoff']), false, false), 140, 0).deck)).toEqual(['takeoff']);
+  it('the ground deck gives up the checklist, then arm, before taking off', () => {
+    const ground = deckIds(new Set([CHECKLIST, 'arm', 'takeoff']), false, false);
+    expect([270, 200, 140].map((width) => ids(bottomDeck(ground, width, 0).deck))).toEqual([[CHECKLIST, 'arm', 'takeoff'], ['arm', 'takeoff'], ['takeoff']]);
   });
 
   it('a deck not measured yet shows every action', () => {

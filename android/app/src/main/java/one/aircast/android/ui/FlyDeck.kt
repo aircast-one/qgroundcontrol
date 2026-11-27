@@ -173,7 +173,7 @@ private fun DeckPress(entry: DeckEntry, content: @Composable () -> Unit) {
 
 internal fun deckIds(shown: Set<String>, armed: Boolean): List<Pair<String, Boolean>> {
     val flying = armed && ("rtl" in shown || "land" in shown)
-    val ground = listOf(CHECKLIST, if ("takeoff" in shown) "takeoff" else "arm")
+    val ground = listOf(CHECKLIST, "arm", "takeoff")
     val flown = (if (flying) listOf(PAUSE, "rtl", "land") else ground).filter { it in shown }
     val primary = if (flying) "rtl".takeIf { it in flown } else flown.lastOrNull()
     val chosen = if (flying && RELEASE in shown) flown + RELEASE else flown
