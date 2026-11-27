@@ -60,10 +60,30 @@ private let GIMBAL_WEDGE_LAYER = "aircast-gimbal-wedge-layer"
 private let GIMBAL_WEDGE_IMAGE = "aircast-mission-gimbal-wedge"
 private let GIMBAL_WEDGE_PX: CGFloat = 72
 private let GIMBAL_WEDGE_SWEEP: CGFloat = 90
+private let GIMBAL_DOWN_IMAGE = "aircast-mission-gimbal-down"
+private let WEDGE_PITCH = "pitch"
+private let UNKNOWN_PITCH = -45
+let LOOKS_DOWN_PITCH = -80.0
 
-func gimbalWedges(_ items: [MissionItem]) -> [TransectArrow] {
+struct GimbalWedge: Equatable {
+    var at: TrackPoint
+    var bearing: Double
+    var pitch: Double?
+}
+
+func gimbalWedges(_ items: [MissionItem]) -> [GimbalWedge] {
     items.filter { $0.heading.isFinite && $0.gimbalYaw.isFinite }
-        .map { TransectArrow(at: TrackPoint(latitude: $0.latitude, longitude: $0.longitude), bearing: $0.heading + $0.gimbalYaw) }
+        .map { GimbalWedge(at: TrackPoint(latitude: $0.latitude, longitude: $0.longitude), bearing: $0.heading + $0.gimbalYaw, pitch: $0.gimbalPitch.isFinite ? $0.gimbalPitch : nil) }
+}
+
+private func lookingDown() -> PlatformImage {
+    mapIcon(GIMBAL_WEDGE_PX) { context in
+        let half = GIMBAL_WEDGE_PX / 2
+        context.addEllipse(in: CGRect(x: half / 2, y: half / 2, width: half, height: half))
+        context.setStrokeColor(PlatformColor(white: 1, alpha: 200.0 / 255).cgColor)
+        context.setLineWidth(4)
+        context.strokePath()
+    }
 }
 
 private func wedge() -> PlatformImage {
@@ -81,7 +101,9 @@ private func wedge() -> PlatformImage {
 func renderGimbalWedges(_ style: MLNStyle, _ items: [MissionItem]) {
     style.setGeoJson(
         GIMBAL_WEDGE_SOURCE,
-        featureCollection(gimbalWedges(items).map { pointFeature($0.at, attributes: [ARROW_BEARING: $0.bearing]) })
+        featureCollection(gimbalWedges(items).map { wedge in
+            pointFeature(wedge.at, attributes: [ARROW_BEARING: wedge.bearing].merging(wedge.pitch.map { [WEDGE_PITCH: $0] } ?? [:]) { $1 })
+        })
     )
 }
 
@@ -90,8 +112,11 @@ func installTransectMarks(_ style: MLNStyle) {
         let source = geoJsonSource(GIMBAL_WEDGE_SOURCE)
         style.addSource(source)
         style.setImage(wedge(), forName: GIMBAL_WEDGE_IMAGE)
+        style.setImage(lookingDown(), forName: GIMBAL_DOWN_IMAGE)
+        let pitch: [Any] = ["coalesce", ["get", WEDGE_PITCH], UNKNOWN_PITCH]
         let wedges = MLNSymbolStyleLayer(identifier: GIMBAL_WEDGE_LAYER, source: source)
-        wedges.iconImageName = styleConstant(GIMBAL_WEDGE_IMAGE)
+        wedges.iconImageName = styleExpression(["case", ["<=", pitch, LOOKS_DOWN_PITCH], GIMBAL_DOWN_IMAGE, GIMBAL_WEDGE_IMAGE])
+        wedges.iconScale = styleExpression(["interpolate", ["linear"], pitch, -90, 0.5, 0, 1.3])
         wedges.iconRotation = styleGet(ARROW_BEARING)
         wedges.iconRotationAlignment = styleConstant("map")
         wedges.iconAllowsOverlap = styleConstant(true)

@@ -49,6 +49,18 @@ final class TransectMarksTests: XCTestCase {
         XCTAssertEqual(gimbalWedges([looking, bare]).map(\.bearing), [120.0])
     }
 
+    func testAWaypointsGimbalWedgeCarriesItsPitchSoTheMapDrawsStraightDownAsARingAndAShallowLookAsALongerWedge() {
+        let aimed = { (index: Int, pitch: Double) in
+            withChanges(self.leg(index)) {
+                $0.heading = 90.0
+                $0.gimbalYaw = 0.0
+                $0.gimbalPitch = pitch
+            }
+        }
+        XCTAssertEqual(gimbalWedges([aimed(2, -90.0), aimed(3, -20.0), aimed(4, .nan)]).map(\.pitch), [-90.0, -20.0, nil])
+        XCTAssertTrue(-90.0 <= LOOKS_DOWN_PITCH && -20.0 > LOOKS_DOWN_PITCH)
+    }
+
     func testAPatternItemGetsASecondMarkerAtItsExitLabelledWithItsOwnStopNumber() {
         let survey = withChanges(leg(2, complex: true)) {
             $0.exit = TrackPoint(latitude: 47.5, longitude: 8.1)

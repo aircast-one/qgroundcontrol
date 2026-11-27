@@ -117,6 +117,7 @@ struct MissionItem: Equatable {
     var terrainCollision: Bool = false
     var heading: Double = .nan
     var gimbalYaw: Double = .nan
+    var gimbalPitch: Double = .nan
     var closesRoute: Bool = false
     var legBroken: Bool = false
     var abbreviation: String = ""
@@ -142,7 +143,7 @@ struct MissionItem: Equatable {
     }
 
     private var doubles: [Double] {
-        [latitude, longitude, altitude, distance, altitudeChange, extraSeconds, loiterRadius, heading, gimbalYaw]
+        [latitude, longitude, altitude, distance, altitudeChange, extraSeconds, loiterRadius, heading, gimbalYaw, gimbalPitch]
     }
 }
 
@@ -223,6 +224,7 @@ func allMissionItems(_ json: JSON?) -> [MissionItem] {
             loiterRadius: element["loiterRadius"].double(.nan),
             heading: element["heading"].double(.nan),
             gimbalYaw: element["gimbalYaw"].double(.nan),
+            gimbalPitch: element["gimbalPitch"].double(.nan),
             closesRoute: element["closesRoute"].bool,
             legBroken: broken.contains(index),
             abbreviation: element["abbreviation"].string,
