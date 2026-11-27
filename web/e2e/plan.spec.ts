@@ -415,3 +415,19 @@ test('a waypoint that tilts the camera tells the map how far down it looks, so i
   await editor.getByRole('button', { name: 'Done' }).click();
   await expect.poll(async () => (await planRows(app)).map((it) => it.gimbalPitch ?? null).filter((it) => it !== null), { timeout: 30_000 }).toContain(-60);
 });
+
+test('a right-click on the plan map asks before it adds, and adds the waypoint at the end of the route', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openPlanAtVehicle(app);
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.getByRole('button', { name: 'Done' }).click();
+  const before = await itemCount(app);
+  const box = (await app.getByRole('region', { name: 'Map' }).boundingBox())!;
+  await app.mouse.click(box.x + box.width * 0.75, box.y + box.height * 0.85, { button: 'right' });
+  await expect(app.getByRole('menuitem', { name: 'Set launch here' })).toBeVisible();
+  expect(await itemCount(app), 'nothing is added until the pilot picks it').toBe(before);
+  await app.getByRole('menuitem', { name: 'Add waypoint here' }).click();
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(before + 1);
+  await expect(app.getByRole('button', { name: `Waypoint ${before + 1}` }).first(), 'it lands last, after the route already drawn').toBeVisible();
+});

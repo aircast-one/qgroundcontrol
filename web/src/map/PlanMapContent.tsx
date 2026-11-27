@@ -234,6 +234,8 @@ export type PlanBar = {
 
 const hitKey = (hit: MapHit | null): string => JSON.stringify(hit);
 
+type MapMenuAt = { readonly at: TrackPoint; readonly x: number; readonly y: number };
+
 export const PlanMapContent = ({
   mapStyle,
   onCentre = null,
@@ -285,6 +287,7 @@ export const PlanMapContent = ({
   const readsStarted = useRemembered(0);
   const planReads = useRemembered(0);
   const layer = useRemembered<PlanLayer>(PlanLayer.Mission);
+  const mapMenu = useRemembered<MapMenuAt | null>(null);
   const selectedKey = hitKey(selected.value);
   useEffect(() => {
     const owning = layerOf(selected.value);
@@ -642,16 +645,14 @@ export const PlanMapContent = ({
         editable
         circledShapes={circled}
         collisionLegs={terrainHits}
-        onAdd={(lat, lon) => {
+        onAdd={(lat, lon, x, y) => {
           const trace = tracing.value;
           if (trace !== null) {
             tracing.value = [trace[0], [...trace[1], TrackPoint(lat, lon)]];
             return;
           }
-          if (layer.value === PlanLayer.Mission) {
-            panelOpen.value = false;
-            addMissionItem(KIND_WAYPOINT, 'Adding a waypoint', TrackPoint(lat, lon), insertAfter(selected.value, allItems.value));
-          } else if (layer.value === PlanLayer.Rally && support.rally) addRallyAt(lat, lon);
+          if (layer.value === PlanLayer.Mission) mapMenu.value = { at: TrackPoint(lat, lon), x, y };
+          else if (layer.value === PlanLayer.Rally && support.rally) addRallyAt(lat, lon);
         }}
         onBlankTap={(lat, lon) => {
           const trace = tracing.value;
@@ -733,6 +734,29 @@ export const PlanMapContent = ({
         centreOn={centreOn.value}
         centreMinZoom={centreMinZoom.value}
       />
+      {mapMenu.value === null ? null : (
+        <div className="absolute" style={{ left: mapMenu.value.x, top: mapMenu.value.y }}>
+          <DropdownMenu expanded onDismissRequest={() => (mapMenu.value = null)}>
+            <DropdownMenuItem
+              text="Add waypoint here"
+              onClick={() => {
+                const at = mapMenu.value?.at ?? null;
+                mapMenu.value = null;
+                panelOpen.value = false;
+                addMissionItem(KIND_WAYPOINT, 'Adding a waypoint', at, insertAfter(null, allItems.value));
+              }}
+            />
+            <DropdownMenuItem
+              text="Set launch here"
+              onClick={() => {
+                const at = mapMenu.value?.at;
+                mapMenu.value = null;
+                if (at !== undefined) onBridge(() => PlanBridge.moveItem(HOME_ITEM, at.latitude, at.longitude), { label: 'Moving the launch' });
+              }}
+            />
+          </DropdownMenu>
+        </div>
+      )}
 
       {radiusFor.value === null ? null : (
         <RadiusDialog

@@ -147,7 +147,7 @@ export const withinTap = (dx: number, dy: number): boolean => Math.abs(dx) <= TA
 export const attachMissionEditing = (
   _mapView: HTMLElement,
   map: MapLibreMap,
-  onAdd: (latitude: number, longitude: number) => void,
+  onAdd: (latitude: number, longitude: number, x: number, y: number) => void,
   onMove: (hit: MapHit, latitude: number, longitude: number) => void,
   onSelected: (hit: MapHit | null) => void = () => undefined,
   onMoved: (hit: MapHit, latitude: number, longitude: number) => void = () => undefined,
@@ -173,12 +173,12 @@ export const attachMissionEditing = (
     if (gesture.press !== null) clearTimeout(gesture.press);
     gesture.press = null;
   };
-  const longClick = (tapped: MapHit | null, at: LngLat) => {
+  const longClick = (tapped: MapHit | null, at: LngLat, x: number, y: number) => {
     gesture.addedInGesture = true;
     gesture.swallowsClick = true;
     gesture.pressedAt = performance.now();
     if (tapped !== null) onSelected(tapped);
-    else onAdd(at.lat, at.lng);
+    else onAdd(at.lat, at.lng, x, y);
   };
   const down = (event: MapMouseEvent | MapTouchEvent) => {
     cancelPress();
@@ -199,7 +199,7 @@ export const attachMissionEditing = (
       const tapped = gesture.tapped;
       if (event.type === 'touchstart') gesture.press = setTimeout(() => {
         gesture.press = null;
-        longClick(tapped, at);
+        longClick(tapped, at, x, y);
       }, LONG_PRESS_TIMEOUT_MS);
       return;
     }
@@ -269,7 +269,7 @@ export const attachMissionEditing = (
     const hit = hitTest(map, x, y);
     const tapped = tappedOnly(hit, x, y);
     if (hit !== null && tapped === null) return;
-    longClick(tapped, event.lngLat);
+    longClick(tapped, event.lngLat, x, y);
   };
   map.on('mousedown', down);
   map.on('touchstart', down);

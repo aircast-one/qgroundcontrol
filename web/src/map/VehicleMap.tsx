@@ -217,7 +217,7 @@ export type VehicleMapProps = {
   selectedWaypoint?: number | null;
   circledShapes?: ReadonlySet<string>;
   firmwareFence?: FirmwareFence | null;
-  onAdd?: (latitude: number, longitude: number) => void;
+  onAdd?: (latitude: number, longitude: number, x: number, y: number) => void;
   onBlankTap?: ((latitude: number, longitude: number) => void) | null;
   onMove?: (hit: MapHit, latitude: number, longitude: number) => void;
   onWaypointSelected?: (hit: MapHit | null) => void;
@@ -482,7 +482,7 @@ export const VehicleMap = ({
       attachMissionEditing(
         loaded.getCanvasContainer(),
         loaded,
-        (latitude: number, longitude: number) => latestOnAdd.current(latitude, longitude),
+        (latitude: number, longitude: number, x: number, y: number) => latestOnAdd.current(latitude, longitude, x, y),
         (hit: MapHit, latitude: number, longitude: number) => latestOnMove.current(hit, latitude, longitude),
         (hit: MapHit | null) => latestOnSelected.current(hit),
         (hit: MapHit, latitude: number, longitude: number) => latestOnMoved.current(hit, latitude, longitude),
