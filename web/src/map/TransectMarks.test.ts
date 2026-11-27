@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { EditableShape, edgeLabels } from './EditableShape';
 import { FencePolygon } from './FenceBridge';
-import { WAYPOINT_LABEL_PROPERTY, exitMarkers, flownRoute, legArrows, missionFeatures } from './MissionLayers';
+import { MARKER_RADIUS, MARKER_STROKE, WAYPOINT_LABEL_PROPERTY, exitMarkers, flownRoute, legArrows, missionFeatures } from './MissionLayers';
 import { MissionItem } from './PlanBridge';
 import { polygonCentre, shapeMovedTo } from './PolygonTools';
-import { LOOKS_DOWN_PITCH, gimbalWedges, transectMarks } from './TransectMarks';
+import { GIMBAL_RING_RADIUS, GIMBAL_WEDGE_RADIUS, gimbalWedges, transectMarks, wedgeFeatures, wedgeLook } from './TransectMarks';
 import type { TrackPoint } from './VehicleMap';
 
 const near = (actual: number | undefined, expected: number, delta: number, message?: string) => expect(Math.abs((actual ?? NaN) - expected), message).toBeLessThanOrEqual(delta);
@@ -61,7 +61,23 @@ describe('TransectMarksTest', () => {
     const out = { ...leg(3), heading: 90.0, gimbalYaw: 0.0, gimbalPitch: -20.0 };
     const yawOnly = { ...leg(4), heading: 90.0, gimbalYaw: 0.0 };
     expect(gimbalWedges([down, out, yawOnly]).map((it) => it.pitch)).toEqual([-90.0, -20.0, null]);
-    expect(-90.0 <= LOOKS_DOWN_PITCH && -20.0 > LOOKS_DOWN_PITCH).toBe(true);
+  });
+
+  it('straight down is a ring drawn outside the waypoint marker, and a wedge is longer the shallower the camera looks and never hides under the marker', () => {
+    const markerEdge = MARKER_RADIUS + MARKER_STROKE;
+    const [down, steep, out, level, unknown] = [-90.0, -79.0, -20.0, 0.0, null].map(wedgeLook);
+    expect(down, 'a ring keeps one size').toEqual(wedgeLook(-80.0));
+    expect(down?.size).toBe(1);
+    expect(down?.image).not.toBe(out?.image);
+    expect(GIMBAL_RING_RADIUS, 'the ring is wider than the marker it sits under').toBeGreaterThan(markerEdge);
+    expect(GIMBAL_RING_RADIUS).toBeLessThan(GIMBAL_WEDGE_RADIUS);
+    expect([steep, out, level].map((it) => it?.image)).toEqual([out?.image, out?.image, out?.image]);
+    expect((steep?.size ?? 0) * GIMBAL_WEDGE_RADIUS, 'the steepest wedge still reaches past the marker').toBeGreaterThan(markerEdge);
+    expect((steep?.size ?? 0) < (out?.size ?? 0) && (out?.size ?? 0) < (level?.size ?? 0)).toBe(true);
+    expect(unknown, 'a yaw with no pitch draws as a 45° look').toEqual(wedgeLook(-45.0));
+    expect(wedgeLook(30.0), 'a camera looking up draws as level').toEqual(level);
+    const drawn = wedgeFeatures(gimbalWedges([{ ...leg(2), heading: 90.0, gimbalYaw: 0.0, gimbalPitch: -90.0 }])).features[0]?.properties;
+    expect([drawn?.wedgeImage, drawn?.wedgeSize], 'the map draws what the look says').toEqual([down?.image, 1]);
   });
 
   it('a pattern item gets a second marker at its exit labelled with its own stop number', () => {
