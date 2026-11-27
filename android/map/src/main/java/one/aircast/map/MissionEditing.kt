@@ -138,7 +138,7 @@ internal fun withinTap(dx: Float, dy: Float): Boolean =
 fun attachMissionEditing(
     mapView: MapView,
     map: MapLibreMap,
-    onAdd: (Double, Double) -> Unit,
+    onAdd: (Double, Double, Float, Float) -> Unit,
     onMove: (MapHit, Double, Double) -> Unit,
     onSelected: (MapHit?) -> Unit = {},
     onMoved: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
@@ -156,7 +156,7 @@ fun attachMissionEditing(
 
     map.addOnMapLongClickListener { latLng ->
         addedInGesture = true
-        tapped?.let(onSelected) ?: onAdd(latLng.latitude, latLng.longitude)
+        tapped?.let(onSelected) ?: map.projection.toScreenLocation(latLng).let { onAdd(latLng.latitude, latLng.longitude, it.x, it.y) }
         true
     }
 

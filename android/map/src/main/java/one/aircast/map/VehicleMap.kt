@@ -193,7 +193,7 @@ fun VehicleMap(
     selectedWaypoint: Int? = null,
     circledShapes: Set<String> = emptySet(),
     firmwareFence: FirmwareFence? = null,
-    onAdd: (Double, Double) -> Unit = { _, _ -> },
+    onAdd: (Double, Double, Float, Float) -> Unit = { _, _, _, _ -> },
     onBlankTap: ((Double, Double) -> Unit)? = null,
     onMove: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
     onWaypointSelected: (MapHit?) -> Unit = {},
@@ -377,7 +377,7 @@ fun VehicleMap(
             if (editable) {
                 attachMissionEditing(
                     mapView, loaded,
-                    onAdd = { latitude, longitude -> latestOnAdd(latitude, longitude) },
+                    onAdd = { latitude, longitude, x, y -> latestOnAdd(latitude, longitude, x, y) },
                     onMove = { hit, latitude, longitude -> latestOnMove(hit, latitude, longitude) },
                     onSelected = { hit -> latestOnSelected(hit) },
                     onMoved = { hit, latitude, longitude -> latestOnMoved(hit, latitude, longitude) },

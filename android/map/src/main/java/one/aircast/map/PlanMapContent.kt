@@ -80,7 +80,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.offset
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -194,6 +196,7 @@ internal fun PlanMapContent(
     var readsStarted by remember { mutableIntStateOf(0) }
     var planReads by remember { mutableIntStateOf(0) }
     var layer by remember { mutableStateOf(PlanLayer.Mission) }
+    var mapMenu by remember { mutableStateOf<MapMenuAt?>(null) }
     LaunchedEffect(selected) { layerOf(selected)?.let { layer = it } }
 
     BackHandler(enabled = selected != null) { selected = null }
@@ -553,16 +556,13 @@ internal fun PlanMapContent(
             editable = true,
             circledShapes = circled,
             collisionLegs = terrainHits,
-            onAdd = { lat, lon ->
+            onAdd = { lat, lon, x, y ->
                 tracing?.let { (target, points) ->
                     tracing = target to points + TrackPoint(lat, lon)
                     return@VehicleMap
                 }
                 when (layer) {
-                    PlanLayer.Mission -> {
-                        panelOpen = false
-                        addMissionItem(KIND_WAYPOINT, "Adding a waypoint", TrackPoint(lat, lon), insertAfter(selected, allItems))
-                    }
+                    PlanLayer.Mission -> mapMenu = MapMenuAt(TrackPoint(lat, lon), IntOffset(x.toInt(), y.toInt()))
                     PlanLayer.Rally -> if (support.rally) addRallyAt(lat, lon)
                     PlanLayer.Fence -> Unit
                 }
@@ -653,6 +653,28 @@ internal fun PlanMapContent(
             PositionDialog(at, positionTitle(hit), onDismiss = { positioning = null }) { moved ->
                 positioning = null
                 onBridge(done = movedText(hit, allItems)) { writeMove(hit, moved.latitude, moved.longitude, surveyList, rally, fences, allItems, circles) }
+            }
+        }
+
+        mapMenu?.let { menu ->
+            Box(Modifier.offset { menu.offset }) {
+                DropdownMenu(expanded = true, onDismissRequest = { mapMenu = null }) {
+                    DropdownMenuItem(
+                        text = { Text(ADD_WAYPOINT_HERE) },
+                        onClick = {
+                            mapMenu = null
+                            panelOpen = false
+                            addMissionItem(KIND_WAYPOINT, "Adding a waypoint", menu.at, insertAfter(null, allItems))
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(SET_LAUNCH_HERE) },
+                        onClick = {
+                            mapMenu = null
+                            onBridge("Moving the launch") { PlanBridge.moveItem(HOME_ITEM, menu.at.latitude, menu.at.longitude) }
+                        },
+                    )
+                }
             }
         }
 
@@ -1343,6 +1365,11 @@ internal fun PlanMapContent(
 private const val SURVEY_FIT_INSET = 0.8
 
 private val ITEM_MARKER_SIZE = 40.dp
+
+internal const val ADD_WAYPOINT_HERE = "Add waypoint here"
+internal const val SET_LAUNCH_HERE = "Set launch here"
+
+private data class MapMenuAt(val at: TrackPoint, val offset: IntOffset)
 private val ACTION_MARKER_SIZE = 12.dp
 
 @Composable
