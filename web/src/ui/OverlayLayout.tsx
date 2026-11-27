@@ -621,7 +621,7 @@ const BESIDE_BADGE = "absolute grid place-items-center after:absolute after:-ins
 
 const CORNER_BADGE = "absolute grid place-items-center after:absolute after:-inset-y-[13px] after:-end-[13px] after:-start-[2px] after:content-['']";
 
-const INNER_BADGE = "absolute grid place-items-center after:absolute after:-inset-y-[13px] after:-inset-x-[2px] after:content-['']";
+const INNER_BADGE = "absolute grid place-items-center after:absolute after:-top-[13px] after:-bottom-[2px] after:-inset-x-[2px] after:content-['']";
 
 const BADGE_GAP = 4;
 
