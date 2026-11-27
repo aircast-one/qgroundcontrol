@@ -2,7 +2,7 @@ import { type HTMLAttributes, type PointerEvent, type RefObject, useContext, use
 import { AppCommands, VideoCommands } from '@/bridge/BridgeCommands';
 import { Qgc } from '@/bridge/Qgc';
 import { settingControl, useQgcBool, useQgcPath, useQgcValue } from '@/bridge/QgcState';
-import { type NativePlayer, playNative, playsNatively } from '@/core/nativeVideo';
+import { type NativePlayer, VIDEO_LOG, playNative, playsNatively } from '@/core/nativeVideo';
 import { recordStream } from '@/core/recorder';
 import { type WhepReport, playWhep } from '@/core/whep';
 import { useUpdatedRef } from '@/kotlin/Compose';
@@ -36,8 +36,6 @@ import { VideoArOverlay } from '@/ui/VideoAr';
 import { usePointerGestures } from '@/ui/VideoGestures';
 import { VideoStatsPill } from '@/ui/VideoStatsPill';
 import { VIDEO_VIEW, type SourceSize, type VideoReading, nativeRecordingFile, streamUri, videoReading, whepEndpoint, whepRestarts } from '@/ui/VideoView';
-
-const VIDEO_LOG = 'desktop.video';
 
 export const CAMERA_STEP_ZOOM = 'vehicle.cameraManager.currentCameraInstance.stepZoom';
 

@@ -1,4 +1,5 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
+import { AppCommands } from '@/bridge/BridgeCommands';
 import { sendCommand } from './desktopCommands';
 import type { WhepCounters, WhepReport, WhepStats } from './whep';
 
@@ -27,12 +28,20 @@ export type DecoderEvent = { kind: 'decoded' } | { kind: 'failed'; reason: strin
 
 type FrameSize = { width: number; height: number };
 
+export type NativeTransport = 'udp' | 'tcp';
+
+export type NativeCounters = { frames: number; keyframes: number; packets: number; lost: number; bytes: number; decoded: number; skipped: number; errors: number; jitterMs: number; reports: number; at: number };
+
+export type NativeLog = { event: string; stream: number | null; transport: NativeTransport; since: NativeCounters; now: NativeCounters; keyAt: number | null; queued: number };
+
 const CONFIG = 0;
 const FRAME = 1;
 const ENDED = 2;
 const RECORDING_STOPPED = 3;
 const FRAME_HEADER = 14;
 const REPORT_MS = 500;
+const LOG_MS = 10_000;
+export const VIDEO_LOG = 'desktop.video';
 const MAX_DECODER_FAILURES = 5;
 const ENDED_WITHOUT_REASON = 'The camera ended the stream.';
 const NOT_RECORDING: FrameSize = { width: 0, height: 0 };
@@ -51,6 +60,8 @@ export const nativeMessage = (buffer: ArrayBuffer): NativeMessage | null => {
 };
 
 export const playsNatively = (uri: string): boolean => /^(rtspt?|udp|udp265|mpegts|tcp):\/\//.test(uri);
+
+export const nativeTransport = (uri: string): NativeTransport => (/^(rtspt|tcp):\/\//.test(uri) ? 'tcp' : 'udp');
 
 export const startingPlayback: Playback = { config: null, keyed: false, error: '' };
 
@@ -107,10 +118,37 @@ export const nativeStats = (before: WhepCounters, now: WhepCounters, decoded: nu
   };
 };
 
+export const nativeLogLine = ({ event, stream, transport, since, now, keyAt, queued }: NativeLog): string => {
+  const change = (counter: keyof NativeCounters): number => now[counter] - since[counter];
+  const elapsedMs = Math.max(change('at'), 1);
+  const counted = change('packets');
+  return [
+    `event=${event}`,
+    `stream=${stream ?? 'none'}`,
+    `transport=${transport}`,
+    `seconds=${(elapsedMs / 1000).toFixed(1)}`,
+    `frames=${change('frames')}`,
+    `keyframes=${change('keyframes')}`,
+    `packets=${change('frames') > 0 && counted === 0 ? 'unknown' : counted}`,
+    `lost=${change('lost')}`,
+    `kbps=${Math.round((change('bytes') * 8) / elapsedMs)}`,
+    `jitter_ms=${Math.round(change('jitterMs') / Math.max(change('reports'), 1))}`,
+    `decoded=${change('decoded')}`,
+    `skipped=${change('skipped')}`,
+    `decoder_errors=${change('errors')}`,
+    `queued=${queued}`,
+    `since_keyframe_ms=${keyAt === null ? 'none' : Math.round(now.at - keyAt)}`,
+  ].join(' ');
+};
+
 export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (reading: WhepReport) => void, recordingStopped: (reason: string) => void): NativePlayer => {
   const context = canvas.getContext('2d');
   const session = { id: null as number | null, closed: false, frames: 0, failures: 0, first: true, playback: startingPlayback, size: null as FrameSize | null, requests: 0 };
   const totals = { bytes: 0, lost: 0, received: 0, dropped: 0, arrivals: [] as number[], reported: { bytes: 0, lost: 0, received: 0, dropped: 0, at: performance.now() } as WhepCounters, reportedFrames: 0 };
+  const transport = nativeTransport(uri);
+  const tally = { frames: 0, keyframes: 0, errors: 0, jitterMs: 0, reports: 0, keyAt: null as number | null };
+  const counters = (): NativeCounters => ({ frames: tally.frames, keyframes: tally.keyframes, packets: totals.received, lost: totals.lost, bytes: totals.bytes, decoded: session.frames, skipped: totals.dropped, errors: tally.errors, jitterMs: tally.jitterMs, reports: tally.reports, at: performance.now() });
+  const logged = { since: counters() };
   const sizing: { resolve: (size: FrameSize) => void; reject: (reason: Error) => void } = { resolve: () => undefined, reject: () => undefined };
   const firstFrame = new Promise<FrameSize>((resolve, reject) => Object.assign(sizing, { resolve, reject }));
   firstFrame.catch(() => undefined);
@@ -139,7 +177,9 @@ export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (read
     decoders.current = fresh();
   };
   const recover = (reason: string) => {
-    if (!session.closed) decoderEvent({ kind: 'failed', reason });
+    if (session.closed) return;
+    tally.errors += 1;
+    decoderEvent({ kind: 'failed', reason });
   };
   const apply = (decoder: VideoDecoder, step: PlaybackStep) => {
     if (step.kind === 'configure' && decoder.state !== 'closed') decoder.configure(step.config);
@@ -156,6 +196,9 @@ export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (read
       totals.received += message.packets;
       totals.lost += message.lost;
       totals.arrivals = [...totals.arrivals, performance.now()];
+      tally.frames += 1;
+      tally.keyframes += message.key ? 1 : 0;
+      tally.keyAt = message.key ? performance.now() : tally.keyAt;
     }
     const [playback, step] = playbackStep(session.playback, message, decoder.state === 'configured');
     session.playback = playback;
@@ -178,13 +221,23 @@ export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (read
     totals.reported = now;
     totals.reportedFrames = session.frames;
     totals.arrivals = totals.arrivals.slice(-1);
+    tally.jitterMs += stats.jitterMs;
+    tally.reports += 1;
     report({ running: session.frames > 0 && session.playback.error === '', frames: session.frames, width: canvas.width, height: canvas.height, error: session.playback.error, restarted: session.first, stats });
     session.first = false;
   }, REPORT_MS);
+  const logStats = (event: string) => {
+    const now = counters();
+    void AppCommands.recordLog(VIDEO_LOG, nativeLogLine({ event, stream: session.id, transport, since: logged.since, now, keyAt: tally.keyAt, queued: decoders.current.decodeQueueSize })).catch(() => false);
+    logged.since = now;
+  };
+  const logTimer = setInterval(() => logStats('playback_stats'), LOG_MS);
   return {
     stop: () => {
       session.closed = true;
       clearInterval(timer);
+      clearInterval(logTimer);
+      logStats('playback_stopped');
       sizing.reject(new Error('The stream stopped before its first frame.'));
       if (session.id !== null) sendCommand('video_close', { id: session.id });
       if (decoders.current.state !== 'closed') decoders.current.close();

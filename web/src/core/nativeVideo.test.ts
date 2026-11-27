@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Decoding, decoderStep, nativeMessage, nativeStats, playbackStep, playsNatively, recordOutcome, startingPlayback } from './nativeVideo';
+import { type Decoding, decoderStep, nativeLogLine, nativeMessage, nativeStats, nativeTransport, playbackStep, playsNatively, recordOutcome, startingPlayback } from './nativeVideo';
 
 const bytes = (...values: number[]): ArrayBuffer => new Uint8Array(values).buffer;
 
@@ -28,6 +28,19 @@ describe('nativeStats', () => {
   it('leaves packet loss unknown for a source that does not count its packets, rather than calling every loss 100%', () => {
     const before = { bytes: 0, lost: 0, received: 0, dropped: 0, at: 1000 };
     expect(nativeStats(before, { ...before, lost: 3, at: 1500 }, 15, []).lossPercent).toBeNull();
+  });
+});
+
+describe('nativeLogLine', () => {
+  it('logs what reached the player and what the decoder made of it over the window, with the transport the scheme asks for', () => {
+    const since = { frames: 0, keyframes: 0, packets: 0, lost: 0, bytes: 0, decoded: 0, skipped: 0, errors: 0, jitterMs: 0, reports: 0, at: 1000 };
+    const now = { frames: 250, keyframes: 3, packets: 0, lost: 14, bytes: 2_500_000, decoded: 230, skipped: 18, errors: 1, jitterMs: 180, reports: 20, at: 11_000 };
+    expect(nativeLogLine({ event: 'playback_stats', stream: 3, transport: nativeTransport('rtsp://drone:8554/viewpro'), since, now, keyAt: 9200, queued: 2 })).toBe(
+      'event=playback_stats stream=3 transport=udp seconds=10.0 frames=250 keyframes=3 packets=unknown lost=14 kbps=2000 jitter_ms=9 decoded=230 skipped=18 decoder_errors=1 queued=2 since_keyframe_ms=1800',
+    );
+    expect(nativeLogLine({ event: 'playback_stopped', stream: null, transport: nativeTransport('rtspt://drone:8554/viewpro'), since, now: { ...since, at: 3500 }, keyAt: null, queued: 0 })).toBe(
+      'event=playback_stopped stream=none transport=tcp seconds=2.5 frames=0 keyframes=0 packets=0 lost=0 kbps=0 jitter_ms=0 decoded=0 skipped=0 decoder_errors=0 queued=0 since_keyframe_ms=none',
+    );
   });
 });
 
