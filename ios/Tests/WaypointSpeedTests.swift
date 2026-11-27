@@ -6,6 +6,8 @@ final class WaypointSpeedTests: XCTestCase {
         let served = JSON.parse(#"{"speedSection":{"available":true,"specified":true,"value":8.0,"units":"m/s","path":"p","specifyPath":"s"}}"#)
         XCTAssertEqual(WaypointSpeed(specified: true, value: 8.0, units: "m/s", path: "p", specifyPath: "s"), waypointSpeed(served))
         XCTAssertNil(waypointSpeed(JSON.parse(#"{"speedSection":{"available":false}}"#)))
+        let inKilometresPerHour = JSON.parse(#"{"speedSection":{"available":true,"specified":true,"value":28.8,"units":"km/h","path":"p","specifyPath":"s","slider":{"from":0,"to":108,"decimals":1}}}"#)
+        XCTAssertEqual(WaypointSpeed(specified: true, value: 28.8, units: "km/h", path: "p", specifyPath: "s", range: 0...108), waypointSpeed(inKilometresPerHour))
     }
 
     func testAWaypointsHoldIsReadInSecondsAndAnItemWithoutOneShowsNoRow() {

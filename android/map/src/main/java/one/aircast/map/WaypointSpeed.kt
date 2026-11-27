@@ -2,7 +2,7 @@ package one.aircast.map
 
 import org.json.JSONObject
 
-data class WaypointSpeed(val specified: Boolean, val value: Double?, val units: String, val path: String, val specifyPath: String)
+data class WaypointSpeed(val specified: Boolean, val value: Double?, val units: String, val path: String, val specifyPath: String, val range: ClosedFloatingPointRange<Double>? = null)
 
 fun waypointSpeed(view: JSONObject?): WaypointSpeed? =
     view?.optJSONObject("speedSection")?.takeIf { it.optBoolean("available") }?.let {
@@ -12,6 +12,7 @@ fun waypointSpeed(view: JSONObject?): WaypointSpeed? =
             units = it.optText("units"),
             path = it.optText("path"),
             specifyPath = it.optText("specifyPath"),
+            range = it.optJSONObject("slider")?.let { slider -> slider.optDouble("from")..slider.optDouble("to") },
         )
     }
 

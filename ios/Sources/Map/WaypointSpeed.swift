@@ -6,6 +6,12 @@ struct WaypointSpeed: Equatable {
     var units: String
     var path: String
     var specifyPath: String
+    var range: ClosedRange<Double>? = nil
+}
+
+private func speedRange(_ slider: JSON) -> ClosedRange<Double>? {
+    guard let from = slider["from"].nonNanDouble, let to = slider["to"].nonNanDouble, to > from else { return nil }
+    return from...to
 }
 
 func waypointSpeed(_ view: JSON?) -> WaypointSpeed? {
@@ -15,7 +21,8 @@ func waypointSpeed(_ view: JSON?) -> WaypointSpeed? {
         value: section["value"].isNull ? nil : section["value"].double(.nan),
         units: section["units"].string,
         path: section["path"].string,
-        specifyPath: section["specifyPath"].string
+        specifyPath: section["specifyPath"].string,
+        range: speedRange(section["slider"])
     )
 }
 

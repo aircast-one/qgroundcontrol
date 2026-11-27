@@ -1,6 +1,9 @@
 import { type Json, isNull, optBoolean, optDouble, optJSONObject, optText } from '@/bridge/Json';
+import type { ClosedRange } from './SettingStepper';
 
-export type WaypointSpeed = { specified: boolean; value: number | null; units: string; path: string; specifyPath: string };
+export type WaypointSpeed = { specified: boolean; value: number | null; units: string; path: string; specifyPath: string; range: ClosedRange | null };
+
+const speedRange = (slider: Json | null): ClosedRange | null => (slider === null ? null : { start: optDouble(slider, 'from'), endInclusive: optDouble(slider, 'to') });
 
 export const waypointSpeed = (view: Json | null): WaypointSpeed | null => {
   const section = optJSONObject(view, 'speedSection');
@@ -11,6 +14,7 @@ export const waypointSpeed = (view: Json | null): WaypointSpeed | null => {
     units: optText(section, 'units'),
     path: optText(section, 'path'),
     specifyPath: optText(section, 'specifyPath'),
+    range: speedRange(optJSONObject(section, 'slider')),
   };
 };
 

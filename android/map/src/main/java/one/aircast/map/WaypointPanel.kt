@@ -33,7 +33,6 @@ private const val FEET = "ft"
 private const val ALTITUDE_CEILING_METRES = 500.0
 private const val ALTITUDE_CEILING_FEET = 1640.0
 private const val SPEED_STEP = 0.5
-internal val SPEED_RANGE = 0.0..30.0
 
 internal fun altitudeRange(units: String): ClosedFloatingPointRange<Double> =
     0.0..(if (units == FEET) ALTITUDE_CEILING_FEET else ALTITUDE_CEILING_METRES)
@@ -106,7 +105,7 @@ internal fun WaypointSettings(
                 unit = speed.units,
                 step = SPEED_STEP,
                 note = if (speed.specified) null else "Mission speed",
-                range = SPEED_RANGE,
+                range = speed.range,
                 onSet = { wanted -> onWrite(null) { setOk(speed.specifyPath, settingJson("true")) && setOk(speed.path, settingJson("$wanted")) } },
                 trailing = if (speed.specified) {
                     { FilterChip(selected = false, onClick = { onWrite("Using the mission speed") { setOk(speed.specifyPath, settingJson("false")) } }, label = { Text("Auto") }) }

@@ -18,7 +18,6 @@ import { waypointHold, waypointSpeed } from './WaypointSpeed';
 const CHIP_SIZE = 40;
 const STRIP_PADDING = 4;
 const SPEED_STEP = 0.5;
-export const SPEED_RANGE: ClosedRange = { start: 0.0, endInclusive: 30.0 };
 
 const editUnits = (item: MissionItem): string => (item.altitudeEditUnits.trim() === '' ? 'm' : item.altitudeEditUnits);
 
@@ -150,7 +149,7 @@ export const WaypointSettings = ({
           unit={speed.units}
           step={SPEED_STEP}
           note={speed.specified ? null : 'Mission speed'}
-          range={SPEED_RANGE}
+          range={speed.range}
           onSet={(wanted) => onWrite(null, async () => (await setOk(speed.specifyPath, settingJson('true'))) && (await setOk(speed.path, settingJson(`${wanted}`))))}
           trailing={speed.specified ? <FilterChip selected={false} onClick={() => onWrite('Using the mission speed', () => setOk(speed.specifyPath, settingJson('false')))} label="Auto" /> : null}
         />

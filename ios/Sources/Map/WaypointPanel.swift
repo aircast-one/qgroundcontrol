@@ -5,7 +5,6 @@ private let FEET = "ft"
 private let ALTITUDE_CEILING_METRES = 500.0
 private let ALTITUDE_CEILING_FEET = 1640.0
 private let SPEED_STEP = 0.5
-let SPEED_RANGE = 0.0...30.0
 
 func altitudeRange(_ units: String) -> ClosedRange<Double> {
     0.0...(units == FEET ? ALTITUDE_CEILING_FEET : ALTITUDE_CEILING_METRES)
@@ -111,7 +110,7 @@ struct WaypointSettings: View {
                     step: SPEED_STEP,
                     onSet: { wanted in onWrite(nil) { setOk(speed.specifyPath, true) && setOk(speed.path, wanted) } },
                     note: speed.specified ? nil : "Mission speed",
-                    range: SPEED_RANGE,
+                    range: speed.range,
                     trailing: speed.specified
                         ? { AnyView(CameraChip(label: "Auto", selected: false) { onWrite("Using the mission speed") { setOk(speed.specifyPath, false) } }) }
                         : nil

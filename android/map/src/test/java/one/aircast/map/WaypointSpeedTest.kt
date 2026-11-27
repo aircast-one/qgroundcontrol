@@ -11,6 +11,8 @@ class WaypointSpeedTest {
         val served = JSONObject("""{"speedSection":{"available":true,"specified":true,"value":8.0,"units":"m/s","path":"p","specifyPath":"s"}}""")
         assertEquals(WaypointSpeed(true, 8.0, "m/s", "p", "s"), waypointSpeed(served))
         assertNull(waypointSpeed(JSONObject("""{"speedSection":{"available":false}}""")))
+        val inKilometresPerHour = JSONObject("""{"speedSection":{"available":true,"specified":true,"value":28.8,"units":"km/h","path":"p","specifyPath":"s","slider":{"from":0,"to":108,"decimals":1}}}""")
+        assertEquals("30 m/s is 108 km/h, not a cap of 30 km/h", WaypointSpeed(true, 28.8, "km/h", "p", "s", 0.0..108.0), waypointSpeed(inKilometresPerHour))
     }
 
     @Test

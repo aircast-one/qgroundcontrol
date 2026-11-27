@@ -4,7 +4,9 @@ import { waypointHold, waypointSpeed } from './WaypointSpeed';
 describe('WaypointSpeedTest', () => {
   it("the speed row reads the item's speed section and skips a vehicle that has none", () => {
     const served = { speedSection: { available: true, specified: true, value: 8.0, units: 'm/s', path: 'p', specifyPath: 's' } };
-    expect(waypointSpeed(served)).toEqual({ specified: true, value: 8.0, units: 'm/s', path: 'p', specifyPath: 's' });
+    expect(waypointSpeed(served)).toEqual({ specified: true, value: 8.0, units: 'm/s', path: 'p', specifyPath: 's', range: null });
+    const inKilometresPerHour = { speedSection: { ...served.speedSection, value: 28.8, units: 'km/h', slider: { from: 0, to: 108, decimals: 1 } } };
+    expect(waypointSpeed(inKilometresPerHour), 'the row takes the units and the limits the core converted, so 30 m/s is 108 km/h and not a cap of 30 km/h').toMatchObject({ value: 28.8, units: 'km/h', range: { start: 0, endInclusive: 108 } });
     expect(waypointSpeed({ speedSection: { available: false } })).toBeNull();
   });
 
