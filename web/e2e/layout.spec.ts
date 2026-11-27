@@ -962,7 +962,7 @@ test('the gimbal mode switch on the picture and the camera picker each move and 
   await app.reload();
   await withPicture(app);
   await expect.poll(async () => (await centre(picker))[0], { timeout: 30_000 }).toBeCloseTo(placed[0], 0);
-  expect((await centre(picker))[1]).toBeCloseTo(placed[1], 0);
+  await expect.poll(async () => (await centre(picker))[1], { message: 'the picker settles back on its row once the screen around it has loaded' }).toBeCloseTo(placed[1], 0);
   await expect(mode).toBeHidden();
 });
 

@@ -66,7 +66,7 @@ test('on a desktop Fly leaves the whole window to the flight and keeps the other
   await expect(vehicle.getByRole('navigation')).toHaveCount(0);
   await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   const menu = vehicle.getByRole('dialog', { name: 'Menu' });
-  await expect(menu.getByRole('button', { name: /^(Plan|Analyze|Setup|Settings)$/ })).toHaveText(['Plan', 'Analyze', 'Setup', 'Settings']);
+  await expect(menu.getByRole('button', { name: /^(Plan|Analyze|Setup|Settings)$/ })).toHaveText(['Plan', 'Setup', 'Analyze', 'Settings']);
   await vehicle.keyboard.press('Escape');
   await expect(menu).toBeHidden();
   const inset = async () => (await vehicle.getByRole('button', { name: 'Map', exact: true }).boundingBox())?.width ?? 0;
