@@ -22,12 +22,16 @@ pub const APPLY_DEFAULT_ALTITUDE: &str = "core.plan.applyDefaultAltitude";
 pub const DISMISS_ALTITUDE_PROMPT: &str = "core.plan.dismissAltitudePrompt";
 pub const CONVERT_TO_VEHICLE: &str = "core.plan.convertToVehicle";
 pub const MOVE_ITEM: &str = "core.plan.moveItem";
+pub const PLACE_DROP: &str = "core.plan.placeDrop";
+pub const REMOVE_DROP: &str = "core.plan.removeDrop";
 pub const DRAFT_DEPS: &[&str] = &[CHANGED];
 pub const RESTORE_DRAFT: &str = "core.plan.restoreDraft";
 const ACTIONS: &[&str] = &[
     RESTORE_DRAFT,
     CONVERT_TO_VEHICLE,
     MOVE_ITEM,
+    PLACE_DROP,
+    REMOVE_DROP,
     OPEN,
     SAVE,
     SEND,
@@ -263,6 +267,8 @@ pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
         }
         CORE_REMOVE => remove(args),
         MOVE_ITEM => move_item(args),
+        PLACE_DROP => place_drop(backend, args),
+        REMOVE_DROP => remove_drop(args),
         RESTORE_DRAFT => first_text(args).map_or_else(
             || refused("Restoring needs the plan that was kept."),
             |text| restore_draft(&text),
@@ -563,6 +569,51 @@ fn insert_drop(backend: &dyn Backend, args: &str) -> Value {
             ),
         )
     })
+}
+
+fn drop_indices(given: &Value) -> (Option<usize>, Option<usize>) {
+    let index = |i: usize| {
+        given
+            .get(i)
+            .and_then(Value::as_u64)
+            .and_then(|v| usize::try_from(v).ok())
+    };
+    (index(0), index(1))
+}
+
+fn place_drop(backend: &dyn Backend, args: &str) -> Value {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let (Some(waypoint), old_drop) = drop_indices(&given) else {
+        return refused("Placing a drop needs the waypoint it follows.");
+    };
+    let wait = given
+        .get(2)
+        .and_then(Value::as_f64)
+        .filter(|v| v.is_finite())
+        .unwrap_or(0.0);
+    let Some(defaults) = edit_defaults(backend) else {
+        return refused("The default mission item altitude is not known.");
+    };
+    edit(|doc| {
+        plandoc::place_drop(
+            doc,
+            waypoint,
+            old_drop,
+            wait,
+            &defaults,
+            &crate::payloadcheck::servo_bays(
+                plandoc::firmware(doc.firmware_type) == crate::cmdinfo::Firmware::ArduPilot,
+            ),
+        )
+    })
+}
+
+fn remove_drop(args: &str) -> Value {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    match drop_indices(&given) {
+        (Some(waypoint), Some(drop)) => edit(|doc| plandoc::remove_drop(doc, waypoint, drop)),
+        _ => refused("Removing a drop needs the waypoint and the drop."),
+    }
 }
 
 fn insert_scan(backend: &dyn Backend, args: &str, corridor: bool) -> Value {
@@ -6257,7 +6308,12 @@ fn facts_in(
                                         == crate::cmdinfo::Firmware::ArduPilot,
                                 ),
                             )
-                            .map_or(Value::Null, |drop| json!({ "index": drop })),
+                            .map_or(Value::Null, |drop| {
+                                json!({
+                                    "index": drop,
+                                    "wait": drop.map_or(0.0, |at| plandoc::drop_wait(document, index, at)),
+                                })
+                            }),
                         )])
                         .chain(crate::itemfacts::command_info(&read))
                         .chain(takeoff_wizard)

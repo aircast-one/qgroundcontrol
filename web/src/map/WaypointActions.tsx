@@ -5,11 +5,10 @@ import { AlertDialog, DropdownMenu, DropdownMenuItem, FilterChip, IconButton, Ra
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
 import { md } from '@/theme/Colors';
-import { setOk, settingJson } from './BridgeCalls';
+import { invokeOk, setOk, settingJson } from './BridgeCalls';
 import { CAMERA_MODES, trimmedNumber } from './CameraSectionExtras';
 import { type CameraChoices, type CameraExtras, ItemCameraBridge, cameraChoices, cameraExtras, itemCameraPath } from './ItemCamera';
 import { useMapPath } from './MapBridge';
-import { insertMissionItem, removeMissionItem } from './MissionKinds';
 import { sentenceCase } from './SentenceCase';
 import { type ClosedRange, SettingStepper } from './SettingStepper';
 import type { WaypointHold } from './WaypointSpeed';
@@ -25,12 +24,40 @@ export const waypointYaw = (view: Json | null): WaypointYaw | null => {
   return read.path.trim() === '' ? null : read;
 };
 
-export type WaypointDrop = { readonly index: number | null; readonly latitude: number; readonly longitude: number };
+export type WaypointDrop = { readonly index: number | null; readonly wait: number; readonly latitude: number; readonly longitude: number };
 
 export const waypointDrop = (view: Json | null, latitude: number, longitude: number): WaypointDrop | null => {
   const drop = optJSONObject(view, 'drop');
-  return drop === null ? null : { index: isNull(drop, 'index') ? null : optInt(drop, 'index'), latitude, longitude };
+  return drop === null ? null : { index: isNull(drop, 'index') ? null : optInt(drop, 'index'), wait: optDouble(drop, 'wait', 0.0), latitude, longitude };
 };
+
+export const PLACE_DROP = 'core.plan.placeDrop';
+export const REMOVE_DROP = 'core.plan.removeDrop';
+const PAYLOAD_SETTINGS = 'settings.flyViewSettings';
+const RELEASE_SETTING = `${PAYLOAD_SETTINGS}.payloadRelease`;
+const OUTPUT_SETTING = `${PAYLOAD_SETTINGS}.payloadBay1Output`;
+const PWM_SETTING = `${PAYLOAD_SETTINGS}.payloadBay1ReleasePwm`;
+const SERVO_RELEASE = 1;
+const OUTPUT_RANGE: ClosedRange = { start: 1.0, endInclusive: 16.0 };
+const PWM_RANGE: ClosedRange = { start: 500.0, endInclusive: 2500.0 };
+const WAIT_RANGE: ClosedRange = { start: 0.0, endInclusive: 600.0 };
+const PWM_STEP = 50.0;
+
+export type DropRelease = { readonly servo: boolean; readonly output: number; readonly pwm: number };
+
+const settingNumber = (view: Json | null): number => optDouble(view, 'value', NaN);
+
+export const dropRelease = (release: Json | null, output: Json | null, pwm: Json | null): DropRelease => ({
+  servo: settingNumber(release) === SERVO_RELEASE,
+  output: settingNumber(output),
+  pwm: settingNumber(pwm),
+});
+
+export const dropText = (release: DropRelease, wait: number): string =>
+  [release.servo ? `Servo ${trimmedNumber(release.output)} to ${trimmedNumber(release.pwm)}` : 'Gripper', wait > 0.0 ? `after ${trimmedNumber(wait)} s` : ''].filter((it) => it !== '').join(' · ');
+
+const useDropRelease = (): DropRelease =>
+  dropRelease(useMapPath(`view.control(${RELEASE_SETTING})`), useMapPath(`view.control(${OUTPUT_SETTING})`), useMapPath(`view.control(${PWM_SETTING})`));
 
 export type ActionKind = { readonly name: 'Hover' | 'Camera' | 'Gimbal' | 'Mode' | 'Turn' | 'Drop'; readonly ordinal: number };
 
@@ -78,7 +105,14 @@ export const startingChoice = (labels: readonly string[], subject: string): numb
   return at > NO_CAMERA_ACTION ? at : null;
 };
 
-export const activeActions = (hold: WaypointHold | null, yaw: WaypointYaw | null, choices: CameraChoices | null, extras: CameraExtras | null, drop: WaypointDrop | null = null): readonly WaypointAction[] => {
+export const activeActions = (
+  hold: WaypointHold | null,
+  yaw: WaypointYaw | null,
+  choices: CameraChoices | null,
+  extras: CameraExtras | null,
+  drop: WaypointDrop | null = null,
+  release: DropRelease | null = null,
+): readonly WaypointAction[] => {
   const label = choices === null ? '' : (choices.labels[choices.chosen] ?? '');
   const actions: readonly (WaypointAction | null)[] = [
     hold !== null && hold.seconds > 0.0 ? { kind: ActionKind.Hover, title: 'Hover', value: `${trimmedNumber(hold.seconds)} ${hold.units}`, icon: 'plan_timer' } : null,
@@ -86,7 +120,7 @@ export const activeActions = (hold: WaypointHold | null, yaw: WaypointYaw | null
     extras !== null && extras.commandsGimbal ? { kind: ActionKind.Gimbal, title: 'Gimbal', value: `${degreesText(extras.pitch)} / ${degreesText(extras.yaw)}`, icon: 'plan_gimbal' } : null,
     extras !== null && extras.modeSupported && extras.commandsMode ? { kind: ActionKind.Mode, title: 'Camera mode', value: CAMERA_MODES[extras.mode] ?? '', icon: 'plan_tune' } : null,
     yaw !== null && yaw.degrees !== null ? { kind: ActionKind.Turn, title: 'Turn aircraft', value: degreesText(yaw.degrees), icon: 'plan_turn' } : null,
-    drop !== null && drop.index !== null ? { kind: ActionKind.Drop, title: DROP_TITLE, value: '', icon: 'plan_drop' } : null,
+    drop !== null && drop.index !== null ? { kind: ActionKind.Drop, title: DROP_TITLE, value: release === null ? '' : dropText(release, drop.wait), icon: 'plan_drop' } : null,
   ];
   return actions.filter((it) => it !== null);
 };
@@ -126,7 +160,8 @@ export const WaypointActions = ({ index, hold, yaw, drop = null }: { index: numb
   const camera = useMapPath(itemCameraPath(index));
   const choices = cameraChoices(camera);
   const extras = cameraExtras(camera);
-  const active = activeActions(hold, yaw, choices, extras, drop);
+  const release = useDropRelease();
+  const active = activeActions(hold, yaw, choices, extras, drop, release);
   const offers = offeredActions(hold, yaw, choices, extras, drop);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useKeyedState<ActionKind | null>([index], () => null);
@@ -147,7 +182,7 @@ export const WaypointActions = ({ index, hold, yaw, drop = null }: { index: numb
       case 'Gimbal': return setCamera('specifyGimbal', false);
       case 'Mode': return setCamera('specifyCameraMode', false);
       case 'Turn': return setYaw(null);
-      case 'Drop': return drop?.index != null ? write(async () => (await removeMissionItem(drop.index ?? 0)).ok) : undefined;
+      case 'Drop': return drop?.index != null ? write(() => invokeOk(REMOVE_DROP, `[${index}, ${drop.index}]`)) : undefined;
     }
   };
   const add = (offer: ActionOffer) => {
@@ -157,7 +192,7 @@ export const WaypointActions = ({ index, hold, yaw, drop = null }: { index: numb
       case 'Gimbal': return setCamera('specifyGimbal', true);
       case 'Mode': return setCamera('specifyCameraMode', true);
       case 'Turn': return setYaw(0.0);
-      case 'Drop': return drop !== null ? write(async () => (await insertMissionItem('drop', drop.latitude, drop.longitude, index + 1)).ok) : undefined;
+      case 'Drop': return drop !== null ? write(() => invokeOk(PLACE_DROP, `[${index}, null, 0]`)) : undefined;
     }
   };
   const editor = (kind: ActionKind) => {
@@ -174,7 +209,7 @@ export const WaypointActions = ({ index, hold, yaw, drop = null }: { index: numb
           </>
         );
       case 'Drop':
-        return null;
+        return drop === null ? null : <DropEditor index={index} drop={drop} release={release} />;
       case 'Mode':
         return (
           <div className="flex gap-2">
@@ -224,7 +259,7 @@ export const WaypointActions = ({ index, hold, yaw, drop = null }: { index: numb
                     onClick={() => {
                       setAdding(false);
                       add(offer);
-                      if (offer.kind !== ActionKind.Drop) setEditing(offer.kind);
+                      setEditing(offer.kind);
                     }}
                   />
                 ))}
@@ -239,7 +274,7 @@ export const WaypointActions = ({ index, hold, yaw, drop = null }: { index: numb
         ) : null}
         <div className="flex flex-wrap gap-2">
           {active.map((action) => (
-            <ActionChip key={action.kind.name} action={action} onClick={() => (action.kind === ActionKind.Drop ? undefined : setEditing(action.kind))} onRemove={() => remove(action.kind)} />
+            <ActionChip key={action.kind.name} action={action} onClick={() => setEditing(action.kind)} onRemove={() => remove(action.kind)} />
           ))}
         </div>
       </div>
@@ -251,6 +286,32 @@ export const WaypointActions = ({ index, hold, yaw, drop = null }: { index: numb
           confirmButton={<TextButton onClick={() => setEditing(null)}>Done</TextButton>}
         />
       ) : null}
+    </>
+  );
+};
+
+const DropEditor = ({ index, drop, release }: { index: number; drop: WaypointDrop; release: DropRelease }) => {
+  const placeAgain = (wait: number) => invokeOk(PLACE_DROP, `[${index}, ${drop.index ?? 'null'}, ${wait}]`);
+  const remembered = (setting: string, value: number) =>
+    void (async () => {
+      if (await setOk(setting, settingJson(`${value}`))) await placeAgain(drop.wait);
+    })();
+  return (
+    <>
+      <div className="flex gap-2">
+        <FilterChip selected={!release.servo} onClick={() => remembered(RELEASE_SETTING, 0)} label="Gripper" />
+        <FilterChip selected={release.servo} onClick={() => remembered(RELEASE_SETTING, SERVO_RELEASE)} label="Servo" />
+      </div>
+      {release.servo ? (
+        <>
+          <SettingStepper label="Servo output" value={release.output} unit="" step={1.0} onSet={(it) => remembered(OUTPUT_SETTING, it)} range={OUTPUT_RANGE} />
+          <SettingStepper label="Release PWM" value={release.pwm} unit="µs" step={PWM_STEP} onSet={(it) => remembered(PWM_SETTING, it)} range={PWM_RANGE} />
+        </>
+      ) : null}
+      <SettingStepper label="Wait before dropping" value={drop.wait} unit="s" step={1.0} onSet={(it) => void placeAgain(it)} range={WAIT_RANGE} />
+      <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+        Photos and camera moves happen on arrival; the drone then waits this long over the point and drops. The release is kept for every later drop.
+      </Text>
     </>
   );
 };

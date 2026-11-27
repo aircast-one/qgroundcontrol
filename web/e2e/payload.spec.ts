@@ -71,7 +71,7 @@ test('a second drop while the gripper is still open is refused rather than count
   await expect(vehicle.getByText(/^Dropped \d+ s ago$/)).toBeVisible({ timeout: 30_000 });
 });
 
-test('a waypoint takes a drop from its actions and gives it back', async ({ app: vehicle }) => {
+test('a waypoint drops from a servo after a wait, keeps that servo, and gives the drop back', async ({ app: vehicle }) => {
   await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
   await openPlanAtVehicle(vehicle);
   await tapPlanMission(vehicle);
@@ -82,6 +82,19 @@ test('a waypoint takes a drop from its actions and gives it back', async ({ app:
   await vehicle.getByRole('button', { name: 'Add', exact: true }).click();
   await vehicle.getByRole('menuitem', { name: 'Drop payload' }).click();
   await expect.poll(() => itemCount(vehicle), { timeout: 30_000 }).toBe(before + 1);
+  const editor = vehicle.getByRole('dialog').filter({ hasText: 'Wait before dropping' });
+  await editor.getByRole('button', { name: 'Servo', exact: true }).click();
+  const typed = async (label: string, value: string) => {
+    await editor.getByRole('button', { name: new RegExp(`^${label}: `) }).click();
+    await vehicle.getByRole('textbox', { name: new RegExp(`^${label}`) }).fill(value);
+    await vehicle.getByRole('button', { name: 'Set', exact: true }).click();
+  };
+  await typed('Servo output', '4');
+  await typed('Release PWM', '2000');
+  await typed('Wait before dropping', '10');
+  await editor.getByRole('button', { name: 'Done' }).click();
+  await expect(vehicle.getByText('Servo 4 to 2000 · after 10 s'), 'Oleg\'s dropper is servo 4, opened at 2000 after the drone has waited 10 s').toBeVisible({ timeout: 30_000 });
+  await expect.poll(() => itemCount(vehicle), { message: 'the drop and the wait before it', timeout: 30_000 }).toBe(before + 2);
   await expect(vehicle.getByRole('button', { name: 'Remove Drop payload' })).toBeVisible();
   await vehicle.getByRole('button', { name: 'Remove Drop payload' }).click();
   await expect.poll(() => itemCount(vehicle), { timeout: 30_000 }).toBe(before);

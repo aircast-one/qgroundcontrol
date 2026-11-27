@@ -1580,6 +1580,59 @@ pub fn insert_drop(
     ))
 }
 
+const CMD_NAV_DELAY: i64 = 93;
+
+fn is_delay(doc: &Document, visual_index: usize) -> bool {
+    matches!(doc.items.get(visual_index.wrapping_sub(1)), Some(Item::Simple(s)) if s.command == CMD_NAV_DELAY)
+}
+
+pub fn drop_wait(doc: &Document, waypoint_visual: usize, drop_visual: usize) -> f64 {
+    match drop_visual > waypoint_visual + 1 && is_delay(doc, drop_visual - 1) {
+        true => simple_at(doc, drop_visual - 1)
+            .and_then(|(_, delay)| delay.params[0])
+            .filter(|seconds| *seconds > 0.0)
+            .unwrap_or(0.0),
+        false => 0.0,
+    }
+}
+
+pub fn remove_drop(
+    doc: &Document,
+    waypoint_visual: usize,
+    drop_visual: usize,
+) -> Result<Document, String> {
+    let without = remove(doc, drop_visual)?;
+    match drop_visual > waypoint_visual + 1 && is_delay(&without, drop_visual - 1) {
+        true => remove(&without, drop_visual - 1),
+        false => Ok(without),
+    }
+}
+
+pub fn place_drop(
+    doc: &Document,
+    waypoint_visual: usize,
+    old_drop: Option<usize>,
+    wait: f64,
+    defaults: &EditDefaults,
+    servos: &[crate::payloadcheck::Servo],
+) -> Result<Document, String> {
+    let cleared = match old_drop {
+        Some(drop) => remove_drop(doc, waypoint_visual, drop)?,
+        None => doc.clone(),
+    };
+    let at = waypoint_visual as i64 + 1;
+    let dropped = insert_drop(&cleared, at, defaults, servos)?;
+    Ok(
+        match wait > 0.0 && vehicle_class(doc.vehicle_type) == VehicleClass::MultiRotor {
+            true => {
+                let delayed = insert_simple(&dropped, CMD_NAV_DELAY, 0.0, 0.0, at, defaults);
+                set_param(&delayed, waypoint_visual + 1, 1, wait).unwrap_or(delayed)
+            }
+            false => dropped,
+        },
+    )
+}
+
 pub fn drop_has_a_place(doc: &Document, drop_at: usize) -> bool {
     let last_place = doc
         .items
@@ -3252,6 +3305,102 @@ mod tests {
         assert!(
             !drop_has_a_place(&dropped, 2),
             "a second drop looks past the first to the takeoff"
+        );
+    }
+
+    #[test]
+    fn a_waypoint_aims_photographs_waits_and_then_drops_from_its_servo_in_that_order() {
+        let servos = [crate::payloadcheck::Servo {
+            output: 4,
+            release: 2000.0,
+            hold: 1500.0,
+        }];
+        let copter = Document {
+            firmware_type: 3,
+            vehicle_type: 2,
+            items: Vec::new(),
+            ..section()
+        };
+        let takeoff = insert_simple(&copter, CMD_NAV_TAKEOFF, 47.63, -122.08, 1, &QT_DEFAULTS);
+        let waypoint = insert_simple(
+            &takeoff,
+            CMD_NAV_WAYPOINT,
+            47.631,
+            -122.08,
+            -1,
+            &QT_DEFAULTS,
+        );
+        let aimed = [
+            ("specifyGimbal", json!(true)),
+            ("gimbalPitch", json!(-60.0)),
+            ("cameraAction", json!(6)),
+        ]
+        .iter()
+        .try_fold(waypoint, |doc, (property, value)| {
+            set_camera(&doc, 2, property, value)
+        })
+        .unwrap();
+        let flown = |doc: &Document| -> Vec<(i64, Option<f64>, Option<f64>)> {
+            doc.items
+                .iter()
+                .flat_map(|item| match item {
+                    Item::Simple(s) => std::iter::once(s)
+                        .chain(s.sections.iter())
+                        .map(|s| (s.command, s.params[0], s.params[1]))
+                        .collect(),
+                    Item::Complex { .. } => Vec::new(),
+                })
+                .collect()
+        };
+        let planned = place_drop(&aimed, 2, None, 10.0, &QT_DEFAULTS, &servos).unwrap();
+        assert_eq!(
+            flown(&planned)
+                .iter()
+                .map(|(command, ..)| *command)
+                .collect::<Vec<_>>(),
+            [
+                CMD_NAV_TAKEOFF,
+                CMD_NAV_WAYPOINT,
+                CMD_DO_MOUNT_CONTROL,
+                CMD_IMAGE_START_CAPTURE,
+                CMD_NAV_DELAY,
+                i64::from(crate::payloadcheck::CMD_DO_SET_SERVO)
+            ],
+            "Oleg's drop: the camera aims and shoots on arrival, the drone waits, then servo 4 opens"
+        );
+        let steps = flown(&planned);
+        assert_eq!(
+            steps[1].1,
+            Some(2.0),
+            "it stands still over the point before anything happens"
+        );
+        assert_eq!(steps[4].1, Some(10.0), "the wait asked for");
+        assert_eq!(
+            (steps[5].1, steps[5].2),
+            (Some(4.0), Some(2000.0)),
+            "servo 4 to its release PWM"
+        );
+        assert_eq!(drop_wait(&planned, 2, 4), 10.0);
+        let quicker = place_drop(&planned, 2, Some(4), 0.0, &QT_DEFAULTS, &servos).unwrap();
+        assert_eq!(
+            flown(&quicker)
+                .iter()
+                .map(|(command, ..)| *command)
+                .collect::<Vec<_>>(),
+            [
+                CMD_NAV_TAKEOFF,
+                CMD_NAV_WAYPOINT,
+                CMD_DO_MOUNT_CONTROL,
+                CMD_IMAGE_START_CAPTURE,
+                i64::from(crate::payloadcheck::CMD_DO_SET_SERVO)
+            ],
+            "placed again with no wait, the delay goes with the old drop"
+        );
+        assert_eq!(drop_wait(&quicker, 2, 3), 0.0);
+        assert_eq!(
+            remove_drop(&planned, 2, 4).unwrap().items.len(),
+            2,
+            "removing the drop takes its wait with it"
         );
     }
 
