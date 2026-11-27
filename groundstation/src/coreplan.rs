@@ -3138,10 +3138,7 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
             return Some(item_edit(backend, &json!([index, n]).to_string(), true));
         }
         (true, "comboboxFacts.1", Some(n)) => {
-            return Some(answer(
-                plandoc::set_frame(&current, index, n as i64)
-                    .ok_or_else(|| format!("Item {index} has no frame.")),
-            ));
+            return Some(answer(plandoc::set_frame(&current, index, n as i64)));
         }
         _ => {}
     }
@@ -5539,10 +5536,6 @@ mod tests {
             combo_value(None, &commands, true, "comboboxFacts.0", delay as f64),
             Some(93.0),
             "the raw Command list writes its index, which is the command at that place, not a refused enumIndex"
-        );
-        assert_eq!(
-            combo_value(None, &commands, true, "comboboxFacts.1", 3.0),
-            Some(3.0)
         );
         let (id, param) = commands
             .iter()

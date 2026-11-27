@@ -5,6 +5,9 @@ use crate::cmdinfo::{self, Firmware, VehicleClass};
 const FRAME_GLOBAL: i64 = 0;
 const FRAME_GLOBAL_RELATIVE_ALT: i64 = 3;
 const FRAME_GLOBAL_TERRAIN_ALT: i64 = 10;
+const FRAME_GLOBAL_INT: i64 = 5;
+const FRAME_GLOBAL_RELATIVE_ALT_INT: i64 = 6;
+const FRAME_GLOBAL_TERRAIN_ALT_INT: i64 = 11;
 pub const TRANSECT_STYLE: &[&str] = &["survey", "CorridorScan"];
 const FENCE_VERSION: i64 = 2;
 const RALLY_VERSION: i64 = 2;
@@ -1259,16 +1262,42 @@ pub fn command_at(
     }
 }
 
-pub fn set_frame(doc: &Document, visual_index: usize, frame: i64) -> Option<Document> {
-    let (at, current) = simple_at(doc, visual_index)?;
-    Some(replaced(
-        doc,
-        at,
-        Simple {
-            frame,
-            ..current.clone()
-        },
-    ))
+pub const FRAME_NEEDS_A_DATUM: &str =
+    "This item has a height, so its frame is above sea level, relative to launch or above terrain.";
+
+fn mode_of_frame(frame: i64) -> Option<i64> {
+    match frame {
+        FRAME_GLOBAL | FRAME_GLOBAL_INT => Some(crate::altitudemodes::ABSOLUTE),
+        FRAME_GLOBAL_RELATIVE_ALT | FRAME_GLOBAL_RELATIVE_ALT_INT => {
+            Some(crate::altitudemodes::RELATIVE)
+        }
+        FRAME_GLOBAL_TERRAIN_ALT | FRAME_GLOBAL_TERRAIN_ALT_INT => {
+            Some(crate::altitudemodes::TERRAIN_FRAME)
+        }
+        _ => None,
+    }
+}
+
+pub fn set_frame(doc: &Document, visual_index: usize, frame: i64) -> Result<Document, String> {
+    let (at, current) =
+        simple_at(doc, visual_index).ok_or_else(|| format!("Item {visual_index} has no frame."))?;
+    let framed = |doc: &Document, item: &Simple| {
+        replaced(
+            doc,
+            at,
+            Simple {
+                frame,
+                ..item.clone()
+            },
+        )
+    };
+    match (current.altitude.is_some(), mode_of_frame(frame)) {
+        (false, _) => Ok(framed(doc, current)),
+        (true, None) => Err(FRAME_NEEDS_A_DATUM.to_string()),
+        (true, Some(mode)) => set_altitude_mode(doc, visual_index, mode)
+            .and_then(|moded| simple_at(&moded, visual_index).map(|(_, item)| framed(&moded, item)))
+            .ok_or_else(|| format!("Item {visual_index} has no frame.")),
+    }
 }
 
 pub fn set_altitude_mode(doc: &Document, visual_index: usize, mode: i64) -> Option<Document> {
