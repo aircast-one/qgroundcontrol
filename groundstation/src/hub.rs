@@ -8094,41 +8094,18 @@ impl Vehicle {
                 }
                 "acquire" => gimbals.acquire_control(),
                 "release" => gimbals.release_control(),
-                "onScreen" => {
-                    let number = |key: &str| {
-                        action
-                            .get(key)
-                            .and_then(Value::as_f64)
-                            .map(|v| v as f32)
-                            .unwrap_or(0.0)
-                    };
-                    gimbals.on_screen_control(
-                        number("pan"),
-                        number("tilt"),
-                        number("hFov"),
-                        number("vFov"),
-                        heading,
-                        now_ms,
-                    )
-                }
-                "drag" => {
-                    let number = |key: &str| {
-                        action
-                            .get(key)
-                            .and_then(Value::as_f64)
-                            .map(|v| v as f32)
-                            .unwrap_or(0.0)
-                    };
-                    gimbals.drag_to(
-                        number("pan"),
-                        number("tilt"),
-                        flag("begin"),
-                        number("hFov"),
-                        number("vFov"),
-                        heading,
-                        now_ms,
-                    )
-                }
+                "onScreen" => match on_picture(action) {
+                    Some((pan, tilt, h_fov, v_fov)) => {
+                        gimbals.on_screen_control(pan, tilt, h_fov, v_fov, heading, now_ms)
+                    }
+                    None => return Err(NO_PICTURE_AIM.to_string()),
+                },
+                "drag" => match on_picture(action) {
+                    Some((pan, tilt, h_fov, v_fov)) => {
+                        gimbals.drag_to(pan, tilt, flag("begin"), h_fov, v_fov, heading, now_ms)
+                    }
+                    None => return Err(NO_PICTURE_AIM.to_string()),
+                },
                 "select" => {
                     let number = |key: &str| {
                         action
@@ -8279,6 +8256,25 @@ const STORAGE_MISSION_UNTOUCHED: f64 = -1.0;
 const GIMBAL_RATE_REPEAT_MS: u64 = 500;
 const GIMBAL_STICK_HOLD_MS: u64 = 400;
 const GIMBAL_STOP_REPEATS: u8 = 2;
+const NO_PICTURE_AIM: &str =
+    "An aim on the picture is a point across it and the lens's field of view, in numbers.";
+
+fn on_picture(action: &Value) -> Option<(f32, f32, f32, f32)> {
+    let number = |key: &str| {
+        action
+            .get(key)
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite())
+            .map(|value| value as f32)
+    };
+    Some((
+        number("pan")?,
+        number("tilt")?,
+        number("hFov")?,
+        number("vFov")?,
+    ))
+}
+
 fn sensor_parameter(name: &str) -> bool {
     name.starts_with("CAL_") || name.starts_with("SENS_")
 }
@@ -10069,6 +10065,40 @@ mod tests {
             gimbal_rates(&vehicle.pump_with(5_200, None, 0)),
             vec![],
             "an aim sent right after letting go is not cancelled by a repeated stop"
+        );
+    }
+
+    #[test]
+    fn an_aim_on_the_picture_with_no_lens_is_refused_instead_of_aimed_through_a_zero_degree_lens() {
+        let mut hub = hub_with_a_gimbal();
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        let tap = |fields: Value| {
+            let mut action =
+                json!({ "action": "gimbal", "op": "onScreen", "pan": 0.5, "tilt": 0.5 });
+            fields
+                .as_object()
+                .into_iter()
+                .flatten()
+                .for_each(|(key, value)| action[key] = value.clone());
+            action
+        };
+        assert!(
+            vehicle
+                .gimbal_action(&tap(json!({ "hFov": 60.0, "vFov": 34.0 })), 0)
+                .is_ok()
+        );
+        assert_eq!(
+            vehicle.gimbal_action(&tap(json!({ "vFov": 34.0 })), 100),
+            Err(NO_PICTURE_AIM.to_string()),
+            "a missing field of view read as 0 degrees, so every tap aimed the camera straight ahead without a word"
+        );
+        assert_eq!(
+            vehicle.gimbal_action(
+                &tap(json!({ "op": "drag", "hFov": 60.0, "vFov": null })),
+                200
+            ),
+            Err(NO_PICTURE_AIM.to_string()),
+            "a drag is refused the same way"
         );
     }
 
