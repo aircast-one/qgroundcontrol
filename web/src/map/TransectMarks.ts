@@ -1,4 +1,4 @@
-import type { Map as MapLibreMap, SymbolLayerSpecification } from 'maplibre-gl';
+import type { ExpressionSpecification, Map as MapLibreMap, SymbolLayerSpecification } from 'maplibre-gl';
 import { azimuthBetween, pointAt } from './FenceBridge';
 import type { MissionItem } from './PlanBridge';
 import type { Survey } from './SurveyBridge';
@@ -59,11 +59,19 @@ const chevron = (): ImageData =>
 const GIMBAL_WEDGE_SOURCE = 'aircast-gimbal-wedges';
 const GIMBAL_WEDGE_LAYER = 'aircast-gimbal-wedge-layer';
 const GIMBAL_WEDGE_IMAGE = 'aircast-mission-gimbal-wedge';
+const GIMBAL_DOWN_IMAGE = 'aircast-mission-gimbal-down';
 const GIMBAL_WEDGE_PX = 72;
 const GIMBAL_WEDGE_SWEEP = 90;
+const WEDGE_PITCH = 'pitch';
+const UNKNOWN_PITCH = -45;
+export const LOOKS_DOWN_PITCH = -80;
 
-export const gimbalWedges = (items: readonly MissionItem[]): readonly TransectArrow[] =>
-  items.filter((it) => Number.isFinite(it.heading) && Number.isFinite(it.gimbalYaw)).map((it) => ({ at: { latitude: it.latitude, longitude: it.longitude }, bearing: it.heading + it.gimbalYaw }));
+export type GimbalWedge = TransectArrow & { pitch: number | null };
+
+export const gimbalWedges = (items: readonly MissionItem[]): readonly GimbalWedge[] =>
+  items
+    .filter((it) => Number.isFinite(it.heading) && Number.isFinite(it.gimbalYaw))
+    .map((it) => ({ at: { latitude: it.latitude, longitude: it.longitude }, bearing: it.heading + it.gimbalYaw, pitch: Number.isFinite(it.gimbalPitch) ? it.gimbalPitch : null }));
 
 const wedge = (): ImageData =>
   drawnImage(GIMBAL_WEDGE_PX, GIMBAL_WEDGE_PX, (canvas) => {
@@ -77,9 +85,22 @@ const wedge = (): ImageData =>
     canvas.fill();
   });
 
+const lookingDown = (): ImageData =>
+  drawnImage(GIMBAL_WEDGE_PX, GIMBAL_WEDGE_PX, (canvas) => {
+    const half = GIMBAL_WEDGE_PX / 2;
+    canvas.strokeStyle = `rgba(255, 255, 255, ${200 / 255})`;
+    canvas.lineWidth = 4;
+    canvas.beginPath();
+    canvas.arc(half, half, half / 2, 0, Math.PI * 2);
+    canvas.stroke();
+  });
+
 const arrowFeatures = (arrows: readonly TransectArrow[]) => featureCollection(arrows.map((it) => pointFeature(it.at.longitude, it.at.latitude, { [ARROW_BEARING]: it.bearing })));
 
-export const renderGimbalWedges = (style: MapLibreMap, items: readonly MissionItem[]): void => setGeoJson(style, GIMBAL_WEDGE_SOURCE, arrowFeatures(gimbalWedges(items)));
+const wedgeFeatures = (wedges: readonly GimbalWedge[]) =>
+  featureCollection(wedges.map((it) => pointFeature(it.at.longitude, it.at.latitude, { [ARROW_BEARING]: it.bearing, ...(it.pitch === null ? {} : { [WEDGE_PITCH]: it.pitch }) })));
+
+export const renderGimbalWedges = (style: MapLibreMap, items: readonly MissionItem[]): void => setGeoJson(style, GIMBAL_WEDGE_SOURCE, wedgeFeatures(gimbalWedges(items)));
 
 const rotatedIcon = (id: string, source: string, image: string): SymbolLayerSpecification => ({
     id,
@@ -94,11 +115,25 @@ const rotatedIcon = (id: string, source: string, image: string): SymbolLayerSpec
     },
   });
 
+const wedgeLayer = (): SymbolLayerSpecification => {
+  const icon = rotatedIcon(GIMBAL_WEDGE_LAYER, GIMBAL_WEDGE_SOURCE, GIMBAL_WEDGE_IMAGE);
+  const pitch: ExpressionSpecification = ['coalesce', ['get', WEDGE_PITCH], UNKNOWN_PITCH];
+  return {
+    ...icon,
+    layout: {
+      ...icon.layout,
+      'icon-image': ['case', ['<=', pitch, LOOKS_DOWN_PITCH], GIMBAL_DOWN_IMAGE, GIMBAL_WEDGE_IMAGE],
+      'icon-size': ['interpolate', ['linear'], pitch, -90, 0.5, 0, 1.3],
+    },
+  };
+};
+
 export const installTransectMarks = (style: MapLibreMap): void => {
   if (style.getSource(GIMBAL_WEDGE_SOURCE) === undefined) {
     style.addSource(GIMBAL_WEDGE_SOURCE, geoJsonSource());
     addBitmap(style, GIMBAL_WEDGE_IMAGE, wedge());
-    style.addLayer(rotatedIcon(GIMBAL_WEDGE_LAYER, GIMBAL_WEDGE_SOURCE, GIMBAL_WEDGE_IMAGE));
+    addBitmap(style, GIMBAL_DOWN_IMAGE, lookingDown());
+    style.addLayer(wedgeLayer());
   }
   if (style.getSource(TRANSECT_ARROW_SOURCE) !== undefined) return;
   style.addSource(TRANSECT_STUB_SOURCE, geoJsonSource());

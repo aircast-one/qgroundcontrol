@@ -392,3 +392,26 @@ test.describe('on a phone', () => {
     await Promise.all(['Pattern', 'Return', 'Drop'].map(async (name) => expect(await uncovered(name), `${name} was scrolled away inside the rail under the sheet`).toBe(true)));
   });
 });
+
+const planRows = (page: Page) =>
+  page.evaluate(async (module) => {
+    const view = (await ((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.missionItems(geometry)')) as { items?: { gimbalPitch?: number | null; gimbalYaw?: number | null }[] } | null;
+    return view?.items ?? [];
+  }, '/src/bridge/Qgc.ts');
+
+test('a waypoint that tilts the camera tells the map how far down it looks, so its wedge can be drawn to match', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openPlanAtVehicle(app);
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.getByRole('button', { name: 'Done' }).click();
+  await app.getByRole('button', { name: 'Waypoint 3' }).first().click();
+  await app.getByRole('button', { name: 'Add', exact: true }).click();
+  await app.getByRole('menuitem', { name: 'Tilt camera' }).click();
+  const editor = app.getByRole('dialog').filter({ hasText: 'Pitch' });
+  await editor.getByRole('button', { name: /^Pitch: / }).click();
+  await app.getByRole('textbox', { name: /^Pitch/ }).fill('-60');
+  await app.getByRole('button', { name: 'Set', exact: true }).click();
+  await editor.getByRole('button', { name: 'Done' }).click();
+  await expect.poll(async () => (await planRows(app)).map((it) => it.gimbalPitch ?? null).filter((it) => it !== null), { timeout: 30_000 }).toContain(-60);
+});

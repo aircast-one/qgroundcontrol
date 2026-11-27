@@ -21,7 +21,7 @@ const LOITER_TIME: i64 = 19;
 const LOITER_TO_ALT: i64 = 31;
 const VTOL_TAKEOFF: i64 = 84;
 
-const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude,missionVehicleYaw,showLoiterRadius,loiterRadius,missionGimbalYaw,dropsPayload,heightAboveLaunch,heightAboveLaunchLowest,heightAboveLaunchHighest";
+const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude,missionVehicleYaw,showLoiterRadius,loiterRadius,missionGimbalYaw,missionGimbalPitch,dropsPayload,heightAboveLaunch,heightAboveLaunchLowest,heightAboveLaunchHighest";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
@@ -1005,6 +1005,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
         "isCurrentItem": selected == 0,
         "coordinate": { "latitude": home[0], "longitude": home[1], "altitude": home[2], "valid": doc.home.is_some() },
         "specifiedGimbalYaw": sections_gimbal_yaw(&doc.settings_sections),
+        "specifiedGimbalPitch": sections_gimbal_pitch(&doc.settings_sections),
         "exitCoordinateSameAsEntry": true,
         "amslEntryAlt": home[2],
         "minAMSLAltitude": home[2],
@@ -1114,6 +1115,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                 "additionalTimeDelay": held_seconds(s, item_commands),
                 "specifiedVehicleYaw": if s.command == 16 { s.params[3] } else { None },
                 "specifiedGimbalYaw": sections_gimbal_yaw(&s.sections).or_else(|| mount_gimbal_yaw(s)),
+                "specifiedGimbalPitch": sections_gimbal_pitch(&s.sections).or_else(|| mount_gimbal_pitch(s)),
                 "altDifference": leg.alt_difference,
                 "azimuth": leg.azimuth,
                 "distance": leg.distance,
@@ -1146,40 +1148,52 @@ const MOUNT_CONTROL: i64 = 205;
 const GIMBAL_CLEARING: [i64; 4] = [80, 195, 196, 1000];
 const MOUNT_MODE_MAVLINK_TARGETING: f64 = 2.0;
 
-fn mount_gimbal_yaw(item: &crate::plandoc::Simple) -> Option<f64> {
+fn mount_gimbal_param(item: &crate::plandoc::Simple, param: usize) -> Option<f64> {
     (item.command == MOUNT_CONTROL && item.params[6] == Some(MOUNT_MODE_MAVLINK_TARGETING))
-        .then_some(item.params[2])
+        .then_some(item.params[param])
         .flatten()
+}
+
+fn mount_gimbal_yaw(item: &crate::plandoc::Simple) -> Option<f64> {
+    mount_gimbal_param(item, 2)
+}
+
+fn mount_gimbal_pitch(item: &crate::plandoc::Simple) -> Option<f64> {
+    mount_gimbal_param(item, 0)
 }
 
 fn sections_gimbal_yaw(sections: &[crate::plandoc::Simple]) -> Option<f64> {
     sections.iter().find_map(mount_gimbal_yaw)
 }
 
+fn sections_gimbal_pitch(sections: &[crate::plandoc::Simple]) -> Option<f64> {
+    sections.iter().find_map(mount_gimbal_pitch)
+}
+
 fn with_gimbal_yaws(reads: Vec<Value>, only_when_set: bool) -> Vec<Value> {
     reads
         .into_iter()
-        .scan(None::<f64>, |carried, read| {
+        .scan(None::<(f64, Option<f64>)>, |carried, read| {
             if read["command"]
                 .as_i64()
                 .is_some_and(|command| GIMBAL_CLEARING.contains(&command))
             {
                 *carried = None;
             }
-            let specified = read["specifiedGimbalYaw"]
-                .as_f64()
-                .filter(|y| y.is_finite());
+            let finite = |key: &str| read[key].as_f64().filter(|v| v.is_finite());
+            let specified =
+                finite("specifiedGimbalYaw").map(|yaw| (yaw, finite("specifiedGimbalPitch")));
             if specified.is_some() || only_when_set {
                 *carried = specified;
             }
             Some(match (*carried, read) {
-                (Some(yaw), Value::Object(fields)) => Value::Object(
+                (Some((yaw, pitch)), Value::Object(fields)) => Value::Object(
                     fields
                         .into_iter()
-                        .chain(std::iter::once((
-                            "missionGimbalYaw".to_string(),
-                            json!(yaw),
-                        )))
+                        .chain([
+                            ("missionGimbalYaw".to_string(), json!(yaw)),
+                            ("missionGimbalPitch".to_string(), json!(pitch)),
+                        ])
                         .collect(),
                 ),
                 (_, read) => read,
@@ -1374,6 +1388,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, horizontal: &Unit, speed: &Un
         "heading": number(read, "missionVehicleYaw"),
         "headingText": number(read, "missionVehicleYaw").map(bearing_text),
         "gimbalYaw": number(read, "missionGimbalYaw").filter(|yaw| yaw.is_finite()),
+        "gimbalPitch": number(read, "missionGimbalPitch").filter(|pitch| pitch.is_finite()),
         "distance": number(read, "distance"),
         "distanceText": number(read, "distance").map(|metres| format!("{} {}", crate::read::qml_fixed(horizontal.show(metres), 1), horizontal.name)),
         "gradientText": match integer(read, "command") == Some(VTOL_TAKEOFF) && number(read, "distance").is_some_and(|d| d > 0.0) {
@@ -4103,6 +4118,52 @@ mod reported {
                 Value::Null
             ],
             "showGimbalOnlyWhenSet shows it only where it is set"
+        );
+    }
+
+    #[test]
+    fn gimbal_pitch_travels_with_the_yaw_so_the_map_can_draw_where_the_camera_looks() {
+        let item = |yaw: Option<f64>, pitch: Option<f64>| json!({ "command": 16, "specifiedGimbalYaw": yaw, "specifiedGimbalPitch": pitch });
+        let pitches: Vec<Value> = with_gimbal_yaws(
+            vec![
+                item(None, None),
+                item(Some(-73.0), Some(-77.0)),
+                item(None, None),
+                item(Some(10.0), None),
+            ],
+            false,
+        )
+        .iter()
+        .map(|r| r["missionGimbalPitch"].clone())
+        .collect();
+        assert_eq!(
+            pitches,
+            [Value::Null, json!(-77.0), json!(-77.0), Value::Null],
+            "the pitch set with a yaw carries on with it, and a later yaw without a pitch has none"
+        );
+        let mount = crate::plandoc::Simple {
+            command: MOUNT_CONTROL,
+            frame: 2,
+            params: [
+                Some(-77.0),
+                None,
+                Some(-73.0),
+                None,
+                None,
+                None,
+                Some(MOUNT_MODE_MAVLINK_TARGETING),
+            ],
+            auto_continue: true,
+            altitude: None,
+            sections: Vec::new(),
+        };
+        assert_eq!(
+            (
+                sections_gimbal_pitch(std::slice::from_ref(&mount)),
+                sections_gimbal_yaw(&[mount])
+            ),
+            (Some(-77.0), Some(-73.0)),
+            "DO_MOUNT_CONTROL carries pitch in param 1 and yaw in param 3"
         );
     }
 

@@ -4,7 +4,7 @@ import { FencePolygon } from './FenceBridge';
 import { WAYPOINT_LABEL_PROPERTY, exitMarkers, flownRoute, legArrows, missionFeatures } from './MissionLayers';
 import { MissionItem } from './PlanBridge';
 import { polygonCentre, shapeMovedTo } from './PolygonTools';
-import { gimbalWedges, transectMarks } from './TransectMarks';
+import { LOOKS_DOWN_PITCH, gimbalWedges, transectMarks } from './TransectMarks';
 import type { TrackPoint } from './VehicleMap';
 
 const near = (actual: number | undefined, expected: number, delta: number, message?: string) => expect(Math.abs((actual ?? NaN) - expected), message).toBeLessThanOrEqual(delta);
@@ -54,6 +54,14 @@ describe('TransectMarksTest', () => {
     const looking = { ...leg(2), heading: 90.0, gimbalYaw: 30.0 };
     const bare = { ...leg(3), heading: 90.0 };
     expect(gimbalWedges([looking, bare]).map((it) => it.bearing)).toEqual([120.0]);
+  });
+
+  it("a waypoint's gimbal wedge carries its pitch, so the map can draw straight down as a ring and a shallow look as a longer wedge", () => {
+    const down = { ...leg(2), heading: 90.0, gimbalYaw: 0.0, gimbalPitch: -90.0 };
+    const out = { ...leg(3), heading: 90.0, gimbalYaw: 0.0, gimbalPitch: -20.0 };
+    const yawOnly = { ...leg(4), heading: 90.0, gimbalYaw: 0.0 };
+    expect(gimbalWedges([down, out, yawOnly]).map((it) => it.pitch)).toEqual([-90.0, -20.0, null]);
+    expect(-90.0 <= LOOKS_DOWN_PITCH && -20.0 > LOOKS_DOWN_PITCH).toBe(true);
   });
 
   it('a pattern item gets a second marker at its exit labelled with its last sequence number', () => {

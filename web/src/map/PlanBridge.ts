@@ -125,6 +125,7 @@ export type MissionItem = {
   terrainCollision: boolean;
   heading: number;
   gimbalYaw: number;
+  gimbalPitch: number;
   closesRoute: boolean;
   endsRoute: boolean;
   legBroken: boolean;
@@ -167,6 +168,7 @@ export const MissionItem = (fields: MissionItemRequired & Partial<MissionItem>):
   terrainCollision: false,
   heading: NaN,
   gimbalYaw: NaN,
+  gimbalPitch: NaN,
   closesRoute: false,
   endsRoute: false,
   legBroken: false,
@@ -239,6 +241,7 @@ export const allMissionItems = (json: Json | null): readonly MissionItem[] => {
         loiterRadius: optDouble(element, 'loiterRadius', NaN),
         heading: optDouble(element, 'heading', NaN),
         gimbalYaw: optDouble(element, 'gimbalYaw', NaN),
+        gimbalPitch: optDouble(element, 'gimbalPitch', NaN),
         closesRoute: optBoolean(element, 'closesRoute'),
         endsRoute: optBoolean(element, 'endsRoute'),
         legBroken: broken.has(index),
