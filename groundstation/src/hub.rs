@@ -17990,6 +17990,53 @@ mod tests {
     }
 
     #[test]
+    fn the_motor_interlock_holds_aux_function_32_high_or_low_and_is_not_a_sensor_switch() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let held = |hub: &mut Hub, enable: bool, now_ms: u64| {
+            hub.vehicles
+                .get_mut(&1)
+                .unwrap()
+                .start_guided(
+                    &json!({ "action": "motorInterlock", "enable": enable }),
+                    now_ms,
+                )
+                .unwrap()
+                .iter()
+                .find_map(|frame| match decode(frame) {
+                    MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_DO_AUX_FUNCTION => {
+                        Some((c.param1, c.param2))
+                    }
+                    _ => None,
+                })
+        };
+        assert_eq!(held(&mut hub, true, 20_000), Some((32.0, 2.0)));
+        hub.on_frame(
+            origin(4),
+            &autopilot,
+            &MavMessage::COMMAND_ACK(COMMAND_ACK_DATA {
+                command: MavCmd::MAV_CMD_DO_AUX_FUNCTION,
+                result: MavResult::MAV_RESULT_ACCEPTED,
+                ..Default::default()
+            }),
+            20_100_000,
+            20_100,
+        );
+        assert_eq!(held(&mut hub, false, 21_000), Some((32.0, 0.0)));
+        let switched = &hub.active().unwrap().aux_switches;
+        assert!(
+            switched.on(32) && switched.on(10) && switched.on(40),
+            "an accepted interlock is not read as a sensor turned off"
+        );
+    }
+
+    #[test]
     fn an_airframe_change_reboots_only_after_both_writes_are_acknowledged() {
         use mavlink::dialects::ardupilotmega::MavCmd;
         let autopilot = MavHeader {

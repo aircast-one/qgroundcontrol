@@ -16,10 +16,12 @@ test('on a desktop the Fly menu leads with Plan, keeps the aircraft and its setu
 
 test('Plan in the Fly menu has its own route glyph, so it no longer looks like the map button beside it', async ({ vehicle }) => {
   const glyph = (button: Locator) => button.locator('svg path').first().getAttribute('d');
+  const route = await vehicle.evaluate(async (module) => ((await import(module)) as { drawables: { ic_route: { paths: readonly { d: string }[] } } }).drawables.ic_route.paths[0]?.d ?? null, '/src/res/drawables.ts');
   const mapGlyph = await glyph(vehicle.getByRole('button', { name: 'Map', exact: true }));
   await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   const planGlyph = await glyph(vehicle.getByRole('dialog').getByRole('button', { name: 'Plan', exact: true }));
-  expect(planGlyph).not.toBeNull();
+  expect(route).not.toBeNull();
+  expect(planGlyph, 'Plan is drawn with the route glyph').toEqual(route);
   expect(planGlyph, 'Oleg read the two as the same map and could not tell which one plans a mission').not.toEqual(mapGlyph);
 });
 
@@ -73,10 +75,13 @@ test('an ArduPilot with a range finder set up turns it off and on from the Fly m
   await offered('off');
 });
 
-test('on the ground Arm sits on the deck beside Take off, and Force arm stays in the menu in plain ink and still asks for a slide', async ({ vehicle }) => {
+test('on the ground Arm sits on the deck beside Take off', async ({ vehicle }) => {
   const deck = vehicle.getByRole('group', { name: 'Flight actions' });
   await expect(deck.getByRole('button', { name: 'Arm', exact: true })).toBeVisible();
   await expect(deck.getByRole('button', { name: 'Take off' })).toBeVisible();
+});
+
+test('Force arm stays in the menu in plain ink and still asks for a slide', async ({ vehicle }) => {
   await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   const aircraft = vehicle.getByRole('dialog').getByRole('region', { name: 'Aircraft' });
   const ink = (name: string) => aircraft.getByRole('button', { name, exact: true }).evaluate((tile) => getComputedStyle(tile).color);

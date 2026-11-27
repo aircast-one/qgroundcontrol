@@ -203,7 +203,7 @@ test('a camera picture that took the place of a button left at the edge moves wi
   expect(Math.round((await box(video)).x - parked.x), 'pulled back 100 px, it moves 100 px').toBe(-100);
 });
 
-test('the resize grip takes no touches until it is shown, and a second finger outside the picture still pinches it', async ({ app }) => {
+test('the resize grip takes no touches until it is shown, a second finger outside the picture still pinches it, one finger drags it, and the plus and minus keys size it', async ({ app }) => {
   const { mapButton, video } = await liveCameraPip(app);
   const grip = video.getByTestId('pip-resize');
   await app.mouse.move(2, 2);
@@ -224,4 +224,19 @@ test('the resize grip takes no touches until it is shown, and a second finger ou
   const pinched = await box(video);
   expect(pinched.width / before.width, 'the second finger landed on the map beside it and spread, and the picture grew').toBeGreaterThan(1.3);
   await expect(mapButton, 'and the pinch did not swap the views').toHaveCount(0);
+  const finger = (x: number, y: number) => [{ x, y, id: 1 }];
+  const from = await middle(video);
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: finger(from.x, from.y) });
+  await [30, 60, 90].reduce<Promise<unknown>>((sent, far) => sent.then(() => touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: finger(from.x + far, from.y - far) })), Promise.resolve());
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  const carried = await box(video);
+  expect([Math.round(carried.x - pinched.x), Math.round(carried.y - pinched.y)], 'one finger drags it').toEqual([90, -90]);
+  await expect(mapButton, 'and a finger lifted after a drag is not a tap').toHaveCount(0);
+  await video.focus();
+  await app.keyboard.press('-');
+  await expect.poll(async () => (await box(video)).width, { message: 'the minus key makes the focused picture smaller' }).toBeLessThan(carried.width);
+  const shrunk = await box(video);
+  await app.keyboard.press('+');
+  await expect.poll(async () => (await box(video)).width, { message: 'and the plus key bigger' }).toBeGreaterThan(shrunk.width);
+  await expect(mapButton, 'neither key swaps the views').toHaveCount(0);
 });
