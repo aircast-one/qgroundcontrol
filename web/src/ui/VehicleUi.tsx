@@ -59,7 +59,7 @@ import {
 import { ValueDisplay, ValueDisplayDialog, ValueIcon, ValueLabel, displayColour, displayIcon, readDisplays, writeDisplay } from './InstrumentDisplay';
 import { MAP_CLICK_PATH, type LoiterOffer, LoiterRadiusPanel, loiterOffer, mapClickUnits } from './MapClickMenu';
 import { FlyViewMavlinkActions } from './MavlinkActions';
-import { AUTO_POPUP_ACTIONS, AUX_SWITCH, AUX_SWITCHES_VIEW, CALIBRATE, GRIPPER_RELEASE, PAUSE, RELEASE, autoMissionPopup, auxSwitchReadings, guidedCommand, missionFlown, moreActions, popupReplacesOpenConfirm } from './MoreActions';
+import { AUTO_POPUP_ACTIONS, AUX_SWITCH, AUX_SWITCHES_VIEW, CALIBRATE, auxSwitchIcon, GRIPPER_RELEASE, PAUSE, RELEASE, autoMissionPopup, auxSwitchReadings, guidedCommand, missionFlown, moreActions, popupReplacesOpenConfirm } from './MoreActions';
 import { CHECK_DEVICE, OFFLINE_SHEET, OFFLINE_STATUS_VIEW, offlineStatus, openAddLink, openDeviceTelemetry } from './OfflineStatusSheet';
 import { LayoutWidget, barOrderWith, homeRows, orientedKey, rowsCovered } from './OverlayLayout';
 import { LocalFlyOsd, OSD_SCRIM, osdShadow } from './Osd';
@@ -901,14 +901,16 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
 
   const checklistPast = checklistOffered(armed);
   const calibrate = sensorsPage ? [MenuTile({ label: CALIBRATE, icon: 'ic_explore', enabled: !armed, onClick: () => (navigation.setupPage.value = SENSORS) })] : [];
-  const switchTiles = auxSwitches.map((it) =>
-    MenuTile({
-      label: `${it.label} ${it.on ? 'on' : 'off'}`,
-      icon: 'ic_height',
+  const switchTiles = auxSwitches.map((it) => {
+    const answer = () => Qgc.refusalOf(AUX_SWITCH, it.id, !it.on);
+    const confirm = it.confirm;
+    return MenuTile({
+      label: it.action,
+      icon: auxSwitchIcon(it.id),
       enabled: true,
-      onClick: () => void (async () => setRefusal(await Qgc.refusalOf(AUX_SWITCH, it.id, !it.on)))(),
-    }),
-  );
+      onClick: () => (confirm === null ? void answer().then(setRefusal) : ask(GuidedAction({ name: confirm.title, confirm: confirm.text, destructive: false, answer }))),
+    });
+  });
   const aircraft: readonly MenuTile[] = menuOpen
     ? [
         MenuTile({

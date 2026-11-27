@@ -751,8 +751,12 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                 } +
                 listOfNotNull(MoreTile(CALIBRATE, R.drawable.ic_explore, !armed) { navigation.setupPage = SENSORS }.takeIf { sensorsPage }) +
                 auxSwitches.map { switch ->
-                    MoreTile("${switch.label} ${if (switch.on) "on" else "off"}", R.drawable.ic_height, true) {
-                        scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(AUX_SWITCH, switch.id, !switch.on) } }
+                    val answer: suspend () -> String? = { withContext(Dispatchers.Default) { Qgc.refusalOf(AUX_SWITCH, switch.id, !switch.on) } }
+                    MoreTile(switch.action, auxSwitchIcon(switch.id), true) {
+                        when (val confirm = switch.confirm) {
+                            null -> scope.launch { refusal = answer() }
+                            else -> ask(GuidedAction(name = confirm.title, confirm = confirm.text, destructive = false, answer = answer))
+                        }
                     }
                 }),
                 MoreSection(SCREEN_SECTION, listOfNotNull(

@@ -3,7 +3,7 @@ import { type Json, parseJson } from '@/bridge/Json';
 import { EMERGENCY_STOP } from './EmergencyStop';
 import { GuidedOffer, guidedOffers, resumeFromSequence } from './GuidedActions';
 import { gripperOffers } from './GripperPanel';
-import { PAUSE, SHEET_ACTIONS, autoMissionPopup, guidedCommand, missionFlown, moreActions, popupReplacesOpenConfirm } from './MoreActions';
+import { PAUSE, SHEET_ACTIONS, autoMissionPopup, auxSwitchIcon, auxSwitchReadings, guidedCommand, missionFlown, moreActions, popupReplacesOpenConfirm } from './MoreActions';
 
 const json = (text: string): Json => parseJson(text) ?? {};
 
@@ -77,6 +77,29 @@ describe('MoreActionsTest', () => {
     expect(ids.length, 'every id in SHEET_ACTIONS, so adding one to the set without a command here is caught').toBe(SHEET_ACTIONS.size);
     expect(ids.filter((it) => it !== PAUSE && guidedCommand(it, 5) === null)).toEqual([]);
     expect(guidedCommand(PAUSE, 5)).toBeNull();
+  });
+});
+
+describe('AuxSwitchTest', () => {
+  it('reads the action the core names and the confirm it asks for', () => {
+    const view = parseJson(
+      JSON.stringify({
+        switches: [
+          { id: 'rangefinder', on: true, action: 'Turn range finder off', confirm: { title: 'Turn range finder off', text: 'The aircraft stops reading its height.' } },
+          { id: 'avoidance', on: false, action: 'Turn obstacle avoidance on', confirm: null },
+        ],
+      }),
+    );
+    expect(auxSwitchReadings(view)).toEqual([
+      { id: 'rangefinder', on: true, action: 'Turn range finder off', confirm: { title: 'Turn range finder off', text: 'The aircraft stops reading its height.' } },
+      { id: 'avoidance', on: false, action: 'Turn obstacle avoidance on', confirm: null },
+    ]);
+    expect(auxSwitchReadings(null)).toEqual([]);
+  });
+
+  it('gives the two switches their own glyphs, not the altitude one', () => {
+    expect(auxSwitchIcon('rangefinder')).toBe('ic_straighten');
+    expect(auxSwitchIcon('avoidance')).toBe('ic_shield');
   });
 });
 

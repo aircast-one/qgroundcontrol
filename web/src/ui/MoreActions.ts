@@ -1,8 +1,8 @@
 import { PlanCommands } from '@/bridge/BridgeCommands';
 import { VehicleCommands } from '@/bridge/VehicleCommands';
 import { EMERGENCY_STOP } from './EmergencyStop';
-import { type Json, jsonObjects, optBoolean, optJSONArray, optText } from '@/bridge/Json';
-import type { GuidedOffer } from './GuidedActions';
+import { type Json, jsonObjects, optBoolean, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
+import type { GuidedOffer, PursuitConfirm } from './GuidedActions';
 
 export const PAUSE = 'pause';
 
@@ -68,7 +68,17 @@ export const CALIBRATE = 'Calibrate';
 export const AUX_SWITCHES_VIEW = 'view.auxSwitches';
 export const AUX_SWITCH = 'vehicle.auxSwitch';
 
-export type AuxSwitch = { id: string; label: string; on: boolean };
+export type AuxSwitch = { readonly id: string; readonly on: boolean; readonly action: string; readonly confirm: PursuitConfirm | null };
 
 export const auxSwitchReadings = (view: Json | null): readonly AuxSwitch[] =>
-  jsonObjects(optJSONArray(view, 'switches')).map((it) => ({ id: optText(it, 'id'), label: optText(it, 'label'), on: optBoolean(it, 'on') }));
+  jsonObjects(optJSONArray(view, 'switches')).map((it) => {
+    const confirm = optJSONObject(it, 'confirm');
+    return {
+      id: optText(it, 'id'),
+      on: optBoolean(it, 'on'),
+      action: optText(it, 'action'),
+      confirm: confirm === null ? null : { title: optText(confirm, 'title'), text: optText(confirm, 'text') },
+    };
+  });
+
+export const auxSwitchIcon = (id: string): 'ic_shield' | 'ic_straighten' => (id === 'avoidance' ? 'ic_shield' : 'ic_straighten');

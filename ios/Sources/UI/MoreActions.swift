@@ -55,10 +55,22 @@ let AUX_SWITCH = "vehicle.auxSwitch"
 
 struct AuxSwitch: Equatable {
     let id: String
-    let label: String
     let on: Bool
+    let action: String
+    let confirm: PursuitConfirm?
 }
 
 func auxSwitchReadings(_ view: JSON?) -> [AuxSwitch] {
-    (view?["switches"].objects ?? []).map { AuxSwitch(id: $0["id"].string, label: $0["label"].string, on: $0["on"].bool) }
+    (view?["switches"].objects ?? []).map {
+        AuxSwitch(
+            id: $0["id"].string,
+            on: $0["on"].bool,
+            action: $0["action"].string,
+            confirm: $0["confirm"].objectOrNil.map { PursuitConfirm(title: $0["title"].string, text: $0["text"].string) }
+        )
+    }
+}
+
+func auxSwitchIcon(_ id: String) -> Icon {
+    id == "avoidance" ? .shield : .straighten
 }

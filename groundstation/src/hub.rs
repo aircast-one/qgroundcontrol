@@ -408,6 +408,7 @@ pub struct Vehicle {
     pub escs: Escs,
     pub rc_override: BTreeMap<u8, u16>,
     pub airframe_reboot: Option<Option<u64>>,
+    pub aux_switches: crate::auxswitch::Switched,
     stream: crate::streamconfig::StreamConfig,
     pub autotune: crate::autotune::Autotune,
     pub above_terrain: crate::terrainaltitude::AboveTerrain,
@@ -757,6 +758,7 @@ impl Vehicle {
             rc_releasing: BTreeMap::new(),
             calibration_left_behind: false,
             airframe_reboot: None,
+            aux_switches: crate::auxswitch::Switched::default(),
             stream: crate::streamconfig::StreamConfig::default(),
             autotune: crate::autotune::Autotune::default(),
             above_terrain: crate::terrainaltitude::AboveTerrain::default(),
@@ -2823,6 +2825,9 @@ impl Vehicle {
             "triggerCamera" => guidedcmd::trigger_camera(),
             "landingGear" => guidedcmd::landing_gear(flag("retract")),
             "motorInterlock" => guidedcmd::motor_interlock(&state, flag("enable")),
+            "auxSwitch" if self.autopilot != crate::modes::AUTOPILOT_ARDUPILOT => {
+                Plan::Refused(crate::auxswitch::NOT_ARDUPILOT.into())
+            }
             "auxSwitch" => guidedcmd::aux_switch(&state, number("function"), flag("high")),
             "motorTest" => {
                 guidedcmd::motor_test(number("motor"), number("percent"), number("seconds"))
@@ -4483,6 +4488,12 @@ impl Vehicle {
             Plan::Refused(reason) => Err(reason),
             Plan::Steps(steps) => {
                 self.errors.clear();
+                if action.get("action").and_then(Value::as_str) == Some("auxSwitch") {
+                    self.aux_switches.asked(
+                        action.get("function").and_then(Value::as_u64).unwrap_or(0) as u16,
+                        action.get("high").and_then(Value::as_bool).unwrap_or(false),
+                    );
+                }
                 if action.get("action").and_then(Value::as_str) == Some("estimatorOrigin") {
                     let number = |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(0.0);
                     self.estimator_origin =
@@ -5078,6 +5089,18 @@ impl Vehicle {
                     if result != RESULT_ACCEPTED || failure != crate::mavcmd::RequestFailure::None {
                         self.intervals_unsupported
                             .insert((component, (tag - INSPECTOR_INTERVAL_TAG) as u32));
+                    }
+                    Vec::new()
+                }
+                Out::Result {
+                    command: guidedcmd::CMD_DO_AUX_FUNCTION,
+                    result,
+                    failure,
+                    ..
+                } => {
+                    if failure != Failure::Duplicate {
+                        self.aux_switches
+                            .answered(failure == Failure::ResultOnly && result == RESULT_ACCEPTED);
                     }
                     Vec::new()
                 }
@@ -6961,6 +6984,11 @@ impl Vehicle {
             .observe(message, from == (self.id, self.component), now_ms)
             .into_iter()
             .for_each(|round_trip_ms| self.commands.heard_round_trip(round_trip_ms));
+        if let Some(uptime_ms) =
+            crate::auxswitch::uptime_ms(message).filter(|_| from == (self.id, self.component))
+        {
+            self.aux_switches.heard_uptime(uptime_ms);
+        }
         if let MavMessage::HEARTBEAT(h) = message
             && header.system_id == self.id
         {
@@ -17618,6 +17646,106 @@ mod tests {
             crate::corelinks::pending_close(),
             Some((21_100, Some(vec![4]))),
             "a companion reboot sent some other way is not the vehicle rebooting"
+        );
+    }
+
+    #[test]
+    fn an_aux_switch_reads_off_once_accepted_says_so_when_refused_and_is_on_again_after_a_reboot() {
+        use mavlink::dialects::ardupilotmega::{
+            ATTITUDE_DATA, COMMAND_ACK_DATA, MavCmd, MavResult,
+        };
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let ack = |result: MavResult| {
+            MavMessage::COMMAND_ACK(COMMAND_ACK_DATA {
+                command: MavCmd::MAV_CMD_DO_AUX_FUNCTION,
+                result,
+                ..Default::default()
+            })
+        };
+        let uptime = |time_boot_ms: u32| {
+            MavMessage::ATTITUDE(ATTITUDE_DATA {
+                time_boot_ms,
+                ..Default::default()
+            })
+        };
+        let off = json!({ "action": "auxSwitch", "function": 10, "high": false });
+        let range_finder_on = |hub: &Hub| hub.active().unwrap().aux_switches.on(10);
+        hub.on_frame(origin(4), &autopilot, &uptime(900_000), 19_000_000, 19_000);
+        let sent = hub
+            .vehicles
+            .get_mut(&1)
+            .unwrap()
+            .start_guided(&off, 20_000)
+            .unwrap();
+        assert!(
+            sent.iter().any(|frame| matches!(
+                decode(frame),
+                MavMessage::COMMAND_LONG(c)
+                    if c.command == MavCmd::MAV_CMD_DO_AUX_FUNCTION && c.param1 == 10.0 && c.param2 == 0.0
+            )),
+            "aux function 10 held low"
+        );
+        assert!(range_finder_on(&hub), "sent is not accepted");
+        hub.on_frame(
+            origin(4),
+            &autopilot,
+            &ack(MavResult::MAV_RESULT_FAILED),
+            20_100_000,
+            20_100,
+        );
+        assert!(
+            range_finder_on(&hub),
+            "ArduPlane has no aux function 10 and answers FAILED"
+        );
+        assert!(
+            hub.active()
+                .unwrap()
+                .pending_notices
+                .iter()
+                .any(|(_, text)| text.ends_with("command failed")),
+            "the refusal is shown like any other refused command"
+        );
+        hub.vehicles
+            .get_mut(&1)
+            .unwrap()
+            .start_guided(&off, 21_000)
+            .unwrap();
+        hub.on_frame(
+            origin(4),
+            &autopilot,
+            &ack(MavResult::MAV_RESULT_ACCEPTED),
+            21_100_000,
+            21_100,
+        );
+        assert!(!range_finder_on(&hub));
+        hub.on_frame(origin(4), &autopilot, &uptime(3_000), 22_000_000, 22_000);
+        assert!(
+            range_finder_on(&hub),
+            "ArduPilot boots with the sensor on, whatever was switched before"
+        );
+        hub.vehicles
+            .get_mut(&1)
+            .unwrap()
+            .start_guided(&off, 23_000)
+            .unwrap();
+        hub.on_frame(
+            origin(4),
+            &autopilot,
+            &ack(MavResult::MAV_RESULT_ACCEPTED),
+            23_100_000,
+            23_100,
+        );
+        hub.close_vehicle(1, 24_000, "communication lost");
+        connect_copter(&mut hub, &autopilot);
+        assert!(
+            range_finder_on(&hub),
+            "the next aircraft with system id 1 does not inherit the last one's switch"
         );
     }
 

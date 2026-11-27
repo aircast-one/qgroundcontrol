@@ -714,8 +714,13 @@ struct FlightActions<Center: View>: View {
             ? [MoreTile(label: CALIBRATE, icon: .explore, enabled: !armed, onClick: { navigation.setupPage = SENSORS })]
             : []
         let switches = auxSwitchReadings(auxSwitchesJson).map { item in
-            MoreTile(label: "\(item.label) \(item.on ? "on" : "off")", icon: .height, enabled: true, onClick: {
-                actions.scope.launch { flyScreen.refusal = await offMain { Qgc.refusalOf(AUX_SWITCH, item.id, !item.on) } }
+            let answer: () async -> String? = { await offMain { Qgc.refusalOf(AUX_SWITCH, item.id, !item.on) } }
+            return MoreTile(label: item.action, icon: auxSwitchIcon(item.id), enabled: true, onClick: {
+                if let confirm = item.confirm {
+                    ask(GuidedAction(name: confirm.title, confirm: confirm.text, destructive: false, answer: answer))
+                } else {
+                    actions.scope.launch { flyScreen.refusal = await answer() }
+                }
             })
         }
         let screen: [MoreTile] = [

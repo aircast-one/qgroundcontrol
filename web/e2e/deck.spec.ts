@@ -30,7 +30,7 @@ test('Calibrate in the Fly menu opens the sensor calibrations', async ({ vehicle
   await expect(vehicle.getByRole('button', { name: /^Accelerometer/ }).first()).toBeVisible();
 });
 
-test('an ArduPilot with a range finder set up turns it off and on from the Fly menu', async ({ app }) => {
+test('an ArduPilot with a range finder set up turns it off and on from the Fly menu, and armed it asks before turning it off', async ({ app }) => {
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   const menu = async () => {
     await app.getByRole('button', { name: 'Menu', exact: true }).click();
@@ -49,9 +49,28 @@ test('an ArduPilot with a range finder set up turns it off and on from the Fly m
       { timeout: 30_000 },
     )
     .toBe(14);
-  await (await menu()).getByRole('button', { name: 'Range finder on', exact: true }).click();
-  await expect((await menu()).getByRole('button', { name: 'Range finder off', exact: true }), 'the switch went out and the menu shows the range finder off').toBeVisible({ timeout: 15_000 });
-  await expect(app.getByRole('button', { name: /^LiDAR/ }), 'no proximity sensor set up, no LiDAR switch').toHaveCount(0);
+  const turn = (state: 'on' | 'off') => async () => (await menu()).getByRole('button', { name: `Turn range finder ${state}`, exact: true });
+  const offered = async (state: 'on' | 'off') => {
+    await expect(await turn(state)(), `the vehicle accepted it, so the menu now offers turning it ${state}`).toBeVisible({ timeout: 15_000 });
+    await app.keyboard.press('Escape');
+  };
+  await (await turn('off')()).click();
+  await offered('on');
+  await (await turn('on')()).click();
+  await offered('off');
+  await expect((await menu()).getByRole('button', { name: /obstacle avoidance/ }), 'no proximity sensor set up, no avoidance switch').toHaveCount(0);
+  await app.keyboard.press('Escape');
+  await takeOff(app, '5 m');
+  await expect(flightMode(app)).toHaveAccessibleName(/ Flying/, { timeout: 60_000 });
+  await (await turn('off')()).click();
+  const slide = app.getByRole('button', { name: 'Slide to turn range finder off', exact: true });
+  await expect(slide, 'armed, a tap alone does not turn a sensor off').toBeVisible();
+  await expect(app.getByText('The aircraft stops reading its height above the ground from the range finder.')).toBeVisible();
+  await slideAcross(app, slide);
+  await offered('on');
+  await (await turn('on')()).click();
+  await expect(app.getByRole('button', { name: /^Slide to turn range finder/ }), 'turning it back on asks nothing').toHaveCount(0);
+  await offered('off');
 });
 
 test('on the ground Arm sits on the deck beside Take off, and Force arm stays in the menu in plain ink and still asks for a slide', async ({ vehicle }) => {

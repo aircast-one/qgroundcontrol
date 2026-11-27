@@ -108,4 +108,28 @@ class MoreActionsTest {
         ids.filterNot { it == PAUSE }.forEach { assertNotNull(it, guidedCommand(it, resumeFrom = 5)) }
         assertNull(guidedCommand(PAUSE, resumeFrom = 5))
     }
+
+    @Test
+    fun `a sensor switch reads the action the core names and the confirm it asks for`() {
+        val view = JSONObject(
+            """{"switches":[""" +
+                """{"id":"rangefinder","on":true,"action":"Turn range finder off","confirm":{"title":"Turn range finder off","text":"The aircraft stops reading its height."}},""" +
+                """{"id":"avoidance","on":false,"action":"Turn obstacle avoidance on","confirm":null}]}""",
+        )
+
+        assertEquals(
+            listOf(
+                AuxSwitch("rangefinder", true, "Turn range finder off", PursuitConfirm("Turn range finder off", "The aircraft stops reading its height.")),
+                AuxSwitch("avoidance", false, "Turn obstacle avoidance on", null),
+            ),
+            auxSwitchReadings(view),
+        )
+        assertEquals(emptyList<AuxSwitch>(), auxSwitchReadings(null))
+    }
+
+    @Test
+    fun `the two sensor switches have their own glyphs, not the altitude one`() {
+        assertEquals(one.aircast.android.R.drawable.ic_straighten, auxSwitchIcon("rangefinder"))
+        assertEquals(one.aircast.android.R.drawable.ic_shield, auxSwitchIcon("avoidance"))
+    }
 }

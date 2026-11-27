@@ -96,4 +96,22 @@ final class MoreActionsTests: XCTestCase {
     func testContinueMissionPopsUpToo() {
         XCTAssertEqual(autoMissionPopup([], ["continueMission": offer("continueMission", "ready")], true)?.id, "continueMission")
     }
+
+    func testASensorSwitchReadsTheActionTheCoreNamesAndTheConfirmItAsksFor() {
+        let view = JSON.parse(
+            #"{"switches":["#
+                + #"{"id":"rangefinder","on":true,"action":"Turn range finder off","confirm":{"title":"Turn range finder off","text":"The aircraft stops reading its height."}},"#
+                + #"{"id":"avoidance","on":false,"action":"Turn obstacle avoidance on","confirm":null}]}"#
+        )
+        XCTAssertEqual(auxSwitchReadings(view), [
+            AuxSwitch(id: "rangefinder", on: true, action: "Turn range finder off", confirm: PursuitConfirm(title: "Turn range finder off", text: "The aircraft stops reading its height.")),
+            AuxSwitch(id: "avoidance", on: false, action: "Turn obstacle avoidance on", confirm: nil),
+        ])
+        XCTAssertTrue(auxSwitchReadings(nil).isEmpty)
+    }
+
+    func testTheTwoSensorSwitchesHaveTheirOwnGlyphsNotTheAltitudeOne() {
+        XCTAssertEqual(auxSwitchIcon("rangefinder"), .straighten)
+        XCTAssertEqual(auxSwitchIcon("avoidance"), .shield)
+    }
 }

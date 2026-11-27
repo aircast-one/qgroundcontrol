@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import one.aircast.android.R
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.PlanCommands
 import one.aircast.android.bridge.VehicleCommands
@@ -76,9 +77,18 @@ internal const val CALIBRATE = "Calibrate"
 internal const val AUX_SWITCHES_VIEW = "view.auxSwitches"
 internal const val AUX_SWITCH = "vehicle.auxSwitch"
 
-internal data class AuxSwitch(val id: String, val label: String, val on: Boolean)
+internal data class AuxSwitch(val id: String, val on: Boolean, val action: String, val confirm: PursuitConfirm?)
 
 internal fun auxSwitchReadings(view: org.json.JSONObject?): List<AuxSwitch> =
     view?.optJSONArray("switches")?.let { array ->
-        (0 until array.length()).mapNotNull { array.optJSONObject(it) }.map { AuxSwitch(it.optString("id"), it.optString("label"), it.optBoolean("on")) }
+        (0 until array.length()).mapNotNull { array.optJSONObject(it) }.map {
+            AuxSwitch(
+                id = it.optString("id"),
+                on = it.optBoolean("on"),
+                action = it.optString("action"),
+                confirm = it.optJSONObject("confirm")?.let { confirm -> PursuitConfirm(confirm.optString("title"), confirm.optString("text")) },
+            )
+        }
     }.orEmpty()
+
+internal fun auxSwitchIcon(id: String): Int = if (id == "avoidance") R.drawable.ic_shield else R.drawable.ic_straighten
