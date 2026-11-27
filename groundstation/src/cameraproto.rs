@@ -135,6 +135,8 @@ pub const STORAGE_DELAY_MS: u64 = 2000;
 pub const REQUEST_TIMEOUT_MS: u64 = 1000;
 pub const STREAM_DISCOVERY_MS: u64 = 2000;
 pub const SETTINGS_REFRESH_DELAY_MS: u64 = 1000;
+pub const SETTINGS_CHASE_MS: u64 = 30_000;
+const SETTLED_WITHIN_PERCENT: f64 = 0.5;
 pub const RESET_SETTINGS_DELAY_MS: u64 = 2500;
 pub const RESET_ACK_TIMEOUT_MS: u64 = 5000;
 pub const MAX_REQUEST_ATTEMPTS: u32 = 5;
@@ -647,6 +649,7 @@ pub struct Camera {
     resetting_until: Option<u64>,
     settings: Pending,
     settings_refresh: Option<u64>,
+    settings_chase_until: Option<u64>,
     storage_request: Pending,
     capture: Pending,
     capture_command_attempts: u32,
@@ -690,6 +693,7 @@ impl Camera {
                 ..Pending::default()
             },
             settings_refresh: None,
+            settings_chase_until: None,
             storage_request: Pending {
                 due: Some(now_ms + STORAGE_DELAY_MS),
                 ..Pending::default()
@@ -1042,9 +1046,14 @@ impl Camera {
             .focus_percent
             .is_finite()
             .then_some(report.focus_percent);
-        let moved =
-            |was: Option<f64>, now: Option<f64>| was.zip(now).is_some_and(|(was, now)| was != now);
-        if moved(self.zoom_percent, zoom) || moved(self.focus_percent, focus) {
+        let moved = |was: Option<f64>, now: Option<f64>| {
+            was.zip(now)
+                .is_some_and(|(was, now)| (was - now).abs() > SETTLED_WITHIN_PERCENT)
+        };
+        let chasing = self
+            .settings_chase_until
+            .is_some_and(|until| now_ms < until);
+        if chasing && (moved(self.zoom_percent, zoom) || moved(self.focus_percent, focus)) {
             self.settings_refresh = self
                 .settings_refresh
                 .or(Some(now_ms + SETTINGS_REFRESH_DELAY_MS));
@@ -1207,7 +1216,8 @@ impl Camera {
             (RESULT_ACCEPTED, CMD_REQUEST_STORAGE_INFORMATION) => self.storage_request.attempts = 0,
             (RESULT_ACCEPTED, CMD_IMAGE_START_CAPTURE) => self.capture.arm(now_ms + BUSY_POLL_MS),
             (RESULT_ACCEPTED, CMD_SET_CAMERA_ZOOM | CMD_SET_CAMERA_FOCUS) => {
-                self.settings_refresh = Some(now_ms + SETTINGS_REFRESH_DELAY_MS)
+                self.settings_refresh = Some(now_ms + SETTINGS_REFRESH_DELAY_MS);
+                self.settings_chase_until = Some(now_ms + SETTINGS_CHASE_MS);
             }
             (RESULT_ACCEPTED, CMD_STORAGE_FORMAT) => {
                 self.storage_request.settle();
@@ -2915,34 +2925,65 @@ mod tests {
     }
 
     #[test]
-    fn a_zoom_still_travelling_is_read_again_until_the_lens_stops() {
-        let mut cameras = quiet(CAP_HAS_MODES | CAP_HAS_BASIC_ZOOM);
-        let read = |cameras: &mut Cameras, zoom: f64, at_ms: u64| {
+    fn a_lens_still_travelling_after_a_command_is_read_again_until_it_stops_or_the_chase_runs_out()
+    {
+        let read = |cameras: &mut Cameras, zoom: f64, focus: f64, at_ms: u64| {
             cameras.on_camera_settings(
                 CAMERA,
                 SettingsReport {
                     mode_id: MODE_VIDEO,
                     zoom_percent: zoom,
-                    focus_percent: f64::NAN,
+                    focus_percent: focus,
                 },
                 at_ms,
             );
             commands(&at(cameras, at_ms + SETTINGS_REFRESH_DELAY_MS))
         };
+        let accepted = |cameras: &mut Cameras, command: u16, at_ms: u64| {
+            cameras.on_command_result(CAMERA, command, LEVEL_TYPE_RANGE, RESULT_ACCEPTED, at_ms);
+            at(cameras, at_ms + SETTINGS_REFRESH_DELAY_MS);
+        };
         let asked = vec![(CMD_REQUEST_MESSAGE, MSG_CAMERA_SETTINGS as f64)];
+
+        let mut cameras = quiet(CAP_HAS_MODES | CAP_HAS_BASIC_ZOOM | CAP_HAS_BASIC_FOCUS);
+        assert!(read(&mut cameras, 1.0, 10.0, 1_000).is_empty());
         assert!(
-            read(&mut cameras, 1.0, 1_000).is_empty(),
-            "a first reading is just a reading"
+            read(&mut cameras, 26.0, 10.0, 5_000).is_empty(),
+            "nobody asked this camera to zoom: one that streams its own settings, or whose autofocus follows the scene, is not polled for it"
         );
+        accepted(&mut cameras, CMD_SET_CAMERA_ZOOM, 10_000);
         assert_eq!(
-            read(&mut cameras, 26.0, 10_000),
+            read(&mut cameras, 51.0, 10.0, 12_000),
             asked,
             "a lens still on its way to the zoom asked for reads differently, so it is asked again"
         );
-        assert_eq!(read(&mut cameras, 51.0, 20_000), asked);
+        assert_eq!(read(&mut cameras, 76.0, 10.0, 14_000), asked);
         assert!(
-            read(&mut cameras, 51.0, 30_000).is_empty(),
-            "two readings alike: the lens has stopped, and so does the asking"
+            read(&mut cameras, 76.3, 10.0, 16_000).is_empty(),
+            "a reading within half a percent of the last is a lens that has stopped, however noisy its sensor"
+        );
+
+        accepted(&mut cameras, CMD_SET_CAMERA_FOCUS, 20_000);
+        assert_eq!(
+            read(&mut cameras, 76.3, 40.0, 22_000),
+            asked,
+            "focus is chased the same way"
+        );
+        let chased: Vec<_> = (0..40)
+            .map(|round| {
+                let at_ms = 24_000 + round * 2_000;
+                (
+                    at_ms,
+                    read(&mut cameras, 76.3, 40.0 + (round % 2) as f64 * 5.0, at_ms),
+                )
+            })
+            .filter(|(_, sent)| !sent.is_empty())
+            .map(|(at_ms, _)| at_ms)
+            .collect();
+        assert_eq!(
+            chased.last(),
+            Some(&48_000),
+            "a focus that never settles is followed for {SETTINGS_CHASE_MS} ms after the command and then left alone, not polled every second for the rest of the flight"
         );
     }
 
