@@ -13,6 +13,7 @@ pub const START_TIMEOUT_S: u32 = 3;
 pub const RESTART_DELAY_MS: u64 = 1000;
 const MAX_VIDEO_RECONNECT_ATTEMPTS: u32 = 30;
 const MAX_RECONNECT_DELAY_S: u64 = 30;
+pub const STEADY_PICTURE_S: u64 = 30;
 
 pub fn reconnect_delay_ms(attempt: u32) -> u64 {
     (1u64 << attempt.saturating_sub(1).min(5)).min(MAX_RECONNECT_DELAY_S) * RESTART_DELAY_MS
@@ -449,6 +450,7 @@ struct Receiver {
     size: Option<(u32, u32)>,
     last_frame_s: Option<u64>,
     reconnect_attempts: u32,
+    decoding_since_s: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -536,6 +538,12 @@ impl VideoState {
 
     pub fn has_multiple_sources(&self) -> bool {
         self.settings.switchable().len() > 1
+    }
+
+    pub fn reconnect_attempts(&self, receiver: &str) -> u32 {
+        self.receivers
+            .get(receiver)
+            .map_or(0, |state| state.reconnect_attempts)
     }
 
     pub fn desired_uri(&self, receiver: &str) -> String {
@@ -866,7 +874,7 @@ impl VideoState {
             .collect()
     }
 
-    pub fn on_decoding(&mut self, receiver: &str, active: bool) -> Vec<Out> {
+    pub fn on_decoding(&mut self, receiver: &str, active: bool, at_s: u64) -> Vec<Out> {
         if !Self::camera_receiver(receiver) || !self.receivers.contains_key(receiver) {
             return Vec::new();
         }
@@ -878,9 +886,13 @@ impl VideoState {
                     true => 0,
                     false => state.attempts,
                 };
-                state.reconnect_attempts = match active {
-                    true => 0,
-                    false => state.reconnect_attempts,
+                state.reconnect_attempts = match (active, state.decoding_since_s) {
+                    (false, Some(since)) if at_s.saturating_sub(since) >= STEADY_PICTURE_S => 0,
+                    _ => state.reconnect_attempts,
+                };
+                state.decoding_since_s = match active {
+                    true => state.decoding_since_s.or(Some(at_s)),
+                    false => None,
                 };
                 state.failing_since_s = match active {
                     true => None,
@@ -1205,10 +1217,36 @@ mod tests {
     }
 
     #[test]
+    fn a_picture_that_drops_within_seconds_keeps_backing_off_and_only_a_steady_one_starts_afresh() {
+        let mut state = wired();
+        let failed_after = |state: &mut VideoState, decoded_from: u64, dropped_at: u64| {
+            state.on_decoding(MAIN_RECEIVER, true, decoded_from);
+            state.on_decoding(MAIN_RECEIVER, false, dropped_at);
+            state
+                .on_stop_complete(MAIN_RECEIVER, Outcome::Failed)
+                .into_iter()
+                .find_map(|out| match out {
+                    Out::RestartAfter { delay_ms, .. } => Some(delay_ms),
+                    _ => None,
+                })
+        };
+        assert_eq!(
+            [(0, 13), (20, 33), (40, 53)].map(|(from, to)| failed_after(&mut state, from, to)),
+            [Some(1000), Some(2000), Some(4000)],
+            "owel-red-01's WebRTC viewer paired, played ~13 s and dropped over and over; each short run must not reset the backoff to one second"
+        );
+        assert_eq!(
+            failed_after(&mut state, 100, 100 + STEADY_PICTURE_S),
+            Some(1000),
+            "a picture that held steady counts as recovered, so its next loss is retried quickly again"
+        );
+    }
+
+    #[test]
     fn switching_the_stream_off_stops_every_camera_and_reads_no_picture() {
         let mut state = wired();
         state.on_streaming(MAIN_RECEIVER, true);
-        state.on_decoding(MAIN_RECEIVER, true);
+        state.on_decoding(MAIN_RECEIVER, true, 0);
         assert!(state.decoding);
         let outs = state.on_settings(Settings {
             stream_enabled: false,
@@ -1881,9 +1919,9 @@ mod tests {
             (SIGNAL_CONNECTING, SIGNAL_IDLE, SIGNAL_IDLE),
             "a camera nobody plays is idle, configured or not"
         );
-        state.on_decoding(MAIN_RECEIVER, true);
+        state.on_decoding(MAIN_RECEIVER, true, 0);
         assert_eq!(state.camera_signal(0), SIGNAL_LIVE);
-        state.on_decoding(MAIN_RECEIVER, false);
+        state.on_decoding(MAIN_RECEIVER, false, 0);
         state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed);
         assert_eq!(
             state.camera_signal(0),
@@ -1959,9 +1997,9 @@ mod tests {
             (SIGNAL_CONNECTING, SIGNAL_CONNECTING, SIGNAL_IDLE),
             "the picture in picture camera is played, the rest are idle"
         );
-        pip.on_decoding(PIP_RECEIVER, true);
+        pip.on_decoding(PIP_RECEIVER, true, 0);
         assert_eq!(pip.camera_signal(1), SIGNAL_LIVE);
-        pip.on_decoding(PIP_RECEIVER, false);
+        pip.on_decoding(PIP_RECEIVER, false, 0);
         pip.on_stop_complete(PIP_RECEIVER, Outcome::Failed);
         assert_eq!(
             (pip.camera_signal(0), pip.camera_signal(1)),
@@ -2058,13 +2096,13 @@ mod tests {
             "streaming without frames is progress, not a picture"
         );
         assert!(state.camera_connecting(0));
-        state.on_decoding(MAIN_RECEIVER, true);
+        state.on_decoding(MAIN_RECEIVER, true, 0);
         assert_eq!(state.camera_status(0), Status::Decoding);
         assert!(
             !state.camera_connecting(0),
             "a decoding camera has arrived and is no longer connecting"
         );
-        state.on_decoding(MAIN_RECEIVER, false);
+        state.on_decoding(MAIN_RECEIVER, false, 0);
         state.on_streaming(MAIN_RECEIVER, false);
         assert_eq!(
             state.camera_status(0),
@@ -2153,7 +2191,8 @@ mod tests {
         state.settings.reconnect_disabled = false;
         state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed);
         state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed);
-        state.on_decoding(MAIN_RECEIVER, true);
+        state.on_decoding(MAIN_RECEIVER, true, 0);
+        state.on_decoding(MAIN_RECEIVER, false, STEADY_PICTURE_S);
         assert!(
             state
                 .on_stop_complete(MAIN_RECEIVER, Outcome::Failed)
@@ -2161,7 +2200,7 @@ mod tests {
                     receiver: MAIN_RECEIVER.to_string(),
                     delay_ms: RESTART_DELAY_MS
                 }),
-            "decoding frames resets the backoff, as the first tee frame does in GstVideoReceiver"
+            "a picture that held steady resets the backoff; unlike GstVideoReceiver's first tee frame, a picture that drops within seconds does not"
         );
     }
 
@@ -2282,7 +2321,7 @@ mod tests {
             failing["cameras"][0]["failingSeconds"], 40,
             "the failure is dated from when it started, not from the latest retry"
         );
-        state.on_decoding(MAIN_RECEIVER, true);
+        state.on_decoding(MAIN_RECEIVER, true, 0);
         let arrived = state.snapshot(50);
         assert_eq!(
             arrived["cameras"][0]["attempts"], 0,
@@ -2301,7 +2340,7 @@ mod tests {
             &[MAIN_RECEIVER, PIP_RECEIVER],
         );
         state.on_streaming(MAIN_RECEIVER, true);
-        state.on_decoding(MAIN_RECEIVER, true);
+        state.on_decoding(MAIN_RECEIVER, true, 0);
         let sized = state.on_video_size(MAIN_RECEIVER, 1920, 1080);
         assert!(sized.contains(&Out::VideoSizeChanged {
             width_pixels: 1920,

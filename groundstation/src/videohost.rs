@@ -1039,7 +1039,7 @@ fn report(
         played.flowing = false;
         RESTART[channel].store(true, std::sync::atomic::Ordering::Relaxed);
         let outs: Vec<Out> = [
-            host.state.on_decoding(receiver, false),
+            host.state.on_decoding(receiver, false, now_ms / 1000),
             host.state.on_streaming(receiver, false),
             host.state.on_stop_complete(receiver, Outcome::Failed),
         ]
@@ -1066,7 +1066,7 @@ fn report(
                 .on_start_complete(receiver, Outcome::Ok, now_ms / 1000)
         }),
         (flowing != was_flowing).then(|| host.state.on_streaming(receiver, flowing)),
-        (decoding != before.1).then(|| host.state.on_decoding(receiver, decoding)),
+        (decoding != before.1).then(|| host.state.on_decoding(receiver, decoding, now_ms / 1000)),
         ((width, height) != (before.2, before.3))
             .then(|| host.state.on_video_size(receiver, width, height)),
     ]
