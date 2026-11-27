@@ -1034,16 +1034,23 @@ impl Camera {
         self.settings.settle();
         self.settings_at_ms = Some(now_ms);
         self.adopt_mode(report.mode_id, now_ms);
-        self.zoom_percent = report
+        let zoom = report
             .zoom_percent
             .is_finite()
-            .then_some(report.zoom_percent)
-            .or(self.zoom_percent);
-        self.focus_percent = report
+            .then_some(report.zoom_percent);
+        let focus = report
             .focus_percent
             .is_finite()
-            .then_some(report.focus_percent)
-            .or(self.focus_percent);
+            .then_some(report.focus_percent);
+        let moved =
+            |was: Option<f64>, now: Option<f64>| was.zip(now).is_some_and(|(was, now)| was != now);
+        if moved(self.zoom_percent, zoom) || moved(self.focus_percent, focus) {
+            self.settings_refresh = self
+                .settings_refresh
+                .or(Some(now_ms + SETTINGS_REFRESH_DELAY_MS));
+        }
+        self.zoom_percent = zoom.or(self.zoom_percent);
+        self.focus_percent = focus.or(self.focus_percent);
     }
 
     fn on_storage(&mut self, report: StorageReport, now_ms: u64) {
@@ -2904,6 +2911,38 @@ mod tests {
         assert!(
             ticks(&mut cameras, 200, 5, REQUEST_TIMEOUT_MS).is_empty(),
             "the settings that arrived stopped the asking"
+        );
+    }
+
+    #[test]
+    fn a_zoom_still_travelling_is_read_again_until_the_lens_stops() {
+        let mut cameras = quiet(CAP_HAS_MODES | CAP_HAS_BASIC_ZOOM);
+        let read = |cameras: &mut Cameras, zoom: f64, at_ms: u64| {
+            cameras.on_camera_settings(
+                CAMERA,
+                SettingsReport {
+                    mode_id: MODE_VIDEO,
+                    zoom_percent: zoom,
+                    focus_percent: f64::NAN,
+                },
+                at_ms,
+            );
+            commands(&at(cameras, at_ms + SETTINGS_REFRESH_DELAY_MS))
+        };
+        let asked = vec![(CMD_REQUEST_MESSAGE, MSG_CAMERA_SETTINGS as f64)];
+        assert!(
+            read(&mut cameras, 1.0, 1_000).is_empty(),
+            "a first reading is just a reading"
+        );
+        assert_eq!(
+            read(&mut cameras, 26.0, 10_000),
+            asked,
+            "a lens still on its way to the zoom asked for reads differently, so it is asked again"
+        );
+        assert_eq!(read(&mut cameras, 51.0, 20_000), asked);
+        assert!(
+            read(&mut cameras, 51.0, 30_000).is_empty(),
+            "two readings alike: the lens has stopped, and so does the asking"
         );
     }
 

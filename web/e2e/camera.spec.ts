@@ -30,6 +30,16 @@ test('a trackpad pinch on the picture steps the camera zoom', async ({ app }) =>
   await expect(zoom, 'pinching out steps the camera in').toHaveText('21%');
 });
 
+test('the zoom slider let go at full zoom leaves a slow lens to zoom all the way in', async ({ app }) => {
+  await connectMock(app, ['Enable camera']);
+  const zoom = app.getByRole('button', { name: /^Zoom \d+%$/ });
+  await expect(zoom).toHaveText('1%');
+  await zoom.click();
+  await app.getByRole('slider', { name: 'Zoom' }).focus();
+  await app.keyboard.press('End');
+  await expect(zoom, 'the mock lens takes four seconds to zoom in; a reading taken on the way must never go back out as a new zoom').toHaveText('100%', { timeout: 20_000 });
+});
+
 test('the zoom chip above the shutter stays clear of the speed readings beside the picture', async ({ app }) => {
   await connectMock(app, ['Enable camera']);
   const zoom = await app.getByRole('button', { name: /^Zoom \d+%$/ }).boundingBox();

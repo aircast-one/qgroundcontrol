@@ -11,6 +11,7 @@ const STORAGE_TOTAL_MIB: f32 = 16384.0;
 const STORAGE_FREE_MIB: f32 = 8192.0;
 const SINGLE_SHOT_MS: u64 = 500;
 const ZOOM_STEP_PERCENT: f32 = 10.0;
+const ZOOM_TRAVEL_PERCENT_PER_S: f32 = 25.0;
 const IMAGE_IDLE: u8 = 0;
 const IMAGE_IN_PROGRESS: u8 = 1;
 const IMAGE_INTERVAL_CAPTURE: u8 = 3;
@@ -174,6 +175,8 @@ struct Camera {
     recording: bool,
     images: i32,
     zoom: f32,
+    zoom_target: f32,
+    zoom_moved_ms: Option<u64>,
     focus: f32,
     image_status: u8,
     interval: f32,
@@ -198,6 +201,8 @@ impl Camera {
             recording: false,
             images: 0,
             zoom: 1.0,
+            zoom_target: 1.0,
+            zoom_moved_ms: None,
             focus: 0.0,
             image_status: IMAGE_IDLE,
             interval: 0.0,
@@ -357,6 +362,11 @@ impl Cameras {
         self.cameras
             .iter_mut()
             .flat_map(|camera| {
+                let travel = now_ms.saturating_sub(camera.zoom_moved_ms.unwrap_or(now_ms)) as f32
+                    / 1000.0
+                    * ZOOM_TRAVEL_PERCENT_PER_S;
+                camera.zoom = approach(camera.zoom, camera.zoom_target, travel);
+                camera.zoom_moved_ms = Some(now_ms);
                 let shot_done = camera
                     .shot_started_ms
                     .is_some_and(|started| now_ms.saturating_sub(started) >= SINGLE_SHOT_MS);
@@ -569,12 +579,13 @@ impl Cameras {
             MavCmd::MAV_CMD_SET_CAMERA_ZOOM => {
                 match camera.has(CameraCapFlags::CAMERA_CAP_FLAGS_HAS_BASIC_ZOOM) {
                     true => {
-                        camera.zoom = match params[0] as u32 {
+                        camera.zoom_target = match params[0] as u32 {
                             kind if kind == CameraZoomType::ZOOM_TYPE_RANGE as u32 => params[1],
                             kind if kind == CameraZoomType::ZOOM_TYPE_STEP as u32 => {
-                                (camera.zoom + params[1] * ZOOM_STEP_PERCENT).clamp(0.0, 100.0)
+                                (camera.zoom_target + params[1] * ZOOM_STEP_PERCENT)
+                                    .clamp(0.0, 100.0)
                             }
-                            _ => camera.zoom,
+                            _ => camera.zoom_target,
                         };
                         vec![ack(MavResult::MAV_RESULT_ACCEPTED)]
                     }
@@ -585,6 +596,7 @@ impl Cameras {
             MavCmd::MAV_CMD_RESET_CAMERA_SETTINGS => {
                 camera.mode = CameraMode::CAMERA_MODE_IMAGE;
                 camera.zoom = 1.0;
+                camera.zoom_target = 1.0;
                 camera.focus = 0.0;
                 camera.reset_capture();
                 vec![ack(MavResult::MAV_RESULT_ACCEPTED), settings(camera)]
@@ -678,6 +690,13 @@ fn information(camera: &Camera) -> Out {
             ..Default::default()
         }),
     )
+}
+
+fn approach(from: f32, to: f32, by: f32) -> f32 {
+    match (to - from).abs() <= by {
+        true => to,
+        false => from + by.copysign(to - from),
+    }
 }
 
 fn settings(camera: &Camera) -> Out {
@@ -898,6 +917,41 @@ mod tests {
                 [1.0; 7]
             )
             .is_none()
+        );
+    }
+
+    #[test]
+    fn the_lens_travels_to_the_zoom_it_is_asked_for_like_a_real_one_instead_of_jumping_there() {
+        let mut set = cameras(StreamKind::None, None);
+        let zoom = |set: &mut Cameras, at_ms: u64| {
+            set.tick(at_ms, &HERE);
+            set.find(MOCK_CAMERA).map(|camera| camera.zoom)
+        };
+        zoom(&mut set, 1000);
+        set.command(
+            1000,
+            GCS,
+            MOCK_CAMERA,
+            MavCmd::MAV_CMD_SET_CAMERA_ZOOM,
+            [
+                CameraZoomType::ZOOM_TYPE_RANGE as u32 as f32,
+                100.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ],
+        );
+        assert_eq!(
+            zoom(&mut set, 2000),
+            Some(26.0),
+            "a second in, a quarter of the way"
+        );
+        assert_eq!(
+            zoom(&mut set, 6000),
+            Some(100.0),
+            "and all the way in after four"
         );
     }
 
