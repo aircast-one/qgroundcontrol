@@ -1,6 +1,7 @@
 package one.aircast.map
 
 import kotlin.concurrent.withLock
+import org.json.JSONObject
 
 const val NO_POSITION = "no position"
 const val AFTER_THE_ROUTE_ENDS = "after the route ends"
@@ -25,8 +26,7 @@ internal fun altitudeWithFrame(item: MissionItem): String? {
         ?: item.altitudeBandText.ifBlank { null }
         ?: return null
     val frame = item.altitudeFrameText
-    val framed = if (frame.isBlank()) height else "$height $frame"
-    return if (item.index == HOME_ITEM) "Ground $framed" else framed
+    return if (frame.isBlank()) height else "$height $frame"
 }
 
 internal fun rallyAltitudeLabel(point: RallyPoint): String =
@@ -121,6 +121,12 @@ fun selectionSequence(selected: MapHit?, items: List<MissionItem>): Int? {
     val index = missionItemIndex(selected) ?: return null
     return items.firstOrNull { it.index == index }?.sequence
 }
+
+data class PlanNote(val id: Int, val text: String)
+
+fun planNote(plan: JSONObject?): PlanNote = PlanNote(plan?.optInt("noteId") ?: 0, plan?.optText("note").orEmpty())
+
+fun newNote(note: PlanNote, seen: Int?): String? = note.text.takeIf { seen != null && note.id != seen && it.isNotBlank() }
 
 fun addingAfterText(selected: MapHit?, items: List<MissionItem>): String? {
     val index = missionItemIndex(selected) ?: return null

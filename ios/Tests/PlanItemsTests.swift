@@ -230,6 +230,18 @@ final class SelectionSequenceTests: XCTestCase {
     }
 }
 
+final class PlanNoteTests: XCTestCase {
+    func testANoteTheCoreJustWroteIsShownOnceAndTheOneAlreadyThereIsNot() {
+        let added = planNote(JSON.parse(#"{"noteId":3,"note":"Set servo added at Waypoint 2"}"#))
+        XCTAssertEqual(added, PlanNote(id: 3, text: "Set servo added at Waypoint 2"))
+        XCTAssertNil(newNote(added, nil))
+        XCTAssertEqual(newNote(added, 2), "Set servo added at Waypoint 2")
+        XCTAssertNil(newNote(added, 3))
+        XCTAssertNil(newNote(planNote(JSON.parse(#"{"noteId":4}"#)), 3))
+        XCTAssertEqual(planNote(nil), PlanNote(id: 0, text: ""))
+    }
+}
+
 final class AddingAfterTextTests: XCTestCase {
     private let plan = [
         mission(0, 0, 41.0, 44.0, "Mission Start", 0.0) { $0.kind = "settings" },

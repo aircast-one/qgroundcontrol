@@ -876,6 +876,13 @@ pub fn altitude_from_shown(shown: f64) -> f64 {
     crate::units::cooking(ALTITUDE_RAW_UNITS).map_or(shown, |c| (c.base)(shown))
 }
 
+fn height_text(launch: bool, measure: &str) -> String {
+    match launch {
+        true => format!("Ground {measure}"),
+        false => measure.to_string(),
+    }
+}
+
 fn with_geometry(mut listed: Value, geometry: Value) -> Value {
     listed["geometry"] = geometry;
     listed
@@ -1398,7 +1405,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, horizontal: &Unit, speed: &Un
         "coordinate": coordinate,
         "exitCoordinate": exit,
         "altitude": height(read),
-        "altitudeText": height_metres(read).or_else(|| pattern_above_launch(read)).map(|metres| format_measure(vertical.show(metres), &vertical.name)),
+        "altitudeText": height_metres(read).or_else(|| pattern_above_launch(read)).map(|metres| height_text(flag(read, "homePosition"), &format_measure(vertical.show(metres), &vertical.name))),
         "altitudeUnits": height(read).map(|_| if flag(read, "homePosition") { &vertical.name } else { &horizontal.name }),
         "altitudeEditUnits": fact_units(read, "altitude").or_else(|| fact_units(read, "plannedHomePositionAltitude")),
         "altitudeMetres": height_metres(read),
@@ -2021,11 +2028,17 @@ mod from_the_document {
         let rows = |v: &Value| v["items"].as_array().unwrap().clone();
         assert_eq!(rows(&mine).len(), rows(&qt).len());
         rows(&mine).iter().zip(rows(&qt)).for_each(|(core, qt)| {
+            let launch_height = |key: &str, stated: &Value| {
+                (key == "altitudeText" && qt["index"].as_f64() == Some(0.0))
+                    .then(|| json!(format!("Ground {}", stated.as_str().unwrap_or_default())))
+            };
             let differing: Vec<String> = qt
                 .as_object()
                 .unwrap()
                 .iter()
-                .filter(|(k, v)| core.get(k.as_str()) != Some(v))
+                .filter(|(k, v)| {
+                    core.get(k.as_str()) != Some(&launch_height(k, v).unwrap_or((*v).clone()))
+                })
                 .map(|(k, v)| {
                     format!(
                         "{k}: core {} qt {v}",
@@ -2268,11 +2281,17 @@ mod from_the_document {
         let rows = |v: &Value| v["items"].as_array().unwrap().clone();
         assert_eq!(rows(&mine).len(), rows(&qt).len());
         rows(&mine).iter().zip(rows(&qt)).for_each(|(core, qt)| {
+            let launch_height = |key: &str, stated: &Value| {
+                (key == "altitudeText" && qt["index"].as_f64() == Some(0.0))
+                    .then(|| json!(format!("Ground {}", stated.as_str().unwrap_or_default())))
+            };
             let differing: Vec<String> = qt
                 .as_object()
                 .unwrap()
                 .iter()
-                .filter(|(k, v)| core.get(k.as_str()) != Some(v))
+                .filter(|(k, v)| {
+                    core.get(k.as_str()) != Some(&launch_height(k, v).unwrap_or((*v).clone()))
+                })
                 .map(|(k, v)| {
                     format!(
                         "{k}: core {} qt {v}",
@@ -3104,7 +3123,7 @@ mod reported {
         );
         assert_eq!(start["specifiesAltitude"], Value::Null);
         assert_eq!(
-            start["altitudeText"], "12.0 m",
+            start["altitudeText"], "Ground 12.0 m",
             "the launch row states one, and its altitude is how a head should ask rather than the flag"
         );
 
@@ -3367,7 +3386,7 @@ mod reported {
             Value::Null,
             "MissionSettingsItem is a ComplexMissionItem, so it carries the band properties and answers its entry altitude for both - a launch point is one height, and a head reaching for the band before altitudeText would draw that pair instead of the real 487 m"
         );
-        assert_eq!(start["altitudeText"], "487 m");
+        assert_eq!(start["altitudeText"], "Ground 487 m");
     }
 
     #[test]
@@ -3398,7 +3417,7 @@ mod reported {
             "facts": [ json!({ "property": "plannedHomePositionAltitude", "value": 12.0 }) ],
         }));
         assert_eq!(
-            home["altitudeText"], "12.0 m",
+            home["altitudeText"], "Ground 12.0 m",
             "the launch row is not a SimpleMissionItem, so it carries no specifiesAltitude property at all - gating on the bare flag would have blanked it"
         );
 
@@ -3599,7 +3618,7 @@ mod reported {
 
         let start = items_view(&One(json!({ "kind": "object", "sequenceNumber": 0, "homePosition": true, "facts": [ home_altitude ] })), &[])["items"][1].clone();
         assert_eq!(
-            start["altitudeText"], "0.0 m",
+            start["altitudeText"], "Ground 0.0 m",
             "the fallback is right for the row whose altitude is the launch altitude, which is the row it was written for"
         );
     }
@@ -3820,7 +3839,7 @@ mod reported {
             "the launch elevation is a height and the row that shows it goes blank if only the waypoint name is looked for"
         );
         assert_eq!(
-            launch["altitudeText"], "585 m",
+            launch["altitudeText"], "Ground 585 m",
             "every measure the core serves rounds the same way, and a row that kept a tenth here read 585.0 m beside a summary saying 585 m to 660 m"
         );
 

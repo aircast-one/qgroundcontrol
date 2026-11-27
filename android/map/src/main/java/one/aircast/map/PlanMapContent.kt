@@ -194,6 +194,7 @@ internal fun PlanMapContent(
     var selected by remember { mutableStateOf<MapHit?>(null) }
     var panelOpen by remember { mutableStateOf(true) }
     var readsStarted by remember { mutableIntStateOf(0) }
+    var noteSeen by remember { mutableStateOf<Int?>(null) }
     var planReads by remember { mutableIntStateOf(0) }
     var layer by remember { mutableStateOf(PlanLayer.Mission) }
     var mapMenu by remember { mutableStateOf<MapMenuAt?>(null) }
@@ -439,7 +440,10 @@ internal fun PlanMapContent(
             val nextLandings = landingPatterns(nextAll)
             val nextStats = surveyStatsFor(nextAll)
             val drawn = planIsDrawn(nextItems, nextSurveys, nextFences, nextCircles, nextRally)
+            val nextNote = planNote(plan)
             withContext(Dispatchers.Main) {
+                newNote(nextNote, noteSeen)?.let { say(it) }
+                noteSeen = nextNote.id
                 if (fitsPlanOnEntry(firstRead, plan != null, drawn)) {
                     follow = false
                     fitRequest += 1

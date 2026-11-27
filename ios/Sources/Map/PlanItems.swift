@@ -33,8 +33,7 @@ let NOT_READY_SEAL = "?"
 
 func altitudeWithFrame(_ item: MissionItem) -> String? {
     guard let height = [item.altitudeText, item.altitudeBandText].first(where: { !$0.isBlank }) else { return nil }
-    let framed = item.altitudeFrameText.isBlank ? height : "\(height) \(item.altitudeFrameText)"
-    return item.index == HOME_ITEM ? "Ground \(framed)" : framed
+    return item.altitudeFrameText.isBlank ? height : "\(height) \(item.altitudeFrameText)"
 }
 
 func rallyAltitudeLabel(_ point: RallyPoint) -> String { "Alt \(point.altitudeUnits.ifBlank("m"))" }
@@ -131,6 +130,18 @@ func insertAfter(_ selected: MapHit?, _ items: [MissionItem]) -> Int {
 
 func selectionSequence(_ selected: MapHit?, _ items: [MissionItem]) -> Int? {
     missionItemIndex(selected).flatMap { index in items.first { $0.index == index }?.sequence }
+}
+
+struct PlanNote: Equatable {
+    var id: Int
+    var text: String
+}
+
+func planNote(_ plan: JSON?) -> PlanNote { PlanNote(id: plan?["noteId"].int(0) ?? 0, text: plan?["note"].string ?? "") }
+
+func newNote(_ note: PlanNote, _ seen: Int?) -> String? {
+    guard let seen, note.id != seen, !note.text.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+    return note.text
 }
 
 func addingAfterText(_ selected: MapHit?, _ items: [MissionItem]) -> String? {

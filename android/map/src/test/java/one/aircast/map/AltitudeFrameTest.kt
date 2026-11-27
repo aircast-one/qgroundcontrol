@@ -66,6 +66,6 @@ class AltitudeFrameTest {
 
     @Test
     fun `the launch row says its height is the ground's`() {
-        assertEquals("Ground 485 m AMSL", altitudeWithFrame(item("AMSL", "485 m").copy(index = HOME_ITEM)))
+        assertEquals("Ground 485 m AMSL", altitudeWithFrame(item("AMSL", "Ground 485 m").copy(index = HOME_ITEM)))
     }
 }

@@ -68,6 +68,7 @@ private struct PlanRead: Sendable {
     let landings: [LandingPattern]
     let stats: [Int: SurveyStats]
     let drawn: Bool
+    let note: PlanNote
 
     static func read() -> PlanRead {
         let plan = PlanBridge.rawItems()
@@ -95,7 +96,8 @@ private struct PlanRead: Sendable {
             surveys: surveys,
             landings: landingPatterns(all),
             stats: surveyStatsFor(all),
-            drawn: planIsDrawn(items, surveys, fences, circles, rally)
+            drawn: planIsDrawn(items, surveys, fences, circles, rally),
+            note: planNote(plan)
         )
     }
 }
@@ -141,6 +143,7 @@ struct PlanMapContent: View {
     @State private var selected: MapHit?
     @State private var panelOpen = true
     @State private var readsStarted = 0
+    @State private var noteSeen: Int?
     @State private var planReads = 0
     @State private var patternWait: (wanted: Int, since: Int)?
     @State private var layer = PlanLayer.Mission
@@ -1238,6 +1241,8 @@ struct PlanMapContent: View {
         let readNumber = readsStarted + 1
         readsStarted = readNumber
         let next = await offMain { PlanRead.read() }
+        if let note = newNote(next.note, noteSeen) { say(note) }
+        noteSeen = next.note.id
         if fitsPlanOnEntry(firstRead, next.planRead, next.drawn) {
             follow = false
             fitRequest += 1

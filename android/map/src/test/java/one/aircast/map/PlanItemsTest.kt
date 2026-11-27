@@ -5,6 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
+import org.json.JSONObject
 import org.junit.Test
 
 class PlanItemsTest {
@@ -280,6 +281,19 @@ class SelectionSequenceTest {
     @Test
     fun `a fence vertex is not a mission item and does not move the plan view`() {
         assertNull(selectionSequence(MapHit.FenceVertex(0, 1), plan))
+    }
+}
+
+class PlanNoteTest {
+    @Test
+    fun `a note the core just wrote is shown once, and the one already there when the screen opened is not`() {
+        val added = planNote(JSONObject("""{"noteId":3,"note":"Set servo added at Waypoint 2"}"""))
+        assertEquals(PlanNote(3, "Set servo added at Waypoint 2"), added)
+        assertNull("the first read only learns the id", newNote(added, null))
+        assertEquals("Set servo added at Waypoint 2", newNote(added, 2))
+        assertNull(newNote(added, 3))
+        assertNull(newNote(planNote(JSONObject("""{"noteId":4}""")), 3))
+        assertEquals(PlanNote(0, ""), planNote(null))
     }
 }
 
