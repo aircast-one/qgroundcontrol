@@ -28,6 +28,7 @@ pub mod autoconnect;
 pub mod autodrop;
 pub mod autopursuit;
 pub mod autotune;
+pub mod auxswitch;
 pub mod background;
 pub mod battery;
 pub mod batteryfacts;

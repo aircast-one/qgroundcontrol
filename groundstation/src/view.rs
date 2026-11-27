@@ -943,6 +943,11 @@ pub const VIEWS: &[View] = &[
         compute: gimbal::gimbal_view,
     },
     View {
+        path: crate::auxswitch::VIEW,
+        deps: &[],
+        compute: crate::auxswitch::view,
+    },
+    View {
         path: "view.debugApi",
         deps: debugapi::DEPS,
         compute: debugapi::debug_api_view,
@@ -1559,6 +1564,7 @@ mod deps_cover_reads {
         ("px4airframe", include_str!("px4airframe.rs")),
         ("streamconfig", include_str!("streamconfig.rs")),
         ("autotune", include_str!("autotune.rs")),
+        ("auxswitch", include_str!("auxswitch.rs")),
         ("actuators", include_str!("actuators.rs")),
         ("apmfollow", include_str!("apmfollow.rs")),
         ("apmairframe", include_str!("apmairframe.rs")),

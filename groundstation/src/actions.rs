@@ -277,6 +277,7 @@ pub fn owns(path: &str) -> bool {
         || crate::synthview::owns(path)
         || crate::map3d::owns(path)
         || path == crate::virtualjoystick::JOYSTICK_VALUE
+        || path == crate::auxswitch::SET
         || path == crate::plantemplates::CREATE_FROM_TEMPLATE
         || crate::plantransform::owns(path)
         || crate::px4airframe::owns(path)
@@ -556,6 +557,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         crate::lens::MEASURE => crate::lens::measure(backend),
         crate::lens::FORGET => crate::lens::forget(backend),
         _ if crate::gimbalindicator::owns(path) => crate::gimbalindicator::run(backend, path, args),
+        crate::auxswitch::SET => crate::auxswitch::set(backend, args),
         crate::vehicleconfig::PAGE_OPENED => crate::vehicleconfig::page_opened(backend, args),
         crate::vehicleconfig::DIALOG_OPENED => crate::vehicleconfig::dialog_opened(backend, args),
         crate::paramfile::FILE_SAVE => crate::paramfile::save(backend),

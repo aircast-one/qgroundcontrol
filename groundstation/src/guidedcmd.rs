@@ -1089,12 +1089,16 @@ pub fn landing_gear(retract: bool) -> Plan {
 }
 
 pub fn motor_interlock(state: &VehicleState, enable: bool) -> Plan {
+    aux_switch(state, APM_AUX_MOTOR_INTERLOCK, enable)
+}
+
+pub fn aux_switch(state: &VehicleState, function: f64, high: bool) -> Plan {
     match state.autopilot == crate::modes::AUTOPILOT_ARDUPILOT {
         true => Plan::Steps(vec![Step::Command {
             command: CMD_DO_AUX_FUNCTION,
             params: [
-                APM_AUX_MOTOR_INTERLOCK,
-                if enable {
+                function,
+                if high {
                     AUX_SWITCH_HIGH
                 } else {
                     AUX_SWITCH_LOW

@@ -1744,6 +1744,7 @@ impl Sim {
                 accepted(Vec::new())
             }
             MavCmd::MAV_CMD_DO_MOTOR_TEST
+            | MavCmd::MAV_CMD_DO_AUX_FUNCTION
             | MavCmd::MAV_CMD_PREFLIGHT_STORAGE
             | MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN => accepted(Vec::new()),
             _ => (MavResult::MAV_RESULT_UNSUPPORTED, Vec::new()),

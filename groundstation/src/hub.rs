@@ -2823,6 +2823,7 @@ impl Vehicle {
             "triggerCamera" => guidedcmd::trigger_camera(),
             "landingGear" => guidedcmd::landing_gear(flag("retract")),
             "motorInterlock" => guidedcmd::motor_interlock(&state, flag("enable")),
+            "auxSwitch" => guidedcmd::aux_switch(&state, number("function"), flag("high")),
             "motorTest" => {
                 guidedcmd::motor_test(number("motor"), number("percent"), number("seconds"))
             }
