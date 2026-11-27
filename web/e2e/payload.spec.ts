@@ -79,7 +79,7 @@ test('a waypoint drops from a servo after a wait, keeps that servo, and gives th
   await vehicle.getByRole('button', { name: 'Done' }).click();
   await vehicle.getByRole('button', { name: 'Waypoint 3' }).first().click();
   const before = await itemCount(vehicle);
-  await vehicle.getByRole('button', { name: 'Add', exact: true }).click();
+  await vehicle.getByRole('button', { name: 'Add action', exact: true }).click();
   await vehicle.getByRole('menuitem', { name: 'Drop payload' }).click();
   await expect.poll(() => itemCount(vehicle), { timeout: 30_000 }).toBe(before + 1);
   const editor = vehicle.getByRole('dialog').filter({ hasText: 'Wait before dropping' });
@@ -98,7 +98,7 @@ test('a waypoint drops from a servo after a wait, keeps that servo, and gives th
   await expect(vehicle.getByRole('button', { name: 'Remove Drop payload' })).toBeVisible();
   await vehicle.getByRole('button', { name: 'Remove Drop payload' }).click();
   await expect.poll(() => itemCount(vehicle), { timeout: 30_000 }).toBe(before);
-  await expect(vehicle.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
+  await expect(vehicle.getByRole('button', { name: 'Add action', exact: true })).toBeVisible();
 });
 
 test('a pilot flying by hand drops from the payload strip, and a drop that cannot fall says why', async ({ app: vehicle }) => {

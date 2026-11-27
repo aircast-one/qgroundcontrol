@@ -112,8 +112,8 @@ private let OFFER_VERBS = [("Photo", "take a photo"), ("Video", "film"), ("Hover
 
 func addActionsHint(_ offers: [ActionOffer]) -> String {
     let verbs = OFFER_VERBS.filter { verb in offers.contains { $0.title == verb.0 } }.map { $0.1 }
-    guard let last = verbs.last else { return "Tap Add to give the camera something to do here." }
-    return "Tap Add to \(verbs.count == 1 ? last : "\(verbs.dropLast().joined(separator: ", ")) or \(last)") here."
+    guard let last = verbs.last else { return "Tap Add action to give the camera something to do here." }
+    return "Tap Add action to \(verbs.count == 1 ? last : "\(verbs.dropLast().joined(separator: ", ")) or \(last)") here."
 }
 
 struct WaypointActions: View {
@@ -144,13 +144,14 @@ struct WaypointActions: View {
                             } label: {
                                 HStack(spacing: Space.s1) {
                                     Image(.add).font(.system(size: 16))
-                                    Text("Add")
+                                    Text("Add action")
                                 }
                                 .font(.labelLarge)
-                                .foregroundStyle(theme.colors.primary)
-                                .padding(.horizontal, 12)
+                                .foregroundStyle(theme.colors.onSecondaryContainer)
+                                .padding(.horizontal, 16)
                                 .frame(minHeight: 40)
-                                .contentShape(Rectangle())
+                                .background(theme.colors.secondaryContainer, in: Capsule())
+                                .contentShape(Capsule())
                             }
                         }
                     }

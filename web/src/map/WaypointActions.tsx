@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { type Json, isNull, optDouble, optInt, optJSONObject, optText } from '@/bridge/Json';
 import { useKeyedState } from '@/kotlin/Compose';
-import { AlertDialog, DropdownMenu, DropdownMenuItem, FilterChip, IconButton, RadioButton, Text, TextButton } from '@/m3';
+import { AlertDialog, DropdownMenu, DropdownMenuItem, FilledTonalButton, FilterChip, IconButton, RadioButton, Text, TextButton } from '@/m3';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
 import { md } from '@/theme/Colors';
@@ -152,8 +152,8 @@ const OFFER_VERBS: readonly (readonly [string, string])[] = [
 export const addActionsHint = (offers: readonly ActionOffer[]): string => {
   const verbs = OFFER_VERBS.filter(([title]) => offers.some((it) => it.title === title)).map(([, verb]) => verb);
   const last = verbs.at(-1);
-  if (last === undefined) return 'Tap Add to give the camera something to do here.';
-  return `Tap Add to ${verbs.length === 1 ? last : `${verbs.slice(0, -1).join(', ')} or ${last}`} here.`;
+  if (last === undefined) return 'Tap Add action to give the camera something to do here.';
+  return `Tap Add action to ${verbs.length === 1 ? last : `${verbs.slice(0, -1).join(', ')} or ${last}`} here.`;
 };
 
 export const WaypointActions = ({ index, hold, yaw, drop = null }: { index: number; hold: WaypointHold | null; yaw: WaypointYaw | null; drop?: WaypointDrop | null }) => {
@@ -246,10 +246,10 @@ export const WaypointActions = ({ index, hold, yaw, drop = null }: { index: numb
           </Text>
           {offers.length > 0 ? (
             <div className="relative">
-              <TextButton onClick={() => setAdding(true)}>
+              <FilledTonalButton onClick={() => setAdding(true)}>
                 <Drawable name="plan_add" size={18} />
-                Add
-              </TextButton>
+                Add action
+              </FilledTonalButton>
               <DropdownMenu expanded={adding} onDismissRequest={() => setAdding(false)}>
                 {offers.map((offer) => (
                   <DropdownMenuItem

@@ -18,8 +18,8 @@ describe('WaypointActionsTest', () => {
   it('a plane, which flies through its waypoints, is not offered a hover or told it can hover', () => {
     const offers = offeredActions(null, null, { labels, chosen: 0 }, idleCamera);
     expect(offers.map((it) => it.title)).not.toContain('Hover');
-    expect(addActionsHint(offers)).toBe('Tap Add to take a photo or film here.');
-    expect(addActionsHint(offeredActions(noHold, noTurn, { labels, chosen: 0 }, idleCamera))).toBe('Tap Add to take a photo, film, hover or turn here.');
+    expect(addActionsHint(offers)).toBe('Tap Add action to take a photo or film here.');
+    expect(addActionsHint(offeredActions(noHold, noTurn, { labels, chosen: 0 }, idleCamera))).toBe('Tap Add action to take a photo, film, hover or turn here.');
   });
 
   it('each action set on the waypoint shows once with its value and leaves the offers', () => {

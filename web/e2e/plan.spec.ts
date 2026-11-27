@@ -280,7 +280,7 @@ test('a waypoint takes a hover action and gives it back', async ({ app }) => {
   await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
   await app.getByRole('button', { name: 'Done' }).click();
   await app.getByRole('button', { name: 'Waypoint 3' }).first().click();
-  await app.getByRole('button', { name: 'Add', exact: true }).click();
+  await app.getByRole('button', { name: 'Add action', exact: true }).click();
   await app.getByRole('menuitem', { name: 'Hover' }).click();
   await app.getByRole('dialog').filter({ hasText: 'Hover' }).getByRole('button', { name: 'Done' }).click();
   await expect(app.getByRole('button', { name: /^3 Waypoint .* · holds 5 s/ })).toBeVisible({ timeout: 15_000 });
@@ -294,7 +294,7 @@ test('after undoing a move, the selected waypoint shows its own actions, not the
   await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
   await app.getByRole('button', { name: 'Done' }).click();
   await app.getByRole('button', { name: 'Waypoint 3' }).first().click();
-  await app.getByRole('button', { name: 'Add', exact: true }).click();
+  await app.getByRole('button', { name: 'Add action', exact: true }).click();
   await app.getByRole('menuitem', { name: 'Photo' }).click();
   await app.getByRole('dialog').filter({ hasText: 'Take photo' }).getByRole('button', { name: 'Done' }).click();
   await expect(app.getByRole('button', { name: 'Take photo', exact: true })).toBeVisible();
@@ -303,7 +303,7 @@ test('after undoing a move, the selected waypoint shows its own actions, not the
   await app.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(app.getByRole('button', { name: /^2 Waypoint / })).toBeVisible({ timeout: 15_000 });
   await expect(app.getByRole('button', { name: 'Delete waypoint 2' })).toBeVisible();
-  await expect(app.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Add action', exact: true })).toBeVisible();
   await expect(app.getByRole('button', { name: 'Take photo', exact: true }), 'waypoint 2 has no photo; the panel kept the moved waypoint’s camera').toHaveCount(0);
 });
 
@@ -440,7 +440,7 @@ test('a waypoint that tilts the camera tells the map how far down it looks, so i
   await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
   await app.getByRole('button', { name: 'Done' }).click();
   await app.getByRole('button', { name: 'Waypoint 3' }).first().click();
-  await app.getByRole('button', { name: 'Add', exact: true }).click();
+  await app.getByRole('button', { name: 'Add action', exact: true }).click();
   await app.getByRole('menuitem', { name: 'Tilt camera' }).click();
   const editor = app.getByRole('dialog').filter({ hasText: 'Pitch' });
   await editor.getByRole('button', { name: /^Pitch: / }).click();
