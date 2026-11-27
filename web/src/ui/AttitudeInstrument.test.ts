@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
-import { NO_VEHICLE_ATTITUDE, attitude, pitchOffset } from './AttitudeInstrument';
+import { ATTITUDE_LADDER, NO_VEHICLE_ATTITUDE, attitude, pitchOffset } from './AttitudeInstrument';
 
 const json = (text: string): Json => parseJson(text) ?? {};
 
@@ -33,5 +33,10 @@ describe('AttitudeInstrumentTest', () => {
   it('pitch moves the horizon by the span QGC uses', () => {
     expect(pitchOffset(45, 20)).toBe(40);
     expect(pitchOffset(0, 20)).toBe(0);
+  });
+
+  it('the ladder has a rung every 10 degrees up to straight up and down, so a steep attitude still has a reference', () => {
+    expect(ATTITUDE_LADDER.length).toBe(18);
+    expect([ATTITUDE_LADDER[0], ATTITUDE_LADDER[8], ATTITUDE_LADDER[9], ATTITUDE_LADDER[17]]).toEqual([-90, -10, 10, 90]);
   });
 });

@@ -45,6 +45,12 @@ class AttitudeInstrumentTest {
     }
 
     @Test
+    fun `the ladder has a rung every 10 degrees up to straight up and down, so a steep attitude still has a reference`() {
+        assertEquals(18, ATTITUDE_LADDER.size)
+        assertEquals(listOf(-90, -10, 10, 90), listOf(0, 8, 9, 17).map { ATTITUDE_LADDER[it] })
+    }
+
+    @Test
     fun `the horizon is read out as pitch and roll in whole degrees`() {
         val read = attitude(JSONObject("""{"available":true,"roll":-12.6,"pitch":4.4,"heading":10}"""))!!
         assertEquals("Attitude, pitch 4°, roll -13°", attitudeLabel(read))

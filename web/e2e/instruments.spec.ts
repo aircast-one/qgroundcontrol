@@ -1,24 +1,52 @@
-import { WHEP_STREAM, addVideoSource, expect, test } from './fixtures';
+import type { Locator, Page } from '@playwright/test';
+import { WHEP_STREAM, addVideoSource, expect, flightMode, mapMenuAt, showMapFull, slideAcross, takeOff, test } from './fixtures';
+
+const chooseReadings = async (page: Page) => {
+  await page.getByRole('button', { name: 'Menu', exact: true }).click();
+  await page.getByRole('dialog').getByText('Choose readings').click();
+  return page.getByRole('dialog', { name: 'Choose readings' });
+};
+
+const box = async (target: Locator) => {
+  const found = await target.boundingBox();
+  expect(found, 'drawn on screen').not.toBeNull();
+  return found!;
+};
 
 test('Choose readings brings back the attitude and compass dials, which follow the aircraft', async ({ vehicle }) => {
   const attitude = vehicle.getByRole('img', { name: /^Attitude, pitch -?\d+°, roll -?\d+°$/ });
   await expect(attitude, 'they start hidden, as an option').toHaveCount(0);
-  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
-  await vehicle.getByRole('dialog').getByText('Choose readings').click();
-  const chooser = vehicle.getByRole('dialog', { name: 'Choose readings' });
-  await chooser.getByText('Attitude and compass', { exact: true }).click();
+  await (await chooseReadings(vehicle)).getByText('Attitude and compass', { exact: true }).click();
   await vehicle.keyboard.press('Escape');
   await expect(attitude).toBeVisible();
-  const box = (await attitude.boundingBox())!;
   const compass = vehicle.getByRole('img', { name: /^Heading / }).filter({ visible: true }).last();
   await expect(compass).toBeVisible();
-  const beside = (await compass.boundingBox())!;
-  expect(Math.abs(beside.y - box.y), 'the compass sits beside the horizon, like the QGC pair').toBeLessThan(4);
-  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
-  await vehicle.getByRole('dialog').getByText('Choose readings').click();
-  await vehicle.getByRole('dialog', { name: 'Choose readings' }).getByText('Attitude and compass', { exact: true }).click();
+  expect(Math.abs((await box(compass)).y - (await box(attitude)).y), 'the compass sits beside the horizon, like the QGC pair').toBeLessThan(4);
+  await expect(attitude, 'level on the ground').toHaveAccessibleName('Attitude, pitch 0°, roll 0°');
+  const horizon = () => attitude.locator('g[transform]').first().getAttribute('transform');
+  const level = await horizon();
+  await takeOff(vehicle, '10 m');
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
+  await showMapFull(vehicle);
+  await mapMenuAt(vehicle, 200, -100);
+  await vehicle.getByRole('button', { name: 'Go to location' }).click();
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to go to location' }));
+  await expect(attitude, 'the simulated aircraft dips its nose to fly there, and the dial says so').toHaveAccessibleName(/^Attitude, pitch -[1-9]\d*°, roll -?\d+°$/, { timeout: 30_000 });
+  expect(await horizon(), 'and the drawn horizon moved with it').not.toEqual(level);
+  await expect(vehicle.getByText(/^Arrived/)).toBeVisible({ timeout: 90_000 });
+  await expect(attitude, 'level again in the hover').toHaveAccessibleName('Attitude, pitch 0°, roll 0°', { timeout: 30_000 });
+  await (await chooseReadings(vehicle)).getByText('Attitude and compass', { exact: true }).click();
   await vehicle.keyboard.press('Escape');
   await expect(attitude, 'and the same row hides them again').toHaveCount(0);
+});
+
+test('held upright, where the dials are never drawn, Choose readings does not offer them', async ({ vehicle }) => {
+  await expect((await chooseReadings(vehicle)).getByText('Attitude and compass', { exact: true }), 'offered in landscape').toBeVisible();
+  await vehicle.keyboard.press('Escape');
+  await vehicle.setViewportSize({ width: 412, height: 860 });
+  const upright = await chooseReadings(vehicle);
+  await expect(upright.getByPlaceholder(/^Search/), 'the readings are listed').toBeVisible();
+  await expect(upright.getByText('Attitude and compass', { exact: true }), 'a box that would show nothing is not offered').toHaveCount(0);
 });
 
 test('the small picture in the corner is dragged anywhere on screen, a tap still swaps the map and the camera, and the other picture takes its place', async ({ vehicle }) => {

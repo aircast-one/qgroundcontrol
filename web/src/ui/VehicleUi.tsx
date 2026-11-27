@@ -238,6 +238,7 @@ const colourOf = (display: ValueDisplay, raw: number | null): string | null => {
 
 const useTelemetryReadings = () => {
   const flyScreen = useContext(LocalFlyScreenState);
+  const upright = useFlyIsPortrait();
   const classView = useQgcPath(INSTRUMENTS_VIEW);
   const vehicleClass = instrumentVehicleClass(classView);
   const [chosen, setChosen] = useKeyedState<readonly string[]>([vehicleClass], () => readChosen(vehicleClass));
@@ -278,6 +279,7 @@ const useTelemetryReadings = () => {
         <InstrumentSheet
           chosen={chosen}
           title="Change reading"
+          lead={null}
           onToggle={(path) => {
             const [at, fromId] = replacing;
             const carried = displays.get(fromId);
@@ -324,7 +326,7 @@ const useTelemetryReadings = () => {
       {choosingReadings ? (
         <InstrumentSheet
           chosen={chosen}
-          lead={<AttitudeChoice />}
+          lead={upright ? null : <AttitudeChoice />}
           onToggle={(name) => keep(withInstrument(chosen, name))}
           onDismiss={() => {
             flyScreen.choosingReadings.value = false;
@@ -1349,13 +1351,13 @@ const QUICK_LIST_HINT = `Shown first when you ${TAP_LOWER} the mode`;
 const InstrumentSheet = ({
   chosen,
   title = CHOOSE_READINGS,
-  lead = null,
+  lead,
   onToggle,
   onDismiss,
 }: {
   chosen: readonly string[];
   title?: string;
-  lead?: ReactNode;
+  lead: ReactNode;
   onToggle: (path: string) => void;
   onDismiss: () => void;
 }) => {

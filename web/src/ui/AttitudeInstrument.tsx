@@ -145,7 +145,18 @@ export const OsdCompassDial = ({ size, className }: { size: number; className?: 
 const SKY = argb(0xff3a78c4);
 const GROUND = argb(0xff4f8a3c);
 const WINGS = argb(0xffff6b2c);
-const LADDER = [-20, -10, 10, 20];
+const LADDER_STEP_DEGREES = 10;
+export const ATTITUDE_LADDER: readonly number[] = Array.from({ length: 19 }, (_, rung) => (rung - 9) * LADDER_STEP_DEGREES).filter((degrees) => degrees !== 0);
+const WING_SPAN = 0.42;
+const WING_SHOULDER = 0.35;
+const WING_DIP = 0.25;
+const LADDER_RUNG_HALF = 0.18;
+const LADDER_LABEL_AT = 0.24;
+const LADDER_FONT = 8;
+const ROLL_POINTER_INSET = 3;
+const ROLL_POINTER_RADIUS = 2.5;
+const ROLL_TICK_MAJOR = 7;
+const ROLL_TICK_MINOR = 4;
 const ROLL_TICKS = [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60];
 
 export const OsdAttitudeDial = ({ size, className }: { size: number; className?: string }) => {
@@ -156,10 +167,10 @@ export const OsdAttitudeDial = ({ size, className }: { size: number; className?:
   const radius = size / 2;
   const center = { x: radius, y: radius };
   const horizon = radius * HORIZON_FRACTION;
-  const step = pitchOffset(10, horizon);
+  const step = pitchOffset(LADDER_STEP_DEGREES, horizon);
   const ring = withAlpha(white, OSD_DIAL_RING_ALPHA);
-  const wing = radius * 0.42;
-  const pointer = pointOnRing(center, radius - 3, -reading.roll);
+  const wing = radius * WING_SPAN;
+  const pointer = pointOnRing(center, radius - ROLL_POINTER_INSET, -reading.roll);
   return (
     <svg
       width={size}
@@ -179,10 +190,10 @@ export const OsdAttitudeDial = ({ size, className }: { size: number; className?:
           <rect x={-size} y={center.y - size * 2} width={size * 3} height={size * 2} style={{ fill: SKY }} />
           <rect x={-size} y={center.y} width={size * 3} height={size * 2} style={{ fill: GROUND }} />
           <line x1={-size} y1={center.y} x2={size * 2} y2={center.y} strokeWidth={1.5} style={{ stroke: white }} />
-          {LADDER.map((degrees) => (
+          {ATTITUDE_LADDER.map((degrees) => (
             <g key={degrees}>
-              <line x1={center.x - radius * 0.18} y1={center.y - (degrees / 10) * step} x2={center.x + radius * 0.18} y2={center.y - (degrees / 10) * step} strokeWidth={1} style={{ stroke: white }} />
-              <text x={center.x + radius * 0.24} y={center.y - (degrees / 10) * step} dominantBaseline="central" fontSize={8} style={{ fill: white }}>
+              <line x1={center.x - radius * LADDER_RUNG_HALF} y1={center.y - (degrees / LADDER_STEP_DEGREES) * step} x2={center.x + radius * LADDER_RUNG_HALF} y2={center.y - (degrees / LADDER_STEP_DEGREES) * step} strokeWidth={1} style={{ stroke: white }} />
+              <text x={center.x + radius * LADDER_LABEL_AT} y={center.y - (degrees / LADDER_STEP_DEGREES) * step} dominantBaseline="central" fontSize={LADDER_FONT} style={{ fill: white }}>
                 {Math.abs(degrees)}
               </text>
             </g>
@@ -191,13 +202,13 @@ export const OsdAttitudeDial = ({ size, className }: { size: number; className?:
       </g>
       {ROLL_TICKS.map((degrees) => {
         const from = pointOnRing(center, radius - 1, degrees);
-        const to = pointOnRing(center, radius - (degrees % 30 === 0 ? 7 : 4), degrees);
+        const to = pointOnRing(center, radius - (degrees % 30 === 0 ? ROLL_TICK_MAJOR : ROLL_TICK_MINOR), degrees);
         return <line key={degrees} x1={from.x} y1={from.y} x2={to.x} y2={to.y} strokeWidth={1} style={{ stroke: white }} />;
       })}
       <circle cx={center.x} cy={center.y} r={radius - 0.75} fill="none" strokeWidth={1.5} style={{ stroke: ring }} />
-      <circle cx={pointer.x} cy={pointer.y} r={2.5} style={{ fill: WINGS }} />
+      <circle cx={pointer.x} cy={pointer.y} r={ROLL_POINTER_RADIUS} style={{ fill: WINGS }} />
       <path
-        d={`M ${center.x - wing} ${center.y} L ${center.x - wing * 0.35} ${center.y} L ${center.x} ${center.y + wing * 0.25} L ${center.x + wing * 0.35} ${center.y} L ${center.x + wing} ${center.y}`}
+        d={`M ${center.x - wing} ${center.y} L ${center.x - wing * WING_SHOULDER} ${center.y} L ${center.x} ${center.y + wing * WING_DIP} L ${center.x + wing * WING_SHOULDER} ${center.y} L ${center.x + wing} ${center.y}`}
         fill="none"
         strokeWidth={3}
         strokeLinejoin="round"
@@ -209,10 +220,10 @@ export const OsdAttitudeDial = ({ size, className }: { size: number; className?:
 
 export const ATTITUDE_GAUGE_SIZE = 104;
 
-export const AttitudeGauges = ({ size = ATTITUDE_GAUGE_SIZE }: { size?: number }) => (
+export const AttitudeGauges = () => (
   <div className="flex items-center gap-2">
-    <OsdAttitudeDial size={size} />
-    <OsdCompassDial size={size} />
+    <OsdAttitudeDial size={ATTITUDE_GAUGE_SIZE} />
+    <OsdCompassDial size={ATTITUDE_GAUGE_SIZE} />
   </div>
 );
 

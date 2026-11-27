@@ -162,7 +162,7 @@ internal fun OsdCompassDial(size: androidx.compose.ui.unit.Dp, modifier: Modifie
 private val SKY = Color(0xFF3A78C4)
 private val GROUND = Color(0xFF4F8A3C)
 private val WINGS = Color(0xFFFF6B2C)
-private val LADDER = listOf(-20, -10, 10, 20)
+internal val ATTITUDE_LADDER = (-90..90 step 10).filter { it != 0 }
 private val ROLL_TICKS = listOf(-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60)
 private val ATTITUDE_GAUGE_SIZE = 96.dp
 
@@ -185,7 +185,7 @@ internal fun OsdAttitudeDial(size: androidx.compose.ui.unit.Dp, modifier: Modifi
                     drawRect(SKY, Offset(center.x - radius * 3f, center.y - radius * 4f), Size(radius * 6f, radius * 4f))
                     drawRect(GROUND, Offset(center.x - radius * 3f, center.y), Size(radius * 6f, radius * 4f))
                     drawLine(white, Offset(center.x - radius * 3f, center.y), Offset(center.x + radius * 3f, center.y), strokeWidth = 1.5.dp.toPx())
-                    LADDER.map { degrees ->
+                    ATTITUDE_LADDER.map { degrees ->
                         val y = center.y - degrees / 10f * step
                         val label = measurer.measure(abs(degrees).toString(), rung)
                         drawLine(white, Offset(center.x - radius * 0.18f, y), Offset(center.x + radius * 0.18f, y), strokeWidth = 1.dp.toPx())

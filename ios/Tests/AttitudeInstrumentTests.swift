@@ -31,4 +31,9 @@ final class AttitudeInstrumentTests: XCTestCase {
         XCTAssertEqual(pitchOffset(45, 20), 40)
         XCTAssertEqual(pitchOffset(0, 20), 0)
     }
+
+    func testTheLadderHasARungEveryTenDegreesUpToStraightUpAndDownSoASteepAttitudeStillHasAReference() {
+        XCTAssertEqual(ATTITUDE_LADDER.count, 18)
+        XCTAssertEqual([0, 8, 9, 17].map { ATTITUDE_LADDER[$0] }, [-90, -10, 10, 90])
+    }
 }

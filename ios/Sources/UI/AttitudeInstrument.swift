@@ -136,7 +136,7 @@ struct OsdCompassDial: View {
 private let SKY = Color(hex: 0x3A78C4)
 private let GROUND = Color(hex: 0x4F8A3C)
 private let WINGS = Color(hex: 0xFF6B2C)
-private let LADDER = [-20.0, -10.0, 10.0, 20.0]
+let ATTITUDE_LADDER = stride(from: -90.0, through: 90.0, by: 10.0).filter { $0 != 0 }
 private let ROLL_TICKS = [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60]
 let ATTITUDE_GAUGE_SIZE: CGFloat = 104
 
@@ -168,7 +168,7 @@ struct OsdAttitudeDial: View {
                     with: .color(.white),
                     lineWidth: 1.5
                 )
-                LADDER.forEach { degrees in
+                ATTITUDE_LADDER.forEach { degrees in
                     let y = center.y - degrees / 10 * step
                     horizon.stroke(
                         Path { $0.move(to: CGPoint(x: center.x - radius * 0.18, y: y)); $0.addLine(to: CGPoint(x: center.x + radius * 0.18, y: y)) },
