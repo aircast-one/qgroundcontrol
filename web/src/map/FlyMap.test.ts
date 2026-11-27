@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { centresOnOperator, keepsZoom, missionArrived, otherMissions, pipZoom } from './FlyMap';
+import { centresOnOperator, firstKnown, keepsZoom, launchOf, missionArrived, otherMissions, pipZoom, showsWholeWorld } from './FlyMap';
 
 describe('FlyMapFitTest', () => {
   it('the fly map fits whenever a new mission arrives from the vehicle, as onNewItemsFromVehicle does', () => {
@@ -16,6 +16,19 @@ describe('FlyMapFitTest', () => {
     expect(centresOnOperator(true, here, false)).toBe(false);
     expect(centresOnOperator(false, here, true)).toBe(false);
     expect(centresOnOperator(false, null, false)).toBe(false);
+  });
+
+  it('a map still showing the whole world opens on the home, else the launch of the flown mission, else nothing it does not know', () => {
+    const home = { latitude: 41.72, longitude: 44.88 };
+    const launch = { latitude: 41.7, longitude: 44.8 };
+    const unset = { latitude: 0, longitude: 0 };
+    const items = [{ index: 0, latitude: launch.latitude, longitude: launch.longitude }, { index: 1, latitude: 41.8, longitude: 44.9 }] as never;
+    expect(showsWholeWorld(0)).toBe(true);
+    expect(showsWholeWorld(15)).toBe(false);
+    expect(launchOf(items)).toEqual(launch);
+    expect(firstKnown([home, launch])).toEqual(home);
+    expect(firstKnown([null, unset, launch]), 'an unset home reads 0, 0, which is no place').toEqual(launch);
+    expect(firstKnown([null, null])).toBeNull();
   });
 
   it("other vehicles' missions come from the fly view, as FlyViewMap repeats PlanMapItems for every vehicle", () => {

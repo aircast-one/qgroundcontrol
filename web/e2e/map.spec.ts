@@ -1,4 +1,5 @@
-import { closeSettings, connectMock, expect, flightMode, mapMenuAt, openMenu, showMapFull, slideAcross, takeOff, telemetry, test } from './fixtures';
+import type { Page } from '@playwright/test';
+import { closeSettings, connectMock, expect, flightMode, itemCount, mapMenuAt, openMenu, showMapFull, slideAcross, takeOff, tapPlanMission, telemetry, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -173,4 +174,35 @@ test('the Fly map scale bar follows a change of units without the map moving', a
   await app.getByRole('button', { name: 'Imperial', exact: true }).click();
   await closeSettings(app);
   await expect(app.getByText(/^\d+ (ft|miles?)$/)).toBeVisible();
+});
+
+type Spot = { latitude: number; longitude: number };
+
+const flyMapCentre = (page: Page) => page.evaluate(async (module) => ((await import(module)) as { FlightMapPosition: { latest: Spot | null } }).FlightMapPosition.latest, '/src/map/VehicleMap.tsx');
+
+const planLaunch = (page: Page) =>
+  page.evaluate(async (module) => {
+    const plan = (await import(module)) as { missionItems: (json: unknown) => readonly (Spot & { index: number })[]; PlanBridge: { rawItems: () => Promise<unknown> } };
+    const launch = plan.missionItems(await plan.PlanBridge.rawItems()).find((it) => it.index === 0);
+    return launch === undefined ? null : { latitude: launch.latitude, longitude: launch.longitude };
+  }, '/src/map/PlanBridge.ts');
+
+const near = (at: Spot | null, spot: Spot): boolean => at !== null && Math.abs(at.latitude - spot.latitude) < 0.01 && Math.abs(at.longitude - spot.longitude) < 0.01;
+
+test('with no aircraft, no operator position and no remembered view, the Fly map opens on the plan’s launch instead of the whole world', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  const launch = await planLaunch(app);
+  expect(launch).not.toBeNull();
+  await openMenu(app, 'Fly');
+  await expect.poll(async () => near(await flyMapCentre(app), launch!), { message: 'Oleg’s desktop app opened on the whole world: the drone had no GPS fix and the laptop gave no position', timeout: 30_000 }).toBe(true);
+});
+
+test('a remembered map view is where the Fly map opens next time', async ({ app }) => {
+  const tbilisi = { latitude: 41.7151, longitude: 44.8271 };
+  await app.evaluate((at) => window.localStorage.setItem('aircast.fly-map-camera.camera', `${at.latitude},${at.longitude},12`), tbilisi);
+  await app.reload();
+  await expect(app.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
+  await expect.poll(async () => near(await flyMapCentre(app), tbilisi), { timeout: 30_000 }).toBe(true);
 });

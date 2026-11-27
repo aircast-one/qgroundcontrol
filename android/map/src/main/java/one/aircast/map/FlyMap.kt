@@ -52,6 +52,14 @@ private fun writeCamera(context: android.content.Context, camera: SavedCamera) {
 internal fun centresOnOperator(alreadyCentred: Boolean, operator: TrackPoint?, vehiclePlaced: Boolean): Boolean =
     !alreadyCentred && operator != null && !vehiclePlaced
 
+internal fun showsWholeWorld(zoom: Double): Boolean = zoom <= 1.0
+
+internal fun firstKnown(points: List<TrackPoint?>): TrackPoint? =
+    points.firstOrNull { it != null && isPlottable(it.latitude, it.longitude) }
+
+internal fun launchOf(items: List<MissionItem>): TrackPoint? =
+    firstKnown(items.filter { it.index == HOME_ITEM }.map { TrackPoint(it.latitude, it.longitude) })
+
 private data class FlownPlan(
     val items: List<MissionItem> = emptyList(),
     val linkStartToHome: Boolean = false,
@@ -175,6 +183,15 @@ fun FlyMap(
                     centreOn = next.operator
                     centreZoom = null
                     centreRequest++
+                } else if (!next.vehiclePlaced && showsWholeWorld(zoom)) {
+                    withContext(Dispatchers.Default) {
+                        firstKnown(listOf(vehicleChoices(runCatching { JSONObject(QGCBridge.get(VEHICLES_VIEW)) }.getOrNull()).active?.home, launchOf(next.items)))
+                            ?: launchOf(missionItems(PlanBridge.rawItems()))
+                    }?.let { at ->
+                        centreOn = at
+                        centreZoom = null
+                        centreRequest++
+                    }
                 }
                 plan = next
                 delay(FLY_POLL_MS)

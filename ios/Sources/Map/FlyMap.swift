@@ -29,6 +29,16 @@ func centresOnOperator(_ alreadyCentred: Bool, _ operator: TrackPoint?, _ vehicl
     !alreadyCentred && `operator` != nil && !vehiclePlaced
 }
 
+func showsWholeWorld(_ zoom: Double) -> Bool { zoom <= 1.0 }
+
+func firstKnown(_ points: [TrackPoint?]) -> TrackPoint? {
+    points.compactMap { $0 }.first { isPlottable($0.latitude, $0.longitude) }
+}
+
+func launchOf(_ items: [MissionItem]) -> TrackPoint? {
+    firstKnown(items.filter { $0.index == HOME_ITEM }.map { TrackPoint(latitude: $0.latitude, longitude: $0.longitude) })
+}
+
 struct FlownPlan {
     var items: [MissionItem] = []
     var linkStartToHome = false
@@ -258,6 +268,13 @@ struct FlyMap: View {
                     state.camera.centreOn = next.operator
                     state.camera.centreZoom = nil
                     state.camera.centreRequest += 1
+                } else if !next.vehiclePlaced && showsWholeWorld(state.zoom) {
+                    let launch = launchOf(next.items)
+                    if let at = await offMain({ firstKnown([vehicleChoices(MapBridge.read(VEHICLES_VIEW)).active?.home, launch]) ?? launchOf(missionItems(PlanBridge.rawItems())) }) {
+                        state.camera.centreOn = at
+                        state.camera.centreZoom = nil
+                        state.camera.centreRequest += 1
+                    }
                 }
                 state.plan = next
                 try? await Task.sleep(for: .milliseconds(FLY_POLL_MS))

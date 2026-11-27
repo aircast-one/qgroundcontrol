@@ -17,7 +17,8 @@ import type { OtherMission } from './MissionLayers';
 import { OperatorBridge, operatorHeading, operatorPoint } from './OperatorPosition';
 import { OrbitBridge, type OrbitCircle } from './OrbitMarker';
 import { planMapStyle } from './PlanMap';
-import { type MissionItem, linksStartToHome, missionItems } from './PlanBridge';
+import { HOME_ITEM } from './MissionKinds';
+import { type MissionItem, PlanBridge, linksStartToHome, missionItems } from './PlanBridge';
 import { RoiBridge } from './RoiMarker';
 import { ScaleBarView } from './ScaleBarView';
 import { type Survey, SurveyBridge } from './SurveyBridge';
@@ -30,6 +31,13 @@ const LONG_PRESS_TIMEOUT_MS = 400;
 const TOUCH_SLOP_PX = 8;
 
 export const centresOnOperator = (alreadyCentred: boolean, operator: TrackPoint | null, vehiclePlaced: boolean): boolean => !alreadyCentred && operator !== null && !vehiclePlaced;
+
+export const showsWholeWorld = (zoom: number): boolean => zoom <= 1.0;
+
+export const firstKnown = (points: readonly (TrackPoint | null)[]): TrackPoint | null => points.find((it): it is TrackPoint => it !== null && isPlottable(it.latitude, it.longitude)) ?? null;
+
+export const launchOf = (items: readonly MissionItem[]): TrackPoint | null =>
+  firstKnown(items.filter((it) => it.index === HOME_ITEM).map((it) => ({ latitude: it.latitude, longitude: it.longitude })));
 
 type FlownPlan = {
   readonly items: readonly MissionItem[];
@@ -181,6 +189,7 @@ export const FlyMap = ({
     const active = vehicleChoices(fleetJson).active;
     return active === null ? null : { latitude: active.latitude, longitude: active.longitude };
   }, [fleetJson]);
+  const home = useUpdatedRef(vehicleChoices(fleetJson).active?.home ?? null);
   useEffect(() => {
     if (gotoPreview !== null) setFitRequest((request) => request + 1);
   }, [gotoPreview]);
@@ -212,6 +221,7 @@ export const FlyMap = ({
   });
 
   const latestPlan = useUpdatedRef(plan);
+  const shownZoom = useUpdatedRef(zoom);
   const visible = useDocumentVisible();
   useLaunchedEffect([visible], async (scope) => {
     if (!visible) return;
@@ -226,6 +236,14 @@ export const FlyMap = ({
         setCentreOn(next.operator);
         setCentreZoom(null);
         setCentreRequest((request) => request + 1);
+      } else if (!next.vehiclePlaced && showsWholeWorld(shownZoom.current)) {
+        const at = firstKnown([home.current, launchOf(next.items)]) ?? launchOf(missionItems(await PlanBridge.rawItems()));
+        if (!scope.isActive()) return;
+        if (at !== null) {
+          setCentreOn(at);
+          setCentreZoom(null);
+          setCentreRequest((request) => request + 1);
+        }
       }
       setPlan((held) => keptPlan(held, next));
       await delay(FLY_POLL_MS);
