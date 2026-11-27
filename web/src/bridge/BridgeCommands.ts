@@ -1,4 +1,4 @@
-import type { WhepReport } from '@/core/whep';
+import type { PlaybackReport } from '@/core/whep';
 import type { Json } from './Json';
 import { Qgc } from './Qgc';
 
@@ -120,7 +120,7 @@ export const VideoCommands = {
   setDeviceCameraRotation: (degrees: number): Promise<boolean> => Qgc.invoke(VIDEO_DEVICE_CAMERA_ROTATION, degrees),
   setPictureInPicture: (shown: boolean): Promise<boolean> => Qgc.set(VIDEO_PICTURE_IN_PICTURE, shown),
   setPipShown: (shown: boolean): Promise<boolean> => Qgc.invoke(VIDEO_PIP_SHOWN, shown),
-  reportPlayback: (channel: number, { running, frames, width, height, error, restarted }: WhepReport): Promise<boolean> =>
+  reportPlayback: (channel: number, { running, frames, width, height, error, restarted }: PlaybackReport): Promise<boolean> =>
     Qgc.invoke(VIDEO_REPORT_NATIVE, running, frames, width, height, error, null, restarted, channel),
   reportRecording: (active: boolean): Promise<boolean> => Qgc.invoke(VIDEO_REPORT_RECORDING, active),
   reportRecordingFailed: (reason: string): Promise<boolean[]> => Promise.all([Qgc.invoke(VIDEO_REPORT_RECORDING, false), AppCommands.notice(RECORDING_STOPPED_TITLE, reason)]),

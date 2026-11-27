@@ -1,14 +1,15 @@
-import { recording } from './recorder';
+import { recordingPicture } from './recorder';
 
 export type WhepCounters = { bytes: number; lost: number; received: number; dropped: number; at: number };
 export type WhepStats = { fps: number; kbps: number; jitterMs: number; lossPercent: number | null; lostPerSecond: number; skippedPerSecond: number; counters: WhepCounters };
-export type WhepReport = { running: boolean; frames: number; width: number; height: number; error: string; restarted: boolean; stats: WhepStats | null };
+export type PlaybackReport = { running: boolean; frames: number; width: number; height: number; error: string; restarted: boolean; stats: WhepStats | null };
 type InboundVideo = { timestamp: number; framesPerSecond?: number; bytesReceived?: number; jitter?: number; packetsLost?: number; packetsReceived?: number; framesDropped?: number };
 
 const ICE_GATHER_MS = 2000;
-const REPORT_MS = 500;
+export const REPORT_MS = 500;
 const STATS_WINDOW_REPORTS = 5;
 export const HIDDEN_GRACE_MS = 10_000;
+export const STOPPED: PlaybackReport = { running: false, frames: 0, width: 0, height: 0, error: '', restarted: false, stats: null };
 
 const iceGathered = (peer: RTCPeerConnection): Promise<void> =>
   new Promise((resolve) => {
@@ -53,7 +54,7 @@ export const whepStats = (inbound: InboundVideo, oldest: WhepCounters | null): W
 const inboundVideo = (report: RTCStatsReport): InboundVideo | null =>
   ([...report.values()] as (InboundVideo & { type: string; kind?: string })[]).find((stat) => stat.type === 'inbound-rtp' && stat.kind === 'video') ?? null;
 
-const connectWhep = (video: HTMLVideoElement, endpoint: string, report: (reading: WhepReport) => void): (() => void) => {
+const connectWhep = (video: HTMLVideoElement, endpoint: string, report: (reading: PlaybackReport) => void): (() => void) => {
   const peer = new RTCPeerConnection();
   const session = { resource: null as string | null, error: '', first: true, stats: null as WhepStats | null, history: [] as readonly WhepCounters[] };
   peer.addTransceiver('video', { direction: 'recvonly' });
@@ -88,7 +89,7 @@ const connectWhep = (video: HTMLVideoElement, endpoint: string, report: (reading
 
 const shown = (): boolean => document.visibilityState !== 'hidden';
 
-export const whileShown = (start: () => () => void, keep: () => boolean): (() => void) => {
+export const whileShown = (start: () => () => void, keep: () => boolean, paused: () => void = () => undefined): (() => void) => {
   const session = { stop: shown() ? start() : null, timer: undefined as ReturnType<typeof setTimeout> | undefined };
   const pause = () => {
     if (keep()) {
@@ -96,6 +97,7 @@ export const whileShown = (start: () => () => void, keep: () => boolean): (() =>
       return;
     }
     session.stop?.();
+    if (session.stop !== null) paused();
     session.stop = null;
   };
   const changed = () => {
@@ -111,7 +113,11 @@ export const whileShown = (start: () => () => void, keep: () => boolean): (() =>
   };
 };
 
-const watched = (video: HTMLVideoElement): boolean => document.pictureInPictureElement === video || recording(video.srcObject);
+export const watched = (video: HTMLVideoElement): boolean => document.pictureInPictureElement === video || recordingPicture(video);
 
-export const playWhep = (video: HTMLVideoElement, endpoint: string, report: (reading: WhepReport) => void): (() => void) =>
-  whileShown(() => connectWhep(video, endpoint, report), () => watched(video));
+export const playWhep = (video: HTMLVideoElement, endpoint: string, report: (reading: PlaybackReport) => void): (() => void) =>
+  whileShown(
+    () => connectWhep(video, endpoint, report),
+    () => watched(video),
+    () => report(STOPPED),
+  );

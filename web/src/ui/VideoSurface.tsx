@@ -5,7 +5,7 @@ import { settingControl, useQgcBool, useQgcPath, useQgcValue } from '@/bridge/Qg
 import { type NativePlayer, VIDEO_LOG, playNative, playsNatively } from '@/core/nativeVideo';
 import { recordStream } from '@/core/recorder';
 import { playHls } from '@/core/hls';
-import { type WhepReport, playWhep } from '@/core/whep';
+import { type PlaybackReport, playWhep } from '@/core/whep';
 import { useUpdatedRef } from '@/kotlin/Compose';
 import { createDocument } from '@/kotlin/Platform';
 import { same } from '@/kotlin/Std';
@@ -485,7 +485,7 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
     const painted = canvas.current;
     const main = channel === MAIN_VIDEO_CHANNEL;
     const surface = Symbol('main video');
-    const report = (reading: WhepReport) => {
+    const report = (reading: PlaybackReport) => {
       void VideoCommands.reportPlayback(channel, reading);
       if (main && reading.running && reading.stats !== null) mainVideoStats.set(surface, reading.stats);
       else if (main) mainVideoStats.remove(surface);

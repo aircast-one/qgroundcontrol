@@ -2,7 +2,18 @@ const MIME_TYPES: readonly string[] = ['video/mp4;codecs=avc1', 'video/mp4', 'vi
 const CHUNK_MS = 1000;
 const recorded = new WeakSet<MediaProvider>();
 
+const captured = new WeakMap<HTMLVideoElement, MediaStream>();
+
 export const recording = (stream: MediaProvider | null): boolean => stream !== null && recorded.has(stream);
+
+export const recordingPicture = (video: HTMLVideoElement): boolean => recording(video.srcObject) || recording(captured.get(video) ?? null);
+
+export const pictureStream = (video: HTMLVideoElement, buffered: boolean): MediaStream | null => {
+  if (video.srcObject instanceof MediaStream) return video.srcObject;
+  const stream = buffered ? (captured.get(video) ?? (video as HTMLVideoElement & { captureStream?: () => MediaStream }).captureStream?.() ?? null) : null;
+  if (stream !== null) captured.set(video, stream);
+  return stream;
+};
 
 export const recordedName = (file: string, mime: string): string => {
   const leaf = file.slice(file.lastIndexOf('/') + 1);

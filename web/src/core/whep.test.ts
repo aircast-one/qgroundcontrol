@@ -44,6 +44,23 @@ describe('whileShown', () => {
     expect(counts).toEqual({ started: 2, stopped: 2 });
   });
 
+  it('tells the core the picture stopped when a hidden tab hangs up, so the hidden minutes are not counted as steady picture', () => {
+    const { counts, start } = stream();
+    const told = { paused: 0 };
+    const stop = whileShown(start, () => false, () => {
+      told.paused += 1;
+    });
+    show('hidden');
+    vi.advanceTimersByTime(HIDDEN_GRACE_MS - 1);
+    expect(told.paused).toBe(0);
+    vi.advanceTimersByTime(1);
+    expect([counts.stopped, told.paused]).toEqual([1, 1]);
+    vi.advanceTimersByTime(3 * HIDDEN_GRACE_MS);
+    show('visible');
+    stop();
+    expect(told.paused, 'a deliberate stop is not a pause').toBe(1);
+  });
+
   it('keeps a recorded stream while hidden and hangs up once the recording ends', () => {
     const { counts, start } = stream();
     const kept = { recording: true };

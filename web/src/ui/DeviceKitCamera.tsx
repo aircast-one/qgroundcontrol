@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { type WhepReport, playWhep } from '@/core/whep';
+import { type PlaybackReport, playWhep } from '@/core/whep';
 import { CircularProgressIndicator, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { Color, md } from '@/theme/Colors';
@@ -15,7 +15,7 @@ export const keepWhepPlaying = (video: HTMLVideoElement, endpoint: string, onPla
     connected: false,
     timer: undefined as ReturnType<typeof setTimeout> | undefined,
   };
-  const report = (reading: WhepReport) => {
+  const report = (reading: PlaybackReport) => {
     onPlaying(reading.running && reading.frames > 0);
     if (reading.restarted) session.connected = false;
     if (reading.running) {

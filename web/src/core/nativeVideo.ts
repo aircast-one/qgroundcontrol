@@ -1,7 +1,7 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { AppCommands } from '@/bridge/BridgeCommands';
 import { sendCommand } from './desktopCommands';
-import type { WhepCounters, WhepReport, WhepStats } from './whep';
+import type { WhepCounters, PlaybackReport, WhepStats } from './whep';
 
 export type NativeMessage =
   | { kind: 'config'; codec: string }
@@ -141,7 +141,7 @@ export const nativeLogLine = ({ event, stream, transport, since, now, keyAt, que
   ].join(' ');
 };
 
-export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (reading: WhepReport) => void, recordingStopped: (reason: string) => void): NativePlayer => {
+export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (reading: PlaybackReport) => void, recordingStopped: (reason: string) => void): NativePlayer => {
   const context = canvas.getContext('2d');
   const session = { id: null as number | null, closed: false, frames: 0, failures: 0, first: true, playback: startingPlayback, size: null as FrameSize | null, requests: 0 };
   const totals = { bytes: 0, lost: 0, received: 0, dropped: 0, arrivals: [] as number[], reported: { bytes: 0, lost: 0, received: 0, dropped: 0, at: performance.now() } as WhepCounters, reportedFrames: 0 };
