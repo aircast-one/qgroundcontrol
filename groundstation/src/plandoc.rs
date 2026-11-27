@@ -1228,6 +1228,37 @@ pub fn set_command(
     }
 }
 
+pub fn command_at(
+    doc: &Document,
+    visual_index: usize,
+    command: i64,
+    defaults: &EditDefaults,
+) -> Option<(Document, Option<usize>)> {
+    let (at, current) = simple_at(doc, visual_index)?;
+    let commands = cmdinfo::tree(firmware(doc.firmware_type), command_class_at(doc, at));
+    let positioned = |id: i64| commands.get(&id).is_some_and(|c| c.specifies_coordinate);
+    let action = |item: &Item| {
+        matches!(item, Item::Simple(s) if !positioned(s.command)
+            && s.command != CMD_NAV_RETURN_TO_LAUNCH
+            && commands.get(&s.command).is_none_or(|c| !c.is_land))
+    };
+    match current.command != command && positioned(current.command) && !positioned(command) {
+        false => set_command(doc, visual_index, command, defaults).map(|changed| (changed, None)),
+        true => {
+            let added = visual_index
+                + 1
+                + doc.items[at + 1..]
+                    .iter()
+                    .take_while(|item| action(item))
+                    .count();
+            Some((
+                insert_simple(doc, command, 0.0, 0.0, added as i64, defaults),
+                Some(added),
+            ))
+        }
+    }
+}
+
 pub fn set_frame(doc: &Document, visual_index: usize, frame: i64) -> Option<Document> {
     let (at, current) = simple_at(doc, visual_index)?;
     Some(replaced(
@@ -2664,6 +2695,50 @@ mod tests {
         map_center: None,
         vtol_transition_distance: VTOL_TRANSITION_DISTANCE_DEFAULT,
     };
+
+    #[test]
+    fn a_command_with_no_position_picked_on_a_waypoint_is_added_at_it_instead_of_replacing_it() {
+        let text = r#"{"fileType":"Plan","version":1,"groundStation":"QGroundControl","mission":{"version":2,"firmwareType":3,"vehicleType":2,"cruiseSpeed":15,"hoverSpeed":5,"plannedHomePosition":[47.0,8.0,500],"items":[
+            {"type":"SimpleItem","autoContinue":true,"command":22,"doJumpId":1,"frame":3,"params":[0,0,0,null,0,0,5]},
+            {"type":"SimpleItem","autoContinue":true,"command":16,"doJumpId":2,"frame":3,"params":[0,0,0,null,47.001,8.0,26]},
+            {"type":"SimpleItem","autoContinue":true,"command":93,"doJumpId":3,"frame":2,"params":[10,-1,-1,-1,0,0,0]},
+            {"type":"SimpleItem","autoContinue":true,"command":16,"doJumpId":4,"frame":3,"params":[0,0,0,null,47.002,8.0,26]},
+            {"type":"SimpleItem","autoContinue":true,"command":20,"doJumpId":5,"frame":2,"params":[0,0,0,0,0,0,0]}]},"geoFence":{"version":2,"polygons":[],"circles":[]},"rallyPoints":{"version":2,"points":[]}}"#;
+        let doc = load(text, 2).unwrap();
+        let commands = |doc: &Document| {
+            doc.items
+                .iter()
+                .map(|item| match item {
+                    Item::Simple(s) => s.command,
+                    Item::Complex { .. } => 0,
+                })
+                .collect::<Vec<_>>()
+        };
+        let (servo, added) = command_at(&doc, 2, 183, &QT_DEFAULTS).unwrap();
+        assert_eq!(
+            (commands(&servo), added),
+            (vec![22, 16, 93, 183, 16, 20], Some(4)),
+            "Set servo picked on waypoint 2 keeps the waypoint and lands after the hold already attached to it, before the next waypoint"
+        );
+        let (last, added) = command_at(&doc, 4, 183, &QT_DEFAULTS).unwrap();
+        assert_eq!(
+            (commands(&last), added),
+            (vec![22, 16, 93, 16, 183, 20], Some(5)),
+            "on the last waypoint it lands before the return, which is not one of the waypoint's actions"
+        );
+        let (loiter, added) = command_at(&doc, 2, 19, &QT_DEFAULTS).unwrap();
+        assert_eq!(
+            (commands(&loiter), added),
+            (vec![22, 19, 93, 16, 20], None),
+            "another command with a position still replaces the waypoint"
+        );
+        let (delay, added) = command_at(&doc, 3, 183, &QT_DEFAULTS).unwrap();
+        assert_eq!(
+            (commands(&delay), added),
+            (vec![22, 16, 183, 16, 20], None),
+            "an item that had no position is changed in place"
+        );
+    }
 
     #[test]
     fn whole_numbers_written_as_floats_load_as_qt_reads_them_with_to_int() {

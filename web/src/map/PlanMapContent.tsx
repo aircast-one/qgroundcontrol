@@ -299,6 +299,7 @@ export const PlanMapContent = ({
   });
   const feedback = usePlanFeedback();
   const { busy, edits, say, onBridge, onRefusal } = feedback;
+  const noteSeen = useRemembered<number | null>(null);
   const centre = useRemembered<TrackPoint | null>(null);
   const zoom = useRemembered(0.0);
   const [controlsRef, controlsHeightPx] = useMeasuredHeight();
@@ -478,6 +479,10 @@ export const PlanMapContent = ({
     const plan = await PlanBridge.rawItems();
     if (plan !== null) MapBridge.markReachable();
     const nextAll = allMissionItems(plan);
+    const noteId = optInt(plan, 'noteId');
+    const note = optText(plan, 'note');
+    if (noteSeen.value !== null && noteId > noteSeen.value && note !== '') say(note);
+    noteSeen.value = noteId;
     const nextItems = nextAll.filter((it) => it.placed);
     const nextItemCount = planItemCount(plan);
     const nextLink = linksStartToHome(plan);

@@ -74,6 +74,8 @@ struct Held {
     vehicle_prompt: Option<bool>,
     breach_altitude: Option<f64>,
     wizard: Option<usize>,
+    note: Option<String>,
+    note_id: u64,
 }
 
 pub const LOAD_VEHICLE_PLAN: &str = "core.plan.loadVehiclePlan";
@@ -348,6 +350,7 @@ fn edit_selecting(
                 state.dirty = true;
                 state.dirty_for_save = true;
                 state.selected = selected.unwrap_or(state.selected);
+                state.note = None;
                 (json!({ "ok": true, "items": count }), before)
             }
             Err(reason) => return refused(reason),
@@ -788,18 +791,62 @@ fn item_edit(backend: &dyn Backend, args: &str, command: bool) -> Value {
     let Some(defaults) = edit_defaults(backend) else {
         return refused("The default mission item altitude is not known.");
     };
-    let answer = edit(|doc| {
-        let changed = match command {
-            true => plandoc::set_command(doc, index, value as i64, &defaults),
-            false => plandoc::set_altitude(doc, index, value),
-        };
-        changed.ok_or_else(|| format!("Item {index} cannot take that edit."))
-    });
-    if command && answer["ok"] == true {
+    let added = match command {
+        true => held()
+            .document
+            .as_ref()
+            .and_then(|doc| plandoc::command_at(doc, index, value as i64, &defaults))
+            .and_then(|(_, added)| added),
+        false => None,
+    };
+    let answer = edit_selecting(
+        |doc| {
+            let changed = match command {
+                true => plandoc::command_at(doc, index, value as i64, &defaults)
+                    .map(|(changed, _)| changed),
+                false => plandoc::set_altitude(doc, index, value),
+            };
+            changed.ok_or_else(|| format!("Item {index} cannot take that edit."))
+        },
+        added.map(|at| at as i64),
+    );
+    if command && answer["ok"] == true && added.is_none() {
         raw_edits().remove(&index);
         changed();
     }
+    if let Some(note) = added
+        .filter(|_| answer["ok"] == true)
+        .and_then(|at| added_note(index, at))
+    {
+        let mut state = held();
+        state.note = Some(note);
+        state.note_id += 1;
+        drop(state);
+        changed();
+    }
     answer
+}
+
+fn added_note(waypoint: usize, added: usize) -> Option<String> {
+    let doc = held().document.clone()?;
+    let reads = crate::missionitems::document_reads(&doc, -1).ok()?;
+    let stops = crate::missionitems::stops(&reads);
+    let name = |index: usize| {
+        reads.get(index)?.get("commandName")?.as_str().map(|text| {
+            let lower = text.to_lowercase();
+            lower
+                .chars()
+                .take(1)
+                .flat_map(char::to_uppercase)
+                .chain(lower.chars().skip(1))
+                .collect::<String>()
+        })
+    };
+    let at = match stops.get(waypoint).copied().flatten() {
+        Some(number) => format!("{} {number}", name(waypoint)?),
+        None => name(waypoint)?,
+    };
+    Some(format!("{} added at {at}", name(added)?))
 }
 
 fn offline_types() -> (i64, i64) {
@@ -2197,12 +2244,13 @@ pub fn fly_view(backend: &dyn Backend) -> Value {
 }
 
 pub fn view(backend: &dyn Backend) -> Value {
-    let (document, selected, clean) = {
+    let (document, selected, clean, note) = {
         let state = held();
         (
             state.document.clone().unwrap_or_else(empty_document),
             state.selected,
             state.clean.clone(),
+            json!({ "note": state.note, "noteId": state.note_id }),
         )
     };
     let rover = crate::read::flag(
@@ -2210,8 +2258,14 @@ pub fn view(backend: &dyn Backend) -> Value {
         "rover",
     );
     crate::missionitems::document_view(&document, selected, &crate::read::Unit::vertical(backend), &crate::read::Unit::horizontal(backend), &crate::read::Unit::speed(backend), rover)
-        .map(|view| marked_edited(view, &document, clean.as_ref()))
+        .map(|view| with_note(marked_edited(view, &document, clean.as_ref()), note))
         .unwrap_or_else(|reason| json!({ "kind": "object", "class": "MissionItems", "available": false, "items": [], "selected": -1, "reason": reason }))
+}
+
+fn with_note(mut view: Value, note: Value) -> Value {
+    view["note"] = note["note"].clone();
+    view["noteId"] = note["noteId"].clone();
+    view
 }
 
 pub(crate) fn visual_spans(document: &Document) -> Vec<(i64, i64)> {
