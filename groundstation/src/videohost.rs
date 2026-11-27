@@ -1078,6 +1078,9 @@ fn report(
     let (progress, stall) = stalled(played.progress, buffers, frames, timeout_s, now_ms);
     played.progress = progress;
     if stall {
+        let frames_moved_ms = progress
+            .filter(|_| frames > 0)
+            .map_or(now_ms, |watch| watch.decoded.0);
         let problem = match buffered {
             true => format!(
                 "The buffered video from {} did not play either.",
@@ -1095,7 +1098,8 @@ fn report(
         played.flowing = false;
         RESTART[channel].store(true, std::sync::atomic::Ordering::Relaxed);
         let outs: Vec<Out> = [
-            host.state.on_decoding(receiver, false, now_ms / 1000),
+            host.state
+                .on_decoding(receiver, false, frames_moved_ms / 1000),
             host.state.on_streaming(receiver, false),
             host.state.on_stop_complete(receiver, Outcome::Failed),
         ]
@@ -2144,6 +2148,40 @@ mod tests {
             view["whepEndpoints"][channel].clone(),
             view["hlsEndpoints"][channel].clone(),
         )
+    }
+
+    #[test]
+    fn a_picture_that_froze_counts_as_steady_only_for_the_time_its_frames_moved() {
+        let mut host = hosted(WHEP_PAIR, 0, false);
+        played(&mut host, MAIN_CHANNEL, 500, 9_000, |_| 0);
+        assert_eq!(host.state.reconnect_attempts(MAIN_RECEIVER), 1);
+        let moving = |from: u64, until: u64| {
+            move |now: u64| (now.min(until).saturating_sub(from) / 100) as i64
+        };
+        played(
+            &mut host,
+            MAIN_CHANNEL,
+            9_500,
+            42_000,
+            moving(10_000, 33_000),
+        );
+        assert_eq!(
+            host.state.reconnect_attempts(MAIN_RECEIVER),
+            2,
+            "the picture moved for 23 s and then sat frozen until the stall was declared 8 s later: counting the frozen seconds made it 31 s of steady picture and the backoff started over"
+        );
+        played(
+            &mut host,
+            MAIN_CHANNEL,
+            42_500,
+            100_000,
+            moving(44_000, 80_000),
+        );
+        assert_eq!(
+            host.state.reconnect_attempts(MAIN_RECEIVER),
+            1,
+            "36 s of moving frames is a link that holds, so the next drop retries from the shortest delay"
+        );
     }
 
     #[test]

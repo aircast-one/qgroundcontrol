@@ -616,6 +616,7 @@ impl VideoState {
                 receiver.last_frame_s = None;
                 receiver.attempts = 0;
                 receiver.reconnect_attempts = 0;
+                receiver.decoding_since_s = None;
                 receiver.failing_since_s = None;
             });
         });
@@ -2201,6 +2202,28 @@ mod tests {
                     delay_ms: RESTART_DELAY_MS
                 }),
             "a picture that held steady resets the backoff; unlike GstVideoReceiver's first tee frame, a picture that drops within seconds does not"
+        );
+    }
+
+    #[test]
+    fn a_camera_switched_to_does_not_inherit_how_long_the_last_one_played() {
+        let mut state = wired();
+        state.on_decoding(MAIN_RECEIVER, true, 0);
+        state.on_settings(Settings {
+            active_source: 1,
+            ..settings()
+        });
+        state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed);
+        state.on_decoding(MAIN_RECEIVER, true, 100);
+        state.on_decoding(MAIN_RECEIVER, false, 105);
+        assert!(
+            state
+                .on_stop_complete(MAIN_RECEIVER, Outcome::Failed)
+                .contains(&Out::RestartAfter {
+                    receiver: MAIN_RECEIVER.to_string(),
+                    delay_ms: 2000
+                }),
+            "the new camera played 5 s, not the 105 s since the old one started, so its backoff keeps growing"
         );
     }
 
