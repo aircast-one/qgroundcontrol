@@ -2,7 +2,6 @@ import {
   type CSSProperties,
   type HTMLAttributes,
   type KeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type Ref,
   type RefCallback,
@@ -27,7 +26,7 @@ import { lostVehicle } from '@/map/LostVehicle';
 import { FOLLOW_VEHICLE, mapFollowing, mapWindow, vehicleOffScreen } from '@/map/MapFollow';
 import { type TrackPoint, isPlottable } from '@/map/VehicleMap';
 import { VEHICLES_VIEW, vehicleChoices } from '@/map/VehiclePicker';
-import { coerceAtLeast, coerceIn, same } from '@/kotlin/Std';
+import { coerceAtLeast, same } from '@/kotlin/Std';
 import { Surface, Text } from '@/m3';
 import { Map3d, useMap3dShown } from '@/map/Map3d';
 import { MapLayersSheet } from '@/map/MapLayersSheet';
@@ -47,6 +46,7 @@ import { LocalFlyScreenState, MENU_SHEET } from '@/ui/FlyScreenState';
 import { useArmed, useHasVehicle } from '@/ui/FlyState';
 import { ApproximateAimNote, GIMBAL_INDICATOR_PATH, GimbalModeSwitch, gimbalSwitchShown, onScreenGimbal, reportSwitchShown } from '@/ui/GimbalIndicator';
 import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
+import { PipGrip, usePipFrame } from '@/ui/PipFrame';
 import { LocalCompactHud, LocalFlyOsd, OSD_CONTROL_SIZE, OSD_SCRIM, compactHud, osdShadow, useOsdBackdrop, useOsdTint } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText, useMap3dDrawn } from '@/ui/Map3dView';
@@ -76,7 +76,7 @@ import { VIDEO_VIEW, videoReading } from '@/ui/VideoView';
 import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { VirtualJoystick, useShownStickPad } from '@/ui/VirtualJoystick';
 
-const FLY_STORE = 'fly';
+export const FLY_STORE = 'fly';
 const FLY_VIEW_KEY = 'view';
 export const STATUS_ROW_HEIGHT = 32;
 const PAYLOAD_STRIP_CLEARANCE = 64;
@@ -339,155 +339,6 @@ const thumbPlace = (size: Size, lead: number, moved: Offset): CSSProperties => (
   width: size.width,
   height: size.height,
 });
-
-const PIP_PLACE_KEY = 'pipPlace';
-const PIP_SCALE_KEY = 'pipScale';
-const PIP_DRAG_SLOP = 8;
-const PIP_SMALLEST = 0.6;
-const PIP_WIDEST_SHARE = 0.7;
-const PIP_GRIP_SIZE = 28;
-
-export const pipWithin = (moved: Offset, room: Size): Offset => Offset(coerceIn(moved.x, 0, Math.max(0, room.width)), coerceIn(moved.y, Math.min(0, -room.height), 0));
-
-export const storedPipPlace = (text: string | null): Offset => {
-  const [x, y] = (text ?? '').split(',').map(Number);
-  return x !== undefined && y !== undefined && Number.isFinite(x) && Number.isFinite(y) ? Offset(x, y) : Offset(0, 0);
-};
-
-export const storedPipScale = (text: string | null): number => {
-  const scale = Number(text ?? Number.NaN);
-  return Number.isFinite(scale) && scale > 0 ? scale : 1;
-};
-
-export const pipLargestScale = (base: Size, space: Size): number => Math.max(PIP_SMALLEST, Math.min((space.width * PIP_WIDEST_SHARE) / base.width, space.height / base.height));
-
-export const pipScaleWithin = (scale: number, largest: number): number => coerceIn(scale, PIP_SMALLEST, Math.max(PIP_SMALLEST, largest));
-
-export const scaledPip = (base: Size, scale: number): Size => Size(Math.round(base.width * scale), Math.round(base.height * scale));
-
-export const gripScale = (start: number, base: Size, dx: number, dy: number): number => {
-  const across = dx / base.width;
-  const up = -dy / base.height;
-  return start + (Math.abs(across) >= Math.abs(up) ? across : up);
-};
-
-const spreadOf = (points: ReadonlyMap<number, Offset>): number => {
-  const [a, b] = [...points.values()];
-  return a === undefined || b === undefined ? 0 : Math.hypot(a.x - b.x, a.y - b.y);
-};
-
-type PipShown = { moved: Offset; scale: number };
-type PipGesture = { kind: 'move'; from: Offset } | { kind: 'pinch'; spread: number; from: PipShown } | { kind: 'grip'; from: Offset; scale: number };
-type PipFrame = { moved: Offset; size: Size; adjusting: boolean; handlers: HTMLAttributes<HTMLElement>; grip: HTMLAttributes<HTMLElement> };
-
-const usePipFrame = (base: Size, space: Size, scalable: boolean): PipFrame => {
-  const [placed, setPlaced] = useState(() => storedPipPlace(getSharedPreferences(FLY_STORE).getString(PIP_PLACE_KEY, null)));
-  const [scale, setScale] = useState(() => storedPipScale(getSharedPreferences(FLY_STORE).getString(PIP_SCALE_KEY, null)));
-  const [live, setLive] = useState<PipShown | null>(null);
-  const largest = pipLargestScale(base, space);
-  const within = (wanted: number) => (scalable ? pipScaleWithin(wanted, largest) : 1);
-  const roomFor = (size: Size) => Size(space.width - size.width, space.height - size.height);
-  const size = scaledPip(base, within(live?.scale ?? scale));
-  const latest = useUpdatedRef({ placed, scale: within(scale), base, scalable, within, roomFor });
-  const points = useRef<ReadonlyMap<number, Offset>>(new Map());
-  const gesture = useRef<PipGesture | null>(null);
-  const shown = useRef<PipShown | null>(null);
-  const dropped = useRef(false);
-  const release = useRef<() => void>(() => undefined);
-  useEffect(() => () => release.current(), []);
-  const show = (next: PipShown) => {
-    shown.current = next;
-    setLive(next);
-  };
-  const follow = (event: PointerEvent) => {
-    if (!points.current.has(event.pointerId)) return;
-    points.current = new Map(points.current).set(event.pointerId, Offset(event.clientX, event.clientY));
-    const now = latest.current;
-    const at = gesture.current;
-    if (at === null) return;
-    if (at.kind === 'pinch') {
-      const spread = spreadOf(points.current);
-      if (spread > 0 && at.spread > 0) show({ moved: at.from.moved, scale: (at.from.scale * spread) / at.spread });
-      return;
-    }
-    const [dx, dy] = [event.clientX - at.from.x, event.clientY - at.from.y];
-    if (at.kind === 'grip') {
-      show({ moved: now.placed, scale: gripScale(at.scale, now.base, dx, dy) });
-      return;
-    }
-    if (shown.current === null && Math.hypot(dx, dy) < PIP_DRAG_SLOP) return;
-    show({ moved: Offset(now.placed.x + dx, now.placed.y + dy), scale: now.scale });
-  };
-  const end = (event: PointerEvent) => {
-    if (!points.current.has(event.pointerId)) return;
-    points.current = new Map([...points.current].filter(([pointer]) => pointer !== event.pointerId));
-    if (points.current.size > 0) return;
-    release.current();
-    gesture.current = null;
-    const kept = shown.current;
-    shown.current = null;
-    setLive(null);
-    if (kept === null) return;
-    const now = latest.current;
-    const keptScale = now.within(kept.scale);
-    const keptPlace = pipWithin(kept.moved, now.roomFor(scaledPip(now.base, keptScale)));
-    getSharedPreferences(FLY_STORE).putString(PIP_PLACE_KEY, `${keptPlace.x},${keptPlace.y}`);
-    getSharedPreferences(FLY_STORE).putString(PIP_SCALE_KEY, `${keptScale}`);
-    setPlaced(keptPlace);
-    setScale(keptScale);
-    dropped.current = true;
-  };
-  const press = (event: ReactPointerEvent<HTMLElement>, gripped: boolean) => {
-    if (event.button !== 0) return;
-    if (gripped) event.stopPropagation();
-    if (points.current.size === 0) {
-      dropped.current = false;
-      window.addEventListener('pointermove', follow);
-      window.addEventListener('pointerup', end);
-      window.addEventListener('pointercancel', end);
-      release.current = () => {
-        window.removeEventListener('pointermove', follow);
-        window.removeEventListener('pointerup', end);
-        window.removeEventListener('pointercancel', end);
-      };
-    }
-    points.current = new Map(points.current).set(event.pointerId, Offset(event.clientX, event.clientY));
-    const now = latest.current;
-    const from = Offset(event.clientX, event.clientY);
-    gesture.current = gripped
-      ? { kind: 'grip', from, scale: now.scale }
-      : points.current.size >= 2 && now.scalable
-        ? { kind: 'pinch', spread: spreadOf(points.current), from: shown.current ?? { moved: now.placed, scale: now.scale } }
-        : points.current.size >= 2
-          ? gesture.current
-          : { kind: 'move', from };
-  };
-  const swallowDrop = (event: SyntheticEvent) => {
-    if (!dropped.current) return;
-    dropped.current = false;
-    event.stopPropagation();
-    event.preventDefault();
-  };
-  return {
-    moved: pipWithin(live?.moved ?? placed, roomFor(size)),
-    size,
-    adjusting: live !== null,
-    handlers: { onPointerDown: (event) => press(event, false), onClickCapture: swallowDrop },
-    grip: { onPointerDown: (event) => press(event, true), onClick: (event) => event.stopPropagation() },
-  };
-};
-
-const PipGrip = ({ grip }: { grip: HTMLAttributes<HTMLElement> }) => (
-  <div
-    {...grip}
-    data-testid="pip-resize"
-    aria-hidden
-    className="absolute end-1 top-1 hidden cursor-nesw-resize touch-none place-items-center rounded-full opacity-0 transition-opacity group-hover:opacity-100 pointer-fine:grid"
-    style={{ width: PIP_GRIP_SIZE, height: PIP_GRIP_SIZE, background: OSD_SCRIM, color: Color.White }}
-  >
-    <Drawable name="ic_fullscreen" size={16} />
-  </div>
-);
 
 type FlyScreenProps = {
   view: FlyView;

@@ -76,6 +76,10 @@ func pipScaleWithin(_ scale: Double, _ largest: Double) -> Double {
     min(max(scale, PIP_SMALLEST), max(PIP_SMALLEST, largest))
 }
 
+func pinchedPipScale(_ stored: Double, _ magnification: Double, _ largest: Double) -> Double {
+    pipScaleWithin(pipScaleWithin(stored, largest) * magnification, largest)
+}
+
 func scaledPip(_ base: CGSize, _ scale: Double) -> CGSize {
     CGSize(width: (base.width * scale).rounded(), height: (base.height * scale).rounded())
 }
@@ -202,9 +206,9 @@ struct FlyScreen: View {
     private var pipSide: CGSize { scaledPip(PIP_BASE, pipScaleWithin(pinching ?? pipScale, pipLargest)) }
     private var pipPinch: some Gesture {
         MagnifyGesture()
-            .onChanged { pinching = pipScale * $0.magnification }
+            .onChanged { pinching = pinchedPipScale(pipScale, $0.magnification, pipLargest) }
             .onEnded { pinch in
-                pipScale = pipScaleWithin(pipScale * pinch.magnification, pipLargest)
+                pipScale = pinchedPipScale(pipScale, pinch.magnification, pipLargest)
                 savePipScale(pipScale)
                 pinching = nil
             }

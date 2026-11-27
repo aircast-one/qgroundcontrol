@@ -172,25 +172,35 @@ internal fun pipScaleWithin(scale: Float, largest: Float): Float = scale.coerceI
 
 internal fun scaledPip(base: Size, scale: Float): Size = Size(Math.round(base.width * scale).toFloat(), Math.round(base.height * scale).toFloat())
 
-internal class PipFrameState(private val prefs: android.content.SharedPreferences) {
-    var placed by mutableStateOf(storedPipPlace(prefs.getString(PIP_PLACE_KEY, null)))
-        private set
-    var scale by mutableStateOf(storedPipScale(prefs.getString(PIP_SCALE_KEY, null)))
-        private set
-    var adjusting by mutableStateOf(false)
-        private set
+internal data class PipShown(val moved: Offset, val scale: Float)
 
-    fun adjust(moved: Offset, zoom: Float) {
-        adjusting = true
-        placed += moved
-        scale *= zoom
+internal fun pipKept(dropped: PipShown, drawn: PipShown, stored: PipShown): PipShown = PipShown(
+    moved = if (dropped.moved == drawn.moved) stored.moved else dropped.moved,
+    scale = if (dropped.scale == drawn.scale) stored.scale else dropped.scale,
+)
+
+internal class PipFrameState(private val prefs: android.content.SharedPreferences) {
+    private var stored by mutableStateOf(PipShown(storedPipPlace(prefs.getString(PIP_PLACE_KEY, null)), storedPipScale(prefs.getString(PIP_SCALE_KEY, null))))
+    private var live by mutableStateOf<PipShown?>(null)
+    private var start: PipShown? = null
+
+    val shown: PipShown get() = live ?: stored
+    val adjusting: Boolean get() = live != null
+
+    fun adjust(drawn: PipShown, moved: Offset, zoom: Float) {
+        val from = live ?: drawn.also { start = it }
+        live = PipShown(from.moved + moved, from.scale * zoom)
     }
 
-    fun keep(place: Offset, size: Float) {
-        adjusting = false
-        placed = place
-        scale = size
-        prefs.edit().putString(PIP_PLACE_KEY, "${place.x},${place.y}").putString(PIP_SCALE_KEY, size.toString()).apply()
+    fun keep(dropped: PipShown) {
+        val kept = pipKept(dropped, start ?: dropped, stored)
+        prefs.edit()
+            .apply { if (kept.moved != stored.moved) putString(PIP_PLACE_KEY, "${kept.moved.x},${kept.moved.y}") }
+            .apply { if (kept.scale != stored.scale) putString(PIP_SCALE_KEY, kept.scale.toString()) }
+            .apply()
+        stored = kept
+        live = null
+        start = null
     }
 }
 
@@ -272,15 +282,15 @@ internal fun FlyScreen(
             boxSize.width / pipDensity - (thumbLead + AircastSpace.s3 * 2 + cutoutStart + cutoutEnd).value,
             (boxHeight - AircastSpace.s3 * 2 - STATUS_ROW_HEIGHT - AircastSpace.s4).value,
         )
-        val pipScale = if (minimapCollapsed) 1f else pipScaleWithin(pip.scale, pipLargestScale(Size(thumbBase.value, thumbBase.value), pipSpace))
+        val pipScale = if (minimapCollapsed) 1f else pipScaleWithin(pip.shown.scale, pipLargestScale(Size(thumbBase.value, thumbBase.value), pipSpace))
         val thumb = scaledPip(Size(thumbBase.value, thumbBase.value), pipScale).width.dp
-        val pipMoved = pipWithin(pip.placed, Size(pipSpace.width - thumb.value, pipSpace.height - thumb.value))
-        val keepPip by rememberUpdatedState({ pip.keep(pipMoved, pipScale) })
+        val pipMoved = pipWithin(pip.shown.moved, Size(pipSpace.width - thumb.value, pipSpace.height - thumb.value))
+        val pipDrawn by rememberUpdatedState(PipShown(pipMoved, pipScale))
         val pipScalable by rememberUpdatedState(!minimapCollapsed)
         val pipDrag = if (layout.editing) Modifier else remember {
             Modifier.pipGestures(
-                onAdjust = { moved, zoom -> pip.adjust(moved / pipDensity, if (pipScalable) zoom else 1f) },
-                onEnd = { keepPip() },
+                onAdjust = { moved, zoom -> pip.adjust(pipDrawn, moved / pipDensity, if (pipScalable) zoom else 1f) },
+                onEnd = { pip.keep(pipDrawn) },
             )
         }
         val thumbAt = Modifier

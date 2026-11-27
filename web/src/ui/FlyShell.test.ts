@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FlyView, FlyViewEntries, Letterbox, Offset, Size, flyViewAllowed, flyViewsOffered, gripScale, pipLargestScale, pipScaleWithin, pipWithin, railAboveMapButtons, scaledPip, stickInsets, storedPipPlace, storedPipScale } from './FlyShell';
+import { FlyView, FlyViewEntries, Letterbox, flyViewAllowed, flyViewsOffered, railAboveMapButtons, stickInsets } from './FlyShell';
 
 describe('PipRulesTest', () => {
   it("the 3D view is offered only while QGC's 3D viewer is enabled, or already showing", () => {
@@ -47,43 +47,5 @@ describe('railAboveMapButtons', () => {
     expect(railAboveMapButtons(40, 48), 'layers alone').toBe(108);
     expect(railAboveMapButtons(40, 48 * 3 + 8 * 2), 'follow, 3D and layers').toBe(220);
     expect(railAboveMapButtons(40, 0), 'before the column is measured').toBe(60);
-  });
-});
-
-describe('PipPlaceTest', () => {
-  it('a dragged picture in picture stays on screen, right of and above where it starts', () => {
-    const room = Size(800, 400);
-    expect(pipWithin(Offset(300, -200), room)).toEqual(Offset(300, -200));
-    expect(pipWithin(Offset(-50, 30), room), 'not past the start edge or below the bottom').toEqual(Offset(0, 0));
-    expect(pipWithin(Offset(5000, -5000), room), 'not off the far edge or into the status row').toEqual(Offset(800, -400));
-    expect(pipWithin(Offset(100, -100), Size(-10, -10)), 'a window smaller than the picture keeps it home').toEqual(Offset(0, 0));
-  });
-
-  it('the place is remembered as two numbers and anything else starts it home', () => {
-    expect(storedPipPlace('300,-200')).toEqual(Offset(300, -200));
-    expect(storedPipPlace(null)).toEqual(Offset(0, 0));
-    expect(storedPipPlace('300')).toEqual(Offset(0, 0));
-    expect(storedPipPlace('a,b')).toEqual(Offset(0, 0));
-  });
-
-  it('the picture grows from its grip by however far it is pulled right or up, keeping its shape', () => {
-    const base = Size(320, 180);
-    expect(gripScale(1, base, 160, 0), 'half its width to the right is half again as big').toBe(1.5);
-    expect(gripScale(1, base, 10, -90), 'up counts in heights when it is the bigger pull').toBe(1.5);
-    expect(gripScale(1.5, base, -160, 20), 'pulled back left it shrinks').toBe(1);
-    expect(scaledPip(base, 1.5)).toEqual(Size(480, 270));
-  });
-
-  it('the picture is kept between a small thumbnail and most of the screen, and a stored size outside that is brought back in', () => {
-    const base = Size(320, 180);
-    const largest = pipLargestScale(base, Size(1200, 600));
-    expect(largest, 'seven tenths of the width, unless the height runs out first').toBeCloseTo(2.625);
-    expect(pipScaleWithin(10, largest)).toBeCloseTo(2.625);
-    expect(pipScaleWithin(0.1, largest), 'never so small it cannot be found or grabbed').toBe(0.6);
-    expect(pipScaleWithin(1.2, pipLargestScale(base, Size(100, 50))), 'a window too small to grow it in still leaves the smallest size').toBe(0.6);
-    expect(storedPipScale('1.5')).toBe(1.5);
-    expect(storedPipScale(null)).toBe(1);
-    expect(storedPipScale('nope')).toBe(1);
-    expect(storedPipScale('0')).toBe(1);
   });
 });

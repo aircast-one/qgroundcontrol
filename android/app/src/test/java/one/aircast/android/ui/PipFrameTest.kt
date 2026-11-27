@@ -68,13 +68,51 @@ class PipFrameTest {
     fun `where the picture was dropped and how big it was pinched come back after a restart`() {
         prefs().edit().clear().commit()
         val pip = PipFrameState(prefs())
-        assertEquals(Offset.Zero to 1f, pip.placed to pip.scale)
-        pip.adjust(Offset(120f, -40f), 1.5f)
+        assertEquals(PipShown(Offset.Zero, 1f), pip.shown)
+        pip.adjust(pip.shown, Offset(120f, -40f), 1.5f)
         assertTrue(pip.adjusting)
-        pip.keep(pip.placed, pip.scale)
+        pip.keep(pip.shown)
         assertFalse(pip.adjusting)
-        val restarted = PipFrameState(prefs())
-        assertEquals(Offset(120f, -40f) to 1.5f, restarted.placed to restarted.scale)
+        assertEquals(PipShown(Offset(120f, -40f), 1.5f), PipFrameState(prefs()).shown)
+    }
+
+    @Test
+    fun `dragging the map button, which has one size, leaves the saved picture size alone`() {
+        prefs().edit().clear().putString("pipPlace", "100.0,-100.0").putString("pipScale", "1.5").commit()
+        val pip = PipFrameState(prefs())
+        val button = PipShown(pip.shown.moved, 1f)
+        pip.adjust(button, Offset(60f, -40f), 1f)
+        pip.keep(PipShown(pip.shown.moved, 1f))
+        assertEquals("the thumbnail comes back at the size it was pinched to", PipShown(Offset(160f, -140f), 1.5f), PipFrameState(prefs()).shown)
+    }
+
+    @Test
+    fun `moving the picture where its saved size does not fit does not shrink it for good`() {
+        prefs().edit().clear().putString("pipScale", "2.0").commit()
+        val pip = PipFrameState(prefs())
+        val squeezed = PipShown(Offset.Zero, 1.2f)
+        pip.adjust(squeezed, Offset(20f, -10f), 1f)
+        pip.keep(PipShown(pip.shown.moved, 1.2f))
+        assertEquals(PipShown(Offset(20f, -10f), 2f), PipFrameState(prefs()).shown)
+    }
+
+    @Test
+    fun `a drag starts from where the picture is drawn, not from a saved place the room no longer reaches`() {
+        prefs().edit().clear().putString("pipPlace", "1100.0,-500.0").commit()
+        val pip = PipFrameState(prefs())
+        val drawn = PipShown(Offset(880f, -420f), 1f)
+        pip.adjust(drawn, Offset(-20f, 10f), 1f)
+        assertEquals("twenty pixels of finger move it twenty pixels at once", Offset(860f, -410f), pip.shown.moved)
+    }
+
+    @Test
+    fun `a pinch that does not move the picture keeps its saved place`() {
+        prefs().edit().clear().putString("pipPlace", "1100.0,-500.0").commit()
+        val pip = PipFrameState(prefs())
+        val drawn = PipShown(Offset(880f, -420f), 1f)
+        pip.adjust(drawn, Offset.Zero, 1.4f)
+        pip.keep(PipShown(drawn.moved, 1.4f))
+        assertEquals(PipShown(Offset(1100f, -500f), 1.4f), PipFrameState(prefs()).shown)
     }
 
     @Test

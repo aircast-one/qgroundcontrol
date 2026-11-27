@@ -37,6 +37,14 @@ final class PipRulesTests: XCTestCase {
         XCTAssertEqual(storedPipScale("0"), 1)
     }
 
+    func testAPinchStartsFromTheSizeThePictureIsDrawnAtNotASavedSizeTheScreenNoLongerFits() {
+        let largest = pipLargestScale(CGSize(width: 320, height: 180), CGSize(width: 500, height: 300))
+        XCTAssertEqual(largest, 1.09375, accuracy: 1e-9)
+        XCTAssertEqual(pinchedPipScale(2, 0.8, largest), 0.875, accuracy: 1e-9, "saved at 2 but drawn at 1.09, a pinch to four fifths shrinks it at once")
+        XCTAssertEqual(pinchedPipScale(1, 1.5, 2.625), 1.5, accuracy: 1e-9)
+        XCTAssertEqual(pinchedPipScale(1, 40, 2.625), 2.625, accuracy: 1e-9)
+    }
+
     func testTheChosenViewsAndTheMiniMapAreReadBackByName() {
         XCTAssertEqual(flyViewNamed("ThreeD"), .ThreeD)
         XCTAssertEqual(flyViewNamed(nil), .Video)
