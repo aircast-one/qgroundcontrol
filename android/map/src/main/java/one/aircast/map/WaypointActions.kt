@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,10 +57,42 @@ fun waypointYaw(view: JSONObject?): WaypointYaw? =
         )
     }?.takeIf { it.path.isNotBlank() }
 
-data class WaypointDrop(val index: Int?, val latitude: Double, val longitude: Double)
+data class WaypointDrop(val index: Int?, val wait: Double, val latitude: Double, val longitude: Double)
 
 fun waypointDrop(view: JSONObject?, latitude: Double, longitude: Double): WaypointDrop? =
-    view?.optJSONObject("drop")?.let { WaypointDrop(if (it.isNull("index")) null else it.optInt("index"), latitude, longitude) }
+    view?.optJSONObject("drop")?.let { WaypointDrop(if (it.isNull("index")) null else it.optInt("index"), it.optDouble("wait", 0.0), latitude, longitude) }
+
+internal const val PLACE_DROP = "core.plan.placeDrop"
+internal const val REMOVE_DROP = "core.plan.removeDrop"
+private const val PAYLOAD_SETTINGS = "settings.flyViewSettings"
+private const val RELEASE_SETTING = "$PAYLOAD_SETTINGS.payloadRelease"
+private const val OUTPUT_SETTING = "$PAYLOAD_SETTINGS.payloadBay1Output"
+private const val PWM_SETTING = "$PAYLOAD_SETTINGS.payloadBay1ReleasePwm"
+private const val SERVO_RELEASE = 1.0
+private val OUTPUT_RANGE = 1.0..16.0
+private val PWM_RANGE = 500.0..2500.0
+private val WAIT_RANGE = 0.0..600.0
+private const val PWM_STEP = 50.0
+
+internal data class DropRelease(val servo: Boolean, val output: Double, val pwm: Double)
+
+private fun settingNumber(view: JSONObject?): Double = view?.optDouble("value", Double.NaN) ?: Double.NaN
+
+internal fun dropRelease(release: JSONObject?, output: JSONObject?, pwm: JSONObject?): DropRelease =
+    DropRelease(servo = settingNumber(release) == SERVO_RELEASE, output = settingNumber(output), pwm = settingNumber(pwm))
+
+internal fun dropText(release: DropRelease, wait: Double): String = listOfNotNull(
+    if (release.servo) "Servo ${trimmedNumber(release.output)} to ${trimmedNumber(release.pwm)}" else "Gripper",
+    "after ${trimmedNumber(wait)} s".takeIf { wait > 0.0 },
+).joinToString(" \u00b7 ")
+
+@Composable
+private fun rememberDropRelease(): DropRelease {
+    val release by mapPath("view.control($RELEASE_SETTING)")
+    val output by mapPath("view.control($OUTPUT_SETTING)")
+    val pwm by mapPath("view.control($PWM_SETTING)")
+    return dropRelease(release, output, pwm)
+}
 
 internal enum class ActionKind { Hover, Camera, Gimbal, Mode, Turn, Drop }
 
@@ -94,7 +127,7 @@ internal fun cameraInterval(extras: CameraExtras?): String = when {
 internal fun startingChoice(labels: List<String>, subject: String): Int? =
     labels.indexOfFirst { it.contains(subject, ignoreCase = true) && !it.contains("stop", ignoreCase = true) }.takeIf { it > NO_CAMERA_ACTION }
 
-internal fun activeActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: CameraChoices?, extras: CameraExtras?, drop: WaypointDrop? = null): List<WaypointAction> = listOfNotNull(
+internal fun activeActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: CameraChoices?, extras: CameraExtras?, drop: WaypointDrop? = null, release: DropRelease? = null): List<WaypointAction> = listOfNotNull(
     hold?.takeIf { it.seconds > 0.0 }?.let { WaypointAction(ActionKind.Hover, "Hover", "${trimmedNumber(it.seconds)} ${it.units}", R.drawable.plan_timer) },
     choices?.takeIf { it.chosen > NO_CAMERA_ACTION }?.let { picked ->
         val label = picked.labels.getOrElse(picked.chosen) { "" }
@@ -103,7 +136,7 @@ internal fun activeActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: Came
     extras?.takeIf { it.commandsGimbal }?.let { WaypointAction(ActionKind.Gimbal, "Gimbal", "${degreesText(it.pitch)} / ${degreesText(it.yaw)}", R.drawable.plan_gimbal) },
     extras?.takeIf { it.modeSupported && it.commandsMode }?.let { WaypointAction(ActionKind.Mode, "Camera mode", CAMERA_MODES.getOrElse(it.mode) { "" }, R.drawable.plan_tune) },
     yaw?.degrees?.let { WaypointAction(ActionKind.Turn, "Turn aircraft", degreesText(it), R.drawable.plan_turn) },
-    drop?.index?.let { WaypointAction(ActionKind.Drop, DROP_TITLE, "", R.drawable.plan_drop) },
+    drop?.takeIf { it.index != null }?.let { WaypointAction(ActionKind.Drop, DROP_TITLE, release?.let { how -> dropText(how, it.wait) }.orEmpty(), R.drawable.plan_drop) },
 )
 
 internal fun offeredActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: CameraChoices?, extras: CameraExtras?, drop: WaypointDrop? = null): List<ActionOffer> =
@@ -126,9 +159,9 @@ private val OFFER_VERBS = listOf("Photo" to "take a photo", "Video" to "film", "
 internal fun addActionsHint(offers: List<ActionOffer>): String {
     val verbs = OFFER_VERBS.filter { (title, _) -> offers.any { it.title == title } }.map { it.second }
     return when (verbs.size) {
-        0 -> "Tap Add to give the camera something to do here."
-        1 -> "Tap Add to ${verbs.single()} here."
-        else -> "Tap Add to ${verbs.dropLast(1).joinToString(", ")} or ${verbs.last()} here."
+        0 -> "Tap Add action to give the camera something to do here."
+        1 -> "Tap Add action to ${verbs.single()} here."
+        else -> "Tap Add action to ${verbs.dropLast(1).joinToString(", ")} or ${verbs.last()} here."
     }
 }
 
@@ -141,7 +174,8 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?,
     }
     val choices = cameraChoices(camera)
     val extras = cameraExtras(camera)
-    val active = activeActions(hold, yaw, choices, extras, drop)
+    val release = rememberDropRelease()
+    val active = activeActions(hold, yaw, choices, extras, drop, release)
     val offers = offeredActions(hold, yaw, choices, extras, drop)
     if (active.isEmpty() && offers.isEmpty()) return
     val scope = rememberCoroutineScope()
@@ -163,7 +197,7 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?,
             ActionKind.Gimbal -> setCamera("specifyGimbal", false)
             ActionKind.Mode -> setCamera("specifyCameraMode", false)
             ActionKind.Turn -> setYaw(null)
-            ActionKind.Drop -> drop?.index?.let { at -> write { removeMissionItem(at).ok } }
+            ActionKind.Drop -> drop?.index?.let { at -> write { invokeOk(REMOVE_DROP, "[$index, $at]") } }
         }
     }
 
@@ -171,10 +205,10 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?,
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Actions", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
             if (offers.isNotEmpty()) Box {
-                TextButton(onClick = { adding = true }) {
+                FilledTonalButton(onClick = { adding = true }) {
                     Icon(painterResource(R.drawable.plan_add), contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Add")
+                    Text("Add action")
                 }
                 DropdownMenu(expanded = adding, onDismissRequest = { adding = false }) {
                     offers.forEach { offer ->
@@ -189,9 +223,9 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?,
                                     ActionKind.Gimbal -> setCamera("specifyGimbal", true)
                                     ActionKind.Mode -> setCamera("specifyCameraMode", true)
                                     ActionKind.Turn -> setYaw(0.0)
-                                    ActionKind.Drop -> drop?.let { place -> write { insertMissionItem(KIND_DROP, place.latitude, place.longitude, index + 1).ok } }
+                                    ActionKind.Drop -> drop?.let { write { invokeOk(PLACE_DROP, "[$index, null, 0]") } }
                                 }
-                                editing = offer.kind.takeIf { it != ActionKind.Drop }
+                                editing = offer.kind
                             },
                         )
                     }
@@ -202,7 +236,7 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?,
             Text(addActionsHint(offers), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            active.forEach { action -> ActionChip(action, onClick = { editing = action.kind.takeIf { it != ActionKind.Drop } }, onRemove = { remove(action.kind) }) }
+            active.forEach { action -> ActionChip(action, onClick = { editing = action.kind }, onRemove = { remove(action.kind) }) }
         }
     }
 
@@ -224,7 +258,7 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?,
                                 FilterChip(selected = extras?.mode == at, onClick = { setCamera("cameraMode", at) }, label = { Text(label) })
                             }
                         }
-                        ActionKind.Drop -> Unit
+                        ActionKind.Drop -> drop?.let { DropEditor(index, it, release, write) }
                         ActionKind.Camera -> {
                             choices?.labels.orEmpty().withIndex().drop(1).forEach { (at, label) ->
                                 Row(
@@ -248,6 +282,26 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?,
             confirmButton = { TextButton(onClick = { editing = null }) { Text("Done") } },
         )
     }
+}
+
+@Composable
+private fun DropEditor(index: Int, drop: WaypointDrop, release: DropRelease, write: (() -> Boolean) -> Unit) {
+    val placeAgain: (Double) -> Boolean = { wait -> invokeOk(PLACE_DROP, "[$index, ${drop.index ?: "null"}, $wait]") }
+    val remembered: (String, Double) -> Unit = { setting, value -> write { setOk(setting, settingJson("$value")) && placeAgain(drop.wait) } }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(selected = !release.servo, onClick = { remembered(RELEASE_SETTING, 0.0) }, label = { Text("Gripper") })
+        FilterChip(selected = release.servo, onClick = { remembered(RELEASE_SETTING, SERVO_RELEASE) }, label = { Text("Servo") })
+    }
+    if (release.servo) {
+        SettingStepper("Servo output", release.output, "", 1.0, onSet = { remembered(OUTPUT_SETTING, it) }, range = OUTPUT_RANGE)
+        SettingStepper("Release PWM", release.pwm, "\u00b5s", PWM_STEP, onSet = { remembered(PWM_SETTING, it) }, range = PWM_RANGE)
+    }
+    SettingStepper("Wait before dropping", drop.wait, "s", 1.0, onSet = { wait -> write { placeAgain(wait) } }, range = WAIT_RANGE)
+    Text(
+        "Photos and camera moves happen on arrival; the drone then waits this long over the point and drops. The release is kept for every later drop.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
