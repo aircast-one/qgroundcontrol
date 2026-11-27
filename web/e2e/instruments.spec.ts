@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures';
+import { WHEP_STREAM, addVideoSource, expect, test } from './fixtures';
 
 test('Choose readings brings back the attitude and compass dials, which follow the aircraft', async ({ vehicle }) => {
   const attitude = vehicle.getByRole('img', { name: /^Attitude, pitch -?\d+°, roll -?\d+°$/ });
@@ -45,4 +45,46 @@ test('the small picture in the corner is dragged anywhere on screen, a tap still
   expect([Math.round(dragged.x - camera.x), Math.round(dragged.y - camera.y)]).toEqual([120, 60]);
   await video.click();
   await expect(mapButton, 'and a tap on the camera swaps back').toBeVisible();
+});
+
+test('the small camera picture over the map grows from its corner grip or a pinch, keeps its new size, and a tap still swaps back', async ({ app: vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  await addVideoSource(vehicle, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  await expect.poll(() => vehicle.locator('video').first().evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBe(640);
+  const mapButton = vehicle.getByRole('button', { name: 'Map', exact: true });
+  await expect(mapButton).toBeVisible({ timeout: 30_000 });
+  await mapButton.click();
+  const video = vehicle.getByRole('button', { name: 'Video', exact: true });
+  await expect(video).toBeVisible({ timeout: 30_000 });
+  await expect.poll(async () => (await video.boundingBox())?.width ?? 0, { message: 'the live camera, not the 48 px synthetic button' }).toBeGreaterThan(100);
+  const small = (await video.boundingBox())!;
+  await video.hover();
+  const grip = video.getByTestId('pip-resize');
+  await expect(grip, 'the grip shows on hover').toBeVisible();
+  const handle = (await grip.boundingBox())!;
+  await vehicle.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await vehicle.mouse.down();
+  await vehicle.mouse.move(handle.x + handle.width / 2 + small.width / 2, handle.y + handle.height / 2, { steps: 12 });
+  await vehicle.mouse.up();
+  const grown = (await video.boundingBox())!;
+  expect(Math.round(grown.width / small.width * 10) / 10, 'pulled half its width to the right, it is half again as big').toBe(1.5);
+  expect(Math.round(grown.x), 'it grows from its corner, the other corner stays put').toBe(Math.round(small.x));
+  await expect(mapButton, 'letting go of the grip did not swap the views').toHaveCount(0);
+  const touch = await vehicle.context().newCDPSession(vehicle);
+  const [cx, cy] = [grown.x + grown.width / 2, grown.y + grown.height / 2];
+  const fingers = (apart: number) => [
+    { x: cx - apart, y: cy, id: 1 },
+    { x: cx + apart, y: cy, id: 2 },
+  ];
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: fingers(40) });
+  await [32, 26, 20].reduce<Promise<unknown>>((sent, apart) => sent.then(() => touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: fingers(apart) })), Promise.resolve());
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  const pinched = (await video.boundingBox())!;
+  expect(Math.round((pinched.width / grown.width) * 10) / 10, 'two fingers pinched to half their spread halve it').toBe(0.5);
+  await expect(mapButton, 'the pinch did not swap the views either').toHaveCount(0);
+  await video.click();
+  await expect(mapButton).toBeVisible();
+  await mapButton.click();
+  await expect(video).toBeVisible();
+  expect(Math.round((await video.boundingBox())!.width), 'swapped back and forth, it keeps the size it was left at').toBe(Math.round(pinched.width));
 });

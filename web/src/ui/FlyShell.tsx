@@ -2,6 +2,7 @@ import {
   type CSSProperties,
   type HTMLAttributes,
   type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type Ref,
   type RefCallback,
@@ -340,7 +341,11 @@ const thumbPlace = (size: Size, lead: number, moved: Offset): CSSProperties => (
 });
 
 const PIP_PLACE_KEY = 'pipPlace';
+const PIP_SCALE_KEY = 'pipScale';
 const PIP_DRAG_SLOP = 8;
+const PIP_SMALLEST = 0.6;
+const PIP_WIDEST_SHARE = 0.7;
+const PIP_GRIP_SIZE = 28;
 
 export const pipWithin = (moved: Offset, room: Size): Offset => Offset(coerceIn(moved.x, 0, Math.max(0, room.width)), coerceIn(moved.y, Math.min(0, -room.height), 0));
 
@@ -349,56 +354,140 @@ export const storedPipPlace = (text: string | null): Offset => {
   return x !== undefined && y !== undefined && Number.isFinite(x) && Number.isFinite(y) ? Offset(x, y) : Offset(0, 0);
 };
 
-const usePipDrag = (room: Size): { moved: Offset; dragging: boolean; handlers: HTMLAttributes<HTMLElement> } => {
+export const storedPipScale = (text: string | null): number => {
+  const scale = Number(text ?? Number.NaN);
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
+};
+
+export const pipLargestScale = (base: Size, space: Size): number => Math.max(PIP_SMALLEST, Math.min((space.width * PIP_WIDEST_SHARE) / base.width, space.height / base.height));
+
+export const pipScaleWithin = (scale: number, largest: number): number => coerceIn(scale, PIP_SMALLEST, Math.max(PIP_SMALLEST, largest));
+
+export const scaledPip = (base: Size, scale: number): Size => Size(Math.round(base.width * scale), Math.round(base.height * scale));
+
+export const gripScale = (start: number, base: Size, dx: number, dy: number): number => {
+  const across = dx / base.width;
+  const up = -dy / base.height;
+  return start + (Math.abs(across) >= Math.abs(up) ? across : up);
+};
+
+const spreadOf = (points: ReadonlyMap<number, Offset>): number => {
+  const [a, b] = [...points.values()];
+  return a === undefined || b === undefined ? 0 : Math.hypot(a.x - b.x, a.y - b.y);
+};
+
+type PipShown = { moved: Offset; scale: number };
+type PipGesture = { kind: 'move'; from: Offset } | { kind: 'pinch'; spread: number; from: PipShown } | { kind: 'grip'; from: Offset; scale: number };
+type PipFrame = { moved: Offset; size: Size; adjusting: boolean; handlers: HTMLAttributes<HTMLElement>; grip: HTMLAttributes<HTMLElement> };
+
+const usePipFrame = (base: Size, space: Size, scalable: boolean): PipFrame => {
   const [placed, setPlaced] = useState(() => storedPipPlace(getSharedPreferences(FLY_STORE).getString(PIP_PLACE_KEY, null)));
-  const [moving, setMoving] = useState<Offset | null>(null);
-  const latest = useUpdatedRef({ placed, room });
-  const dragged = useRef<Offset | null>(null);
+  const [scale, setScale] = useState(() => storedPipScale(getSharedPreferences(FLY_STORE).getString(PIP_SCALE_KEY, null)));
+  const [live, setLive] = useState<PipShown | null>(null);
+  const largest = pipLargestScale(base, space);
+  const within = (wanted: number) => (scalable ? pipScaleWithin(wanted, largest) : 1);
+  const roomFor = (size: Size) => Size(space.width - size.width, space.height - size.height);
+  const size = scaledPip(base, within(live?.scale ?? scale));
+  const latest = useUpdatedRef({ placed, scale: within(scale), base, scalable, within, roomFor });
+  const points = useRef<ReadonlyMap<number, Offset>>(new Map());
+  const gesture = useRef<PipGesture | null>(null);
+  const shown = useRef<PipShown | null>(null);
   const dropped = useRef(false);
   const release = useRef<() => void>(() => undefined);
   useEffect(() => () => release.current(), []);
+  const show = (next: PipShown) => {
+    shown.current = next;
+    setLive(next);
+  };
+  const follow = (event: PointerEvent) => {
+    if (!points.current.has(event.pointerId)) return;
+    points.current = new Map(points.current).set(event.pointerId, Offset(event.clientX, event.clientY));
+    const now = latest.current;
+    const at = gesture.current;
+    if (at === null) return;
+    if (at.kind === 'pinch') {
+      const spread = spreadOf(points.current);
+      if (spread > 0 && at.spread > 0) show({ moved: at.from.moved, scale: (at.from.scale * spread) / at.spread });
+      return;
+    }
+    const [dx, dy] = [event.clientX - at.from.x, event.clientY - at.from.y];
+    if (at.kind === 'grip') {
+      show({ moved: now.placed, scale: gripScale(at.scale, now.base, dx, dy) });
+      return;
+    }
+    if (shown.current === null && Math.hypot(dx, dy) < PIP_DRAG_SLOP) return;
+    show({ moved: Offset(now.placed.x + dx, now.placed.y + dy), scale: now.scale });
+  };
+  const end = (event: PointerEvent) => {
+    if (!points.current.has(event.pointerId)) return;
+    points.current = new Map([...points.current].filter(([pointer]) => pointer !== event.pointerId));
+    if (points.current.size > 0) return;
+    release.current();
+    gesture.current = null;
+    const kept = shown.current;
+    shown.current = null;
+    setLive(null);
+    if (kept === null) return;
+    const now = latest.current;
+    const keptScale = now.within(kept.scale);
+    const keptPlace = pipWithin(kept.moved, now.roomFor(scaledPip(now.base, keptScale)));
+    getSharedPreferences(FLY_STORE).putString(PIP_PLACE_KEY, `${keptPlace.x},${keptPlace.y}`);
+    getSharedPreferences(FLY_STORE).putString(PIP_SCALE_KEY, `${keptScale}`);
+    setPlaced(keptPlace);
+    setScale(keptScale);
+    dropped.current = true;
+  };
+  const press = (event: ReactPointerEvent<HTMLElement>, gripped: boolean) => {
+    if (event.button !== 0) return;
+    if (gripped) event.stopPropagation();
+    if (points.current.size === 0) {
+      dropped.current = false;
+      window.addEventListener('pointermove', follow);
+      window.addEventListener('pointerup', end);
+      window.addEventListener('pointercancel', end);
+      release.current = () => {
+        window.removeEventListener('pointermove', follow);
+        window.removeEventListener('pointerup', end);
+        window.removeEventListener('pointercancel', end);
+      };
+    }
+    points.current = new Map(points.current).set(event.pointerId, Offset(event.clientX, event.clientY));
+    const now = latest.current;
+    const from = Offset(event.clientX, event.clientY);
+    gesture.current = gripped
+      ? { kind: 'grip', from, scale: now.scale }
+      : points.current.size >= 2 && now.scalable
+        ? { kind: 'pinch', spread: spreadOf(points.current), from: shown.current ?? { moved: now.placed, scale: now.scale } }
+        : points.current.size >= 2
+          ? gesture.current
+          : { kind: 'move', from };
+  };
+  const swallowDrop = (event: SyntheticEvent) => {
+    if (!dropped.current) return;
+    dropped.current = false;
+    event.stopPropagation();
+    event.preventDefault();
+  };
   return {
-    moved: pipWithin(moving ?? placed, room),
-    dragging: moving !== null,
-    handlers: {
-      onPointerDown: (event) => {
-        if (event.button !== 0) return;
-        const from = Offset(event.clientX, event.clientY);
-        dragged.current = null;
-        dropped.current = false;
-        const move = (next: PointerEvent) => {
-          const [dx, dy] = [next.clientX - from.x, next.clientY - from.y];
-          if (dragged.current === null && Math.hypot(dx, dy) < PIP_DRAG_SLOP) return;
-          dragged.current = Offset(latest.current.placed.x + dx, latest.current.placed.y + dy);
-          setMoving(dragged.current);
-        };
-        const end = () => {
-          release.current();
-          setMoving(null);
-          if (dragged.current === null) return;
-          const kept = pipWithin(dragged.current, latest.current.room);
-          getSharedPreferences(FLY_STORE).putString(PIP_PLACE_KEY, `${kept.x},${kept.y}`);
-          setPlaced(kept);
-          dropped.current = true;
-        };
-        release.current = () => {
-          window.removeEventListener('pointermove', move);
-          window.removeEventListener('pointerup', end);
-          window.removeEventListener('pointercancel', end);
-        };
-        window.addEventListener('pointermove', move);
-        window.addEventListener('pointerup', end);
-        window.addEventListener('pointercancel', end);
-      },
-      onClickCapture: (event) => {
-        if (!dropped.current) return;
-        dropped.current = false;
-        event.stopPropagation();
-        event.preventDefault();
-      },
-    },
+    moved: pipWithin(live?.moved ?? placed, roomFor(size)),
+    size,
+    adjusting: live !== null,
+    handlers: { onPointerDown: (event) => press(event, false), onClickCapture: swallowDrop },
+    grip: { onPointerDown: (event) => press(event, true), onClick: (event) => event.stopPropagation() },
   };
 };
+
+const PipGrip = ({ grip }: { grip: HTMLAttributes<HTMLElement> }) => (
+  <div
+    {...grip}
+    data-testid="pip-resize"
+    aria-hidden
+    className="absolute end-1 top-1 hidden cursor-nesw-resize touch-none place-items-center rounded-full opacity-0 transition-opacity group-hover:opacity-100 pointer-fine:grid"
+    style={{ width: PIP_GRIP_SIZE, height: PIP_GRIP_SIZE, background: OSD_SCRIM, color: Color.White }}
+  >
+    <Drawable name="ic_fullscreen" size={16} />
+  </div>
+);
 
 type FlyScreenProps = {
   view: FlyView;
@@ -517,15 +606,15 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const pipThumb = thumbSize(useDesktopLayout());
   const syntheticPip = videoIsPip && syntheticReady && videoReading(videoJson)?.decoding !== true;
   const toggleThumb = minimapCollapsed || syntheticPip;
-  const thumb = toggleThumb ? Size(OSD_CONTROL_SIZE, OSD_CONTROL_SIZE) : pipThumb;
   const thumbLead = toggleThumb ? 0 : BOTTOM_LEAD;
-  const pip = usePipDrag(
-    Size(
-      boxWidth - thumb.width - thumbLead - AircastSpace.s3 * 2 - safeArea.left - safeArea.right,
-      boxHeight - thumb.height - AircastSpace.s3 * 2 - safeArea.top - STATUS_ROW_HEIGHT - AircastSpace.s4,
-    ),
+  const pip = usePipFrame(
+    toggleThumb ? Size(OSD_CONTROL_SIZE, OSD_CONTROL_SIZE) : pipThumb,
+    Size(boxWidth - thumbLead - AircastSpace.s3 * 2 - safeArea.left - safeArea.right, boxHeight - AircastSpace.s3 * 2 - safeArea.top - STATUS_ROW_HEIGHT - AircastSpace.s4),
+    !toggleThumb,
   );
+  const thumb = pip.size;
   const pipDrag = editing ? {} : pip.handlers;
+  const pipGrip = editing || toggleThumb ? null : <PipGrip grip={pip.grip} />;
   const thumbStyle = thumbPlace(thumb, thumbLead, pip.moved);
   const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + thumbLead + pip.moved.x, box.size.height - (AircastSpace.s3 + thumb.height) + pip.moved.y), thumb);
   const pipNow = videoIsPip && !fullScreen;
@@ -533,7 +622,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const readingsArea = useRef<HTMLDivElement | null>(null);
   const pipJiggle = useJiggleAngle(mapIsPip ? MINIMAP_KEY : 'pip', editing && thumbShown && !fullScreen, thumb);
   const videoTarget = pipNow ? thumbFrame : Rect(0, 0, box.size.width, box.size.height);
-  const frame = useRememberVideoFrame(videoTarget, pip.dragging);
+  const frame = useRememberVideoFrame(videoTarget, pip.adjusting);
   const cameras = useRememberCameraStepper();
   const dragAims = useRememberDragAims();
   const syntheticAims = useRememberSyntheticAims();
@@ -821,7 +910,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                 </MinimapWidget>
               </div>
             ) : mapIsPip ? (
-              <div className="absolute touch-none" style={{ ...thumbStyle, zIndex: layer(2) }} {...pipDrag}>
+              <div className="group absolute touch-none" style={{ ...thumbStyle, zIndex: layer(2) }} {...pipDrag}>
                 <LayoutWidget widgetKey={MINIMAP_KEY} movable={false} name={MINIMAP_NAME}>
                   <div
                     role="button"
@@ -835,6 +924,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                     style={{ width: thumb.width, height: thumb.height }}
                   />
                 </LayoutWidget>
+                {pipGrip}
               </div>
             ) : null}
             {videoIsPip && hasPicture ? (
@@ -846,10 +936,12 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                 inert={editing}
                 onClick={showVideo}
                 onKeyDown={activate(showVideo)}
-                className="absolute cursor-pointer touch-none overflow-hidden rounded-shape-md"
+                className="group absolute cursor-pointer touch-none overflow-hidden rounded-shape-md"
                 style={{ ...thumbStyle, zIndex: layer(3), border: `2px solid ${md('onSurface')}`, ...pipJiggle }}
                 {...pipDrag}
-              />
+              >
+                {pipGrip}
+              </div>
             ) : null}
           </>
         )}
