@@ -59,6 +59,31 @@ func miniWidth(_ mini: MiniMap) -> CGFloat {
 
 private func miniHeight(_ mini: MiniMap) -> CGFloat { mini == .Thumb ? MINIMAP_THUMB : MINIMAP_HEIGHT }
 
+private let PIP_SCALE_KEY = "pipScale"
+private let PIP_SMALLEST = 0.6
+private let PIP_WIDEST_SHARE = 0.7
+private let PIP_BASE = CGSize(width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT)
+
+func storedPipScale(_ text: String?) -> Double {
+    text.flatMap(Double.init).flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? 1
+}
+
+func pipLargestScale(_ base: CGSize, _ space: CGSize) -> Double {
+    max(PIP_SMALLEST, min(space.width * PIP_WIDEST_SHARE / base.width, space.height / base.height))
+}
+
+func pipScaleWithin(_ scale: Double, _ largest: Double) -> Double {
+    min(max(scale, PIP_SMALLEST), max(PIP_SMALLEST, largest))
+}
+
+func scaledPip(_ base: CGSize, _ scale: Double) -> CGSize {
+    CGSize(width: (base.width * scale).rounded(), height: (base.height * scale).rounded())
+}
+
+func loadPipScale() -> Double { storedPipScale(flyStore.string(forKey: PIP_SCALE_KEY)) }
+
+func savePipScale(_ scale: Double) { flyStore.set(String(scale), forKey: PIP_SCALE_KEY) }
+
 func videoPipShown(_ hasVideo: Bool, _ expanded: Bool) -> Bool { hasVideo && expanded }
 
 private struct PipToggle: View {
@@ -156,7 +181,10 @@ struct FlyScreen: View {
     @CameraStepper private var cameras
     @GimbalDrags private var gimbalDrags
     @SyntheticAims private var syntheticAims
+    @Environment(\.LocalRootSize) private var root
     @State private var mini = loadMiniMap()
+    @State private var pipScale = loadPipScale()
+    @State private var pinching: Double?
     @State private var holding = false
     @State private var layers = false
 
@@ -164,12 +192,27 @@ struct FlyScreen: View {
     private var pipExpanded: Bool { mini != .Thumb }
     private var minimapCollapsed: Bool { view == .Video && flyScreen.layout.hidden.contains(MINIMAP_KEY) && !flyScreen.layout.editing }
     private var miniSide: CGSize {
-        minimapCollapsed ? CGSize(width: MAP_LAYERS_BUTTON, height: MAP_LAYERS_BUTTON) : CGSize(width: miniWidth(mini), height: miniHeight(mini))
+        minimapCollapsed ? CGSize(width: MAP_LAYERS_BUTTON, height: MAP_LAYERS_BUTTON)
+            : mini == .Map ? pipSide
+            : CGSize(width: miniWidth(mini), height: miniHeight(mini))
+    }
+    private var pipLargest: Double {
+        pipLargestScale(PIP_BASE, CGSize(width: root.width - Space.s3 * 2, height: root.height - Space.s3 * 2 - STATUS_ROW_HEIGHT - Space.s4))
+    }
+    private var pipSide: CGSize { scaledPip(PIP_BASE, pipScaleWithin(pinching ?? pipScale, pipLargest)) }
+    private var pipPinch: some Gesture {
+        MagnifyGesture()
+            .onChanged { pinching = pipScale * $0.magnification }
+            .onEnded { pinch in
+                pipScale = pipScaleWithin(pipScale * pinch.magnification, pipLargest)
+                savePipScale(pipScale)
+                pinching = nil
+            }
     }
     private var videoKey: String { orientedKey(VIDEO_PIP_KEY, true) }
     private var pipShape: RoundedRectangle { RoundedRectangle(cornerRadius: Corner.medium) }
     private var mapPipSide: CGSize {
-        mini == .Thumb ? CGSize(width: MINIMAP_THUMB, height: MINIMAP_THUMB) : CGSize(width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT)
+        mini == .Thumb ? CGSize(width: MINIMAP_THUMB, height: MINIMAP_THUMB) : CGSize(width: pipSide.width, height: pipSide.height)
     }
 
     private func showMini(_ next: MiniMap) {
@@ -197,8 +240,8 @@ struct FlyScreen: View {
         let videoShown = view != .ThreeD && (view != .Map || videoPipShown(hasVideo, pipExpanded))
         let cutout = EdgeInsets(top: 0, leading: safe.leading, bottom: 0, trailing: safe.trailing)
         let videoMoved = layout.offsets[videoKey] ?? .zero
-        let pipHome = CGPoint(x: cutout.leading + Space.s3, y: box.height - cutout.bottom - Space.s3 - MINIMAP_HEIGHT)
-        let pipFrame = CGRect(x: pipHome.x + videoMoved.width, y: pipHome.y + videoMoved.height, width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT)
+        let pipHome = CGPoint(x: cutout.leading + Space.s3, y: box.height - cutout.bottom - Space.s3 - pipSide.height)
+        let pipFrame = CGRect(x: pipHome.x + videoMoved.width, y: pipHome.y + videoMoved.height, width: pipSide.width, height: pipSide.height)
         let pipNow = videoIsPip && !fullScreen
         let videoTarget = pipNow ? pipFrame : CGRect(origin: .zero, size: box)
         let panes = FlyPanes(box: box, safe: safe, cutout: cutout, mapIsPip: mapIsPip, videoIsPip: videoIsPip, videoShown: videoShown)
@@ -224,7 +267,7 @@ struct FlyScreen: View {
                     .clipShape(RoundedRectangle(cornerRadius: pipNow ? Corner.medium : 0))
                     .contentShape(Rectangle())
                     .videoGestures(videoHandlers(videoKey, pipNow, pipHome, videoTarget))
-                    .videoFrame(videoTarget, holding: holding, nudge: cameras.nudge)
+                    .videoFrame(videoTarget, holding: holding || pinching != nil, nudge: cameras.nudge)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                     .zIndex(fullScreen ? FULL_SCREEN_LAYER : videoIsPip ? 1 : 0)
             }
@@ -255,7 +298,7 @@ struct FlyScreen: View {
             onHold: { at in
                 guard !pipNow else { return false }
                 holding = true
-                let wanted = CGPoint(x: target.minX + at.x - MINIMAP_WIDTH / 2 - pipHome.x, y: target.minY + at.y - MINIMAP_HEIGHT / 2 - pipHome.y)
+                let wanted = CGPoint(x: target.minX + at.x - pipSide.width / 2 - pipHome.x, y: target.minY + at.y - pipSide.height / 2 - pipHome.y)
                 let current = layout.offsets[videoKey] ?? .zero
                 layout.nudge(videoKey, wanted.x - current.width, wanted.y - current.height)
                 if !expanded { showMini(.Map) }
@@ -395,8 +438,9 @@ struct FlyScreen: View {
                         .frame(maxWidth: .infinity, alignment: .topTrailing)
                         LayoutPipEditor(key: MAP_PIP_KEY, shape: AnyShape(pipShape))
                     }
-                    .frame(width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT)
+                    .frame(width: pipSide.width, height: pipSide.height)
                     .clipShape(pipShape)
+                    .simultaneousGesture(pipPinch)
                     .avoidedByVideoMessage(MAP_PIP_KEY)
                     .holdToEditLayout()
                     .layoutPlacement(MAP_PIP_KEY, keepOnScreen: true)
@@ -420,8 +464,9 @@ struct FlyScreen: View {
                         PipToggle(expanded: true, onToggle: togglePip)
                         LayoutPipEditor(key: VIDEO_PIP_KEY, shape: AnyShape(pipShape))
                     }
-                    .frame(width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT)
+                    .frame(width: pipSide.width, height: pipSide.height)
                     .clipShape(pipShape)
+                    .simultaneousGesture(pipPinch)
                     .layoutPlacement(VIDEO_PIP_KEY, keepOnScreen: true)
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel("Video picture-in-picture")
@@ -452,7 +497,7 @@ struct FlyScreen: View {
         let toggle3d = nativeChosen(syntheticJson)
         let railFloor = mapIsPip ? miniSide.height + Space.s3 + Space.s2
             : !videoIsPip ? 0
-            : videoPipOpen ? MINIMAP_HEIGHT + Space.s3 + Space.s2
+            : videoPipOpen ? pipSide.height + Space.s3 + Space.s2
             : layersBottom + (MAP_LAYERS_BUTTON + Space.s2) * (toggle3d ? 2 : 1)
         ZStack(alignment: .topLeading) {
             if view == .Map {
@@ -480,8 +525,8 @@ struct FlyScreen: View {
                         .accessibilityLabel("Map layers")
                     }
                 }
-                .padding(.leading, videoPipOpen ? Space.s3 * 2 + MINIMAP_WIDTH : Space.s3)
-                .padding(.bottom, videoPipOpen ? Space.s3 + MINIMAP_HEIGHT - MAP_LAYERS_BUTTON : layersBottom)
+                .padding(.leading, videoPipOpen ? Space.s3 * 2 + pipSide.width : Space.s3)
+                .padding(.bottom, videoPipOpen ? Space.s3 + pipSide.height - MAP_LAYERS_BUTTON : layersBottom)
                 .frame(width: inner.width, height: inner.height, alignment: .bottomLeading)
             }
             FlyChromeLayout(
@@ -547,7 +592,7 @@ struct FlyScreen: View {
                     .zIndex(2)
             }
             if hasVehicle && !flyScreen.guidedPanelOpen {
-                let besideMini = mapIsPip ? miniSide.width : hasVideo && pipExpanded ? MINIMAP_WIDTH : PIP_TOGGLE_SIZE
+                let besideMini = mapIsPip ? miniSide.width : hasVideo && pipExpanded ? pipSide.width : PIP_TOGGLE_SIZE
                 TelemetryRow(valuesShown: true, chooser: false, compact: true, stacked: true)
                     .environment(\.flyOsd, true)
                     .osdShadow()

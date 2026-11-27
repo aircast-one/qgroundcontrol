@@ -84,7 +84,7 @@ private struct VideoGesturesModifier: ViewModifier {
     }
 
     private func secondFinger() {
-        guard press?.phase == .pressing else { return }
+        guard press?.phase == .pressing || press?.phase == .swiping else { return }
         holdTimer?.cancel()
         holdTimer = nil
         press?.phase = .ignored
