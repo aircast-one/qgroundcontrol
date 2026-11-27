@@ -619,6 +619,10 @@ const BADGE_PLACE: CSSProperties = { width: BADGE_SIZE, height: BADGE_SIZE, top:
 
 const BESIDE_BADGE = "absolute grid place-items-center after:absolute after:-inset-x-[13px] after:-inset-y-[3px] after:content-['']";
 
+const CORNER_BADGE = "absolute grid place-items-center after:absolute after:-inset-y-[13px] after:-end-[13px] after:-start-[2px] after:content-['']";
+
+const INNER_BADGE = "absolute grid place-items-center after:absolute after:-inset-y-[13px] after:-inset-x-[2px] after:content-['']";
+
 const BADGE_GAP = 4;
 
 const OUTER_BADGE = {
@@ -792,37 +796,37 @@ export const LayoutWidget = ({
             {name === undefined ? null : <span aria-hidden>{name}</span>}
           </Surface>
         ) : null}
-        {decorated && resizable && !hidden ? (
-          <>
-            <SizeBadge
-              to={largerItemSize(scale)}
-              label="Make bigger"
-              icon="open_in_full"
-              onSize={(size) => layout.resize(widgetKey, size)}
-              className={badgeBeside !== undefined ? OUTER_BADGE[badgeBeside] : BADGE}
-              style={badgeBeside !== undefined ? besidePlace(badgeBeside, 1) : { ...BADGE_PLACE, insetInlineStart: undefined, insetInlineEnd: -BADGE_SIZE / 2 }}
-            />
-            <SizeBadge
-              to={smallerItemSize(scale)}
-              label="Make smaller"
-              icon="close_fullscreen"
-              onSize={(size) => layout.resize(widgetKey, size)}
-              className={badgeBeside !== undefined ? OUTER_BADGE[badgeBeside] : BADGE}
-              style={badgeBeside !== undefined ? besidePlace(badgeBeside, 2) : { ...BADGE_PLACE, top: undefined, bottom: -BADGE_RISE, insetInlineStart: undefined, insetInlineEnd: -BADGE_SIZE / 2 }}
-            />
-          </>
-        ) : null}
+        {decorated && resizable && !hidden
+          ? sizeBadges(scale).map((badge) => (
+              <Surface
+                key={badge.label}
+                onClick={() => layout.resize(widgetKey, badge.to)}
+                className={badgeBeside !== undefined ? OUTER_BADGE[badgeBeside] : badge.onEdge}
+                style={badgeBeside !== undefined ? besidePlace(badgeBeside, badge.nth) : { ...BADGE_PLACE, insetInlineStart: undefined, insetInlineEnd: badge.fromEnd }}
+                shape="full"
+                color={md('inverseSurface')}
+                contentColor={md('inverseOnSurface')}
+                shadow
+                label={badge.label}
+              >
+                <MaterialIcon name={badge.icon} size={BADGE_SIZE - 6} className="mx-[3px]" />
+              </Surface>
+            ))
+          : null}
       </div>
     </div>
   );
 };
 
-const SizeBadge = ({ to, label, icon, onSize, className, style }: { to: number | null; label: string; icon: string; onSize: (size: number) => void; className: string; style: CSSProperties }) =>
-  to === null ? null : (
-    <Surface onClick={() => onSize(to)} className={className} style={style} shape="full" color={md('inverseSurface')} contentColor={md('inverseOnSurface')} shadow label={label}>
-      <MaterialIcon name={icon} size={BADGE_SIZE - 6} className="mx-[3px]" />
-    </Surface>
-  );
+type SizeBadge = { readonly to: number; readonly label: string; readonly icon: string; readonly nth: number; readonly onEdge: string; readonly fromEnd: number };
+
+const sizeBadges = (scale: number): readonly SizeBadge[] => {
+  const [larger, smaller] = [largerItemSize(scale), smallerItemSize(scale)];
+  return [
+    ...(larger === null ? [] : [{ to: larger, label: 'Make bigger', icon: 'open_in_full', nth: 1, onEdge: CORNER_BADGE, fromEnd: -BADGE_SIZE / 2 }]),
+    ...(smaller === null ? [] : [{ to: smaller, label: 'Make smaller', icon: 'close_fullscreen', nth: 2, onEdge: INNER_BADGE, fromEnd: BADGE_SIZE / 2 + BADGE_GAP }]),
+  ];
+};
 
 export const LayoutOptionsMenu = () => {
   const flyScreen = useContext(LocalFlyScreenState);

@@ -1119,3 +1119,50 @@ test('the heading tape hides from layout editing', async ({ vehicle }) => {
   await expect(editBar(vehicle)).toBeHidden();
   await expect(tape).toBeHidden();
 });
+
+const takesItsOwnEdges = (badge: Locator) =>
+  badge.evaluate((element) => {
+    const at = element.getBoundingClientRect();
+    const [across, down] = [at.left + at.width / 2, at.top + at.height / 2];
+    const points: readonly (readonly [number, number])[] = [[across, at.top + 1], [across, at.bottom - 1], [at.left + 1, down], [at.right - 1, down], [across, down]];
+    return points.every(([x, y]) => element.contains(document.elementFromPoint(x, y)));
+  });
+
+const whollyOnScreen = async (page: Page, badge: Locator) => {
+  const at = await badge.boundingBox();
+  const screen = page.viewportSize();
+  return at !== null && screen !== null && at.x >= 0 && at.y >= 0 && at.x + at.width <= screen.width && at.y + at.height <= screen.height;
+};
+
+test('the size badges of the attitude dials parked on the bottom edge stay on screen, and on the short heading tape neither badge covers the other', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
+  await vehicle.getByRole('dialog').getByText('Choose readings').click();
+  await vehicle.getByRole('dialog', { name: 'Choose readings' }).getByText('Attitude and compass', { exact: true }).click();
+  await vehicle.keyboard.press('Escape');
+  const dials = vehicle.getByRole('img', { name: /^Attitude, / });
+  await expect(dials).toBeVisible();
+  await editLayout(vehicle);
+  const sizeBadges = (target: Locator) => {
+    const item = target.locator('xpath=ancestor::*[@data-layout-item][1]/..');
+    return [item.getByRole('button', { name: 'Make bigger', exact: true }), item.getByRole('button', { name: 'Make smaller', exact: true })] as const;
+  };
+  await dragBy(vehicle, dials, 0, 2000);
+  const [dialsBigger, dialsSmaller] = sizeBadges(dials);
+  await expect(dialsSmaller).toBeVisible();
+  expect(await whollyOnScreen(vehicle, dialsSmaller), 'Make smaller is not cut off below the screen').toBe(true);
+  expect(await whollyOnScreen(vehicle, dialsBigger)).toBe(true);
+  expect(await takesItsOwnEdges(dialsSmaller), 'and nothing under it takes its press').toBe(true);
+  const tape = vehicle.getByRole('img', { name: /^Heading / }).first();
+  await expect(tape).toBeVisible();
+  const [tapeBigger, tapeSmaller] = sizeBadges(tape);
+  await tapeSmaller.click();
+  await expect(tapeBigger).toBeVisible();
+  await expect(tapeSmaller).toBeVisible();
+  expect(await takesItsOwnEdges(tapeBigger), 'a press anywhere on Make bigger makes it bigger').toBe(true);
+  expect(await takesItsOwnEdges(tapeSmaller), 'a press anywhere on Make smaller makes it smaller').toBe(true);
+  const reading = telemetry(vehicle, 'V.S').locator('xpath=ancestor::*[@data-layout-item][1]/..');
+  const beside = ['Remove', 'Make bigger', 'Make smaller'].map((name) => reading.getByRole('button', { name, exact: true }));
+  await beside[2]!.click();
+  expect(await Promise.all(beside.map(takesItsOwnEdges)), 'the three badges lined up beside a reading each take a press anywhere on themselves').toEqual([true, true, true]);
+});
