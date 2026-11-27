@@ -94,6 +94,25 @@ class FlyDeckTest {
     }
 
     @Test
+    fun `the Fly menu groups the aircraft's tiles above the screen's, and a group with nothing in it is not shown`() {
+        val tile = { label: String -> MoreTile(label, 0, true) {} }
+        val both = flyMenuSections(listOf(tile("All status"), tile(CALIBRATE)), listOf(tile("Choose readings")))
+        assertEquals(listOf(AIRCRAFT_SECTION to listOf("All status", CALIBRATE), SCREEN_SECTION to listOf("Choose readings")), shownSections(both).map { section -> section.title to section.tiles.map { it.label } })
+        assertEquals(listOf(SCREEN_SECTION), shownSections(flyMenuSections(emptyList(), listOf(tile("Choose readings")))).map { it.title })
+    }
+
+    @Test
+    fun `Calibrate is offered only to an aircraft with a sensors page, opens it, and is not pressable while armed`() {
+        val opened = mutableListOf<Unit>()
+        val onGround = calibrateTile(sensorsPage = true, armed = false) { opened += Unit }
+        assertEquals(CALIBRATE to true, onGround?.let { it.label to it.enabled })
+        onGround?.onClick?.invoke()
+        assertEquals(1, opened.size)
+        assertEquals(false, calibrateTile(sensorsPage = true, armed = true) {}?.enabled)
+        assertEquals(null, calibrateTile(sensorsPage = false, armed = false) {})
+    }
+
+    @Test
     fun `sliding across most of the button confirms as surely as holding it`() {
         org.junit.Assert.assertEquals(0.5f, slideProgress(300f, 1000), 1e-6f)
         org.junit.Assert.assertEquals(1f, slideProgress(600f, 1000), 1e-6f)

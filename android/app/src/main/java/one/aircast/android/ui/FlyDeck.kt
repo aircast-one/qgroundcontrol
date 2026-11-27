@@ -269,6 +269,14 @@ private val MORE_TILE_HEIGHT = 80.dp
 
 internal class MoreSection(val title: String, val tiles: List<MoreTile>)
 
+internal fun flyMenuSections(aircraft: List<MoreTile>, screen: List<MoreTile>): List<MoreSection> =
+    listOf(MoreSection(AIRCRAFT_SECTION, aircraft), MoreSection(SCREEN_SECTION, screen))
+
+internal fun shownSections(sections: List<MoreSection>): List<MoreSection> = sections.filter { it.tiles.isNotEmpty() }
+
+internal fun calibrateTile(sensorsPage: Boolean, armed: Boolean, open: () -> Unit): MoreTile? =
+    MoreTile(CALIBRATE, R.drawable.ic_explore, !armed, onClick = open).takeIf { sensorsPage }
+
 internal class MoreTile(
     val label: String,
     @DrawableRes val icon: Int,
@@ -304,34 +312,34 @@ internal fun MoreActionsSheet(sections: List<MoreSection>, onDismiss: () -> Unit
                 Text("More actions", style = MaterialTheme.typography.titleLarge)
                 Text("Everything that changes what the drone does", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            sections.filter { it.tiles.isNotEmpty() }.map { section ->
+            shownSections(sections).map { section ->
                 Text(section.title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = AircastSpace.s2))
                 section.tiles.chunked(MORE_COLUMNS).map { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s3)) {
-                    row.map { tile ->
-                        Surface(
-                            onClick = {
-                                onDismiss()
-                                tile.onClick()
-                            },
-                            enabled = tile.enabled,
-                            modifier = Modifier.weight(1f).height(MORE_TILE_HEIGHT).alpha(if (tile.enabled) 1f else DISABLED_ALPHA),
-                            shape = MaterialTheme.shapes.large,
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            contentColor = if (tile.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                        ) {
-                            Column(
-                                Modifier.padding(horizontal = AircastSpace.s1),
-                                verticalArrangement = Arrangement.spacedBy(AircastSpace.s2, Alignment.CenterVertically),
-                                horizontalAlignment = Alignment.CenterHorizontally,
+                    Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s3)) {
+                        row.map { tile ->
+                            Surface(
+                                onClick = {
+                                    onDismiss()
+                                    tile.onClick()
+                                },
+                                enabled = tile.enabled,
+                                modifier = Modifier.weight(1f).height(MORE_TILE_HEIGHT).alpha(if (tile.enabled) 1f else DISABLED_ALPHA),
+                                shape = MaterialTheme.shapes.large,
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                contentColor = if (tile.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                             ) {
-                                Icon(painterResource(tile.icon), null, Modifier.size(24.dp))
-                                Text(sentenceCase(tile.label), style = MaterialTheme.typography.labelMedium, maxLines = 2, textAlign = TextAlign.Center)
+                                Column(
+                                    Modifier.padding(horizontal = AircastSpace.s1),
+                                    verticalArrangement = Arrangement.spacedBy(AircastSpace.s2, Alignment.CenterVertically),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Icon(painterResource(tile.icon), null, Modifier.size(24.dp))
+                                    Text(sentenceCase(tile.label), style = MaterialTheme.typography.labelMedium, maxLines = 2, textAlign = TextAlign.Center)
+                                }
                             }
                         }
+                        repeat(MORE_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
                     }
-                    repeat(MORE_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
-                }
                 }
             }
             footer()

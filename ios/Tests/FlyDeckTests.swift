@@ -80,6 +80,28 @@ final class FlyDeckTests: XCTestCase {
         XCTAssertEqual(["Slide to land", "Return", "Slide to take off"].map(railLabel), ["Land", "Return", "Take off"])
     }
 
+    func testTheFlyMenuGroupsTheAircraftsTilesAboveTheScreensAndAGroupWithNothingInItIsNotShown() {
+        let tile = { (label: String) in MoreTile(label: label, icon: .tune, enabled: true, onClick: {}) }
+        let both = shownSections(flyMenuSections([tile("All status"), tile(CALIBRATE)], [tile("Choose readings")]))
+        XCTAssertEqual(both.map(\.title), [AIRCRAFT_SECTION, SCREEN_SECTION])
+        XCTAssertEqual(both.map { $0.tiles.map(\.label) }, [["All status", CALIBRATE], ["Choose readings"]])
+        XCTAssertEqual(shownSections(flyMenuSections([], [tile("Choose readings")])).map(\.title), [SCREEN_SECTION])
+    }
+
+    func testCalibrateIsOfferedOnlyToAnAircraftWithASensorsPageOpensItAndIsNotPressableWhileArmed() {
+        final class Opened { var times = 0 }
+        let opened = Opened()
+        let onGround = calibrateTile(sensorsPage: true, armed: false, open: { opened.times += 1 })
+        XCTAssertEqual(onGround?.label, CALIBRATE)
+        XCTAssertEqual(onGround?.enabled, true)
+        onGround?.onClick()
+        XCTAssertEqual(opened.times, 1)
+        XCTAssertEqual(calibrateTile(sensorsPage: true, armed: true, open: {})?.enabled, false)
+        XCTAssertNil(calibrateTile(sensorsPage: false, armed: false, open: {}))
+        let setup = JSON.parse(#"{"components":[{"name":"Sensors"}]}"#)
+        XCTAssertEqual([SENSORS, "Power"].map { hasSetupPage(setup, $0) }, [true, false])
+    }
+
     func testSlidingAcrossMostOfTheButtonConfirmsAsSurelyAsHoldingIt() {
         XCTAssertEqual(slideProgress(300, 1000), 0.5, accuracy: 1e-9)
         XCTAssertEqual(slideProgress(600, 1000), 1, accuracy: 1e-9)

@@ -165,6 +165,10 @@ private func presentText(_ element: JSON, _ key: String) -> String? {
     element[key].string.nonBlank
 }
 
+func hasSetupPage(_ view: JSON?, _ name: String) -> Bool {
+    setupComponents(view).contains { $0.name == name }
+}
+
 func setupComponents(_ view: JSON?) -> [SetupComponent] {
     (view?["components"].arrayOrNil ?? []).enumerated().compactMap { index, element in
         guard element.object != nil, !element["name"].string.isBlank else { return nil }

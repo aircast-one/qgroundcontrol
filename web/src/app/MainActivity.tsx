@@ -610,7 +610,12 @@ export const AircastShell = () => {
   ];
   const fullScreenTiles = browserFullScreenSupported() ? [MenuTile({ label: browserFullScreen ? 'Exit full screen' : 'Full screen', icon: 'ic_fullscreen', enabled: true, onClick: () => void toggleBrowserFullScreen().catch(() => undefined) })] : [];
   const menuTiles = (keys: readonly string[]): readonly MenuTile[] =>
-    railShown ? [] : keys.flatMap((key) => destinations.filter((it) => it.key === key).map((it) => MenuTile({ label: it.label, icon: it.icon, enabled: true, onClick: it.onClick })));
+    railShown
+      ? []
+      : keys
+          .map((key) => destinations.find((it) => it.key === key))
+          .filter((it) => it !== undefined)
+          .map((it) => MenuTile({ label: it.label, icon: it.icon, enabled: true, onClick: it.onClick }));
   const flyDestinations: FlyDestinations = {
     plan: menuTiles([Tab.Plan.name]),
     aircraft: menuTiles(['setup', Tab.Analyze.name]),

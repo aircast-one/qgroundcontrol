@@ -379,29 +379,36 @@ export const guidedIcon = (id: string): DrawableName => {
 const chunked = <T,>(items: readonly T[], size: number): readonly (readonly T[])[] =>
   Array.from({ length: Math.ceil(items.length / size) }, (_, row) => items.slice(row * size, row * size + size));
 
+const Tile = ({ tile, lead, onDismiss }: { tile: MenuTile; lead: boolean; onDismiss: () => void }) => (
+  <Surface
+    onClick={() => {
+      onDismiss();
+      tile.onClick();
+    }}
+    enabled={tile.enabled}
+    shape="large"
+    color={md(lead ? 'primaryContainer' : 'surfaceContainerHigh')}
+    contentColor={lead ? md('onPrimaryContainer') : tile.warning ? md('error') : md('onSurface')}
+    className={lead ? 'flex items-center gap-3 px-5' : 'flex flex-1 basis-0 flex-col items-center justify-center gap-2 px-1'}
+    style={{ height: MENU_TILE_HEIGHT, opacity: tile.enabled ? 1 : DISABLED_ALPHA }}
+  >
+    <Drawable name={tile.icon} size={lead ? 28 : 24} />
+    {lead ? (
+      <Text typography="titleMedium">{sentenceCase(tile.label)}</Text>
+    ) : (
+      <Text typography="labelMedium" maxLines={2} textAlign="center">
+        {sentenceCase(tile.label)}
+      </Text>
+    )}
+  </Surface>
+);
+
 const TileGrid = ({ tiles, onDismiss }: { tiles: readonly MenuTile[]; onDismiss: () => void }) => (
   <div className="flex flex-col gap-3">
     {chunked(tiles, MENU_COLUMNS).map((row, at) => (
       <div key={at} className="flex gap-3">
         {row.map((tile) => (
-          <Surface
-            key={tile.label}
-            onClick={() => {
-              onDismiss();
-              tile.onClick();
-            }}
-            enabled={tile.enabled}
-            shape="large"
-            color={md('surfaceContainerHigh')}
-            contentColor={tile.warning ? md('error') : md('onSurface')}
-            className="flex flex-1 basis-0 flex-col items-center justify-center gap-2 px-1"
-            style={{ height: MENU_TILE_HEIGHT, opacity: tile.enabled ? 1 : DISABLED_ALPHA }}
-          >
-            <Drawable name={tile.icon} size={24} />
-            <Text typography="labelMedium" maxLines={2} textAlign="center">
-              {sentenceCase(tile.label)}
-            </Text>
-          </Surface>
+          <Tile key={tile.label} tile={tile} lead={false} onDismiss={onDismiss} />
         ))}
         {Array.from({ length: MENU_COLUMNS - row.length }, (_, gap) => (
           <div key={`gap-${gap}`} className="flex-1 basis-0" />
@@ -411,24 +418,6 @@ const TileGrid = ({ tiles, onDismiss }: { tiles: readonly MenuTile[]; onDismiss:
   </div>
 );
 
-const LeadTile = ({ tile, onDismiss }: { tile: MenuTile; onDismiss: () => void }) => (
-  <Surface
-    onClick={() => {
-      onDismiss();
-      tile.onClick();
-    }}
-    enabled={tile.enabled}
-    shape="large"
-    color={md('primaryContainer')}
-    contentColor={md('onPrimaryContainer')}
-    className="flex items-center gap-3 px-5"
-    style={{ height: MENU_TILE_HEIGHT, opacity: tile.enabled ? 1 : DISABLED_ALPHA }}
-  >
-    <Drawable name={tile.icon} size={28} />
-    <Text typography="titleMedium">{sentenceCase(tile.label)}</Text>
-  </Surface>
-);
-
 export const FlyMenuSheet = ({ lead, sections, onDismiss, footer }: { lead: readonly MenuTile[]; sections: readonly MenuSection[]; onDismiss: () => void; footer: ReactNode }) => (
   <AircastSheet onDismissRequest={onDismiss} label={FLY_MENU}>
     <div className="flex flex-col gap-4 overflow-y-auto px-4 pb-6">
@@ -436,7 +425,7 @@ export const FlyMenuSheet = ({ lead, sections, onDismiss, footer }: { lead: read
         {FLY_MENU}
       </Text>
       {lead.map((tile) => (
-        <LeadTile key={tile.label} tile={tile} onDismiss={onDismiss} />
+        <Tile key={tile.label} tile={tile} lead onDismiss={onDismiss} />
       ))}
       {sections
         .filter((section) => section.tiles.length > 0)

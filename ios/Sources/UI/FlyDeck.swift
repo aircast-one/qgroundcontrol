@@ -308,6 +308,18 @@ struct MoreTile {
     let onClick: () -> Void
 }
 
+func flyMenuSections(_ aircraft: [MoreTile], _ screen: [MoreTile]) -> [MoreSection] {
+    [MoreSection(title: AIRCRAFT_SECTION, tiles: aircraft), MoreSection(title: SCREEN_SECTION, tiles: screen)]
+}
+
+func shownSections(_ sections: [MoreSection]) -> [MoreSection] {
+    sections.filter { !$0.tiles.isEmpty }
+}
+
+func calibrateTile(sensorsPage: Bool, armed: Bool, open: @escaping () -> Void) -> MoreTile? {
+    sensorsPage ? MoreTile(label: CALIBRATE, icon: .explore, enabled: !armed, onClick: open) : nil
+}
+
 func guidedIcon(_ id: String) -> Icon {
     switch id {
     case "startMission", "continueMission", "resumeMission": .route
@@ -357,7 +369,7 @@ private struct MoreTiles<Footer: View>: View {
                         .foregroundStyle(theme.colors.onSurfaceVariant)
                 }
                 .padding(.horizontal, Space.s2)
-                ForEach(sections.filter { !$0.tiles.isEmpty }, id: \.title) { section in
+                ForEach(shownSections(sections), id: \.title) { section in
                     Text(section.title)
                         .font(.labelLarge)
                         .foregroundStyle(theme.colors.onSurfaceVariant)

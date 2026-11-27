@@ -381,7 +381,7 @@ private struct VehicleStatusReadings: View {
     }
 
     private func detailSheet(_ shown: StripDetail, _ state: FlyState?, _ silence: String?) -> some View {
-        let hasPowerSetup = setupComponents(setupJson).contains { $0.name == POWER_SETUP_PAGE }
+        let hasPowerSetup = hasSetupPage(setupJson, POWER_SETUP_PAGE)
         let battery = shown == .Battery
         let rows: [DetailRow] = switch shown {
         case .Battery: [totalDraw(batteryJson).map { DetailRow(label: drawLabel(batteryJson), value: $0) }].compactMap { $0 } + batteryDetail(batteryJson)

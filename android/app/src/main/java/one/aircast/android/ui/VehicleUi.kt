@@ -717,8 +717,8 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     if (showMore) {
         val checklistPast = checklistOffered(armed)
         MoreActionsSheet(
-            sections = listOf(
-                MoreSection(AIRCRAFT_SECTION, listOfNotNull(
+            sections = flyMenuSections(
+                listOfNotNull(
                 armedStopOffer(offers, armed)?.let { offer -> MoreTile(STOP_MOTORS, R.drawable.ic_warning, true, warning = true) { pending = emergencyStopAction(offer) } },
                 pursuit?.entry?.let { entry -> MoreTile(entry.label, R.drawable.ic_search, true) { onAutodrop(entry) } },
             ) +
@@ -749,7 +749,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                         }
                     }
                 } +
-                listOfNotNull(MoreTile(CALIBRATE, R.drawable.ic_explore, !armed) { navigation.setupPage = SENSORS }.takeIf { sensorsPage }) +
+                listOfNotNull(calibrateTile(sensorsPage, armed) { navigation.setupPage = SENSORS }) +
                 auxSwitches.map { switch ->
                     val answer: suspend () -> String? = { withContext(Dispatchers.Default) { Qgc.refusalOf(AUX_SWITCH, switch.id, !switch.on) } }
                     MoreTile(switch.action, auxSwitchIcon(switch.id), true) {
@@ -758,11 +758,11 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                             else -> ask(GuidedAction(name = confirm.title, confirm = confirm.text, destructive = false, answer = answer))
                         }
                     }
-                }),
-                MoreSection(SCREEN_SECTION, listOfNotNull(
+                },
+                listOfNotNull(
                     MoreTile("Choose readings", R.drawable.ic_tune, true) { flyScreen.choosingReadings = true },
                     MoreTile("Edit layout", R.drawable.ic_edit, true) { flyScreen.layout.startEditing() }.takeIf { !armed },
-                )),
+                ),
             ),
             onDismiss = { showMore = false },
         ) {

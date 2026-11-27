@@ -710,9 +710,7 @@ struct FlightActions<Center: View>: View {
             })
         }
         let navigation = navigation
-        let calibrate: [MoreTile] = setupComponents(setupJson).contains(where: { $0.name == SENSORS })
-            ? [MoreTile(label: CALIBRATE, icon: .explore, enabled: !armed, onClick: { navigation.setupPage = SENSORS })]
-            : []
+        let calibrate = [calibrateTile(sensorsPage: hasSetupPage(setupJson, SENSORS), armed: armed, open: { navigation.setupPage = SENSORS })].compactMap { $0 }
         let switches = auxSwitchReadings(auxSwitchesJson).map { item in
             let answer: () async -> String? = { await offMain { Qgc.refusalOf(AUX_SWITCH, item.id, !item.on) } }
             return MoreTile(label: item.action, icon: auxSwitchIcon(item.id), enabled: true, onClick: {
@@ -727,10 +725,7 @@ struct FlightActions<Center: View>: View {
             MoreTile(label: "Choose readings", icon: .tune, enabled: true, onClick: { flyScreen.choosingReadings = true }),
             armed ? nil : MoreTile(label: "Edit layout", icon: .edit, enabled: true, onClick: { flyScreen.layout.startEditing() }),
         ].compactMap { $0 }
-        return [
-            MoreSection(title: AIRCRAFT_SECTION, tiles: stop + rest + fixed + offered + calibrate + switches),
-            MoreSection(title: SCREEN_SECTION, tiles: screen),
-        ]
+        return flyMenuSections(stop + rest + fixed + offered + calibrate + switches, screen)
     }
 
     @ViewBuilder
@@ -1014,7 +1009,7 @@ struct FlightModeMenu: View {
                     if settings {
                         AircastSheet(onDismissRequest: { settings = false }) {
                             ParameterForm(page: FLIGHT_MODE_SETTINGS_PAGE)
-                            if setupComponents(setupJson).contains(where: { $0.name == FLIGHT_MODES_PAGE }) && advanced {
+                            if hasSetupPage(setupJson, FLIGHT_MODES_PAGE) && advanced {
                                 Button("Configure flight modes") {
                                     settings = false
                                     navigation.setupPage = FLIGHT_MODES_PAGE
