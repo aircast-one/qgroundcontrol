@@ -37,14 +37,49 @@ test('the flight mode menu changes the mode', async ({ vehicle }) => {
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Position/);
 });
 
-test('the drop-down sits beside the mode name, ahead of the status note, and the mode name opens the same menu', async ({ vehicle }) => {
+const failArmingCheck = (page: Page, reason: string) =>
+  page.evaluate(
+    async ([module, prearm]) => {
+      const { Qgc } = (await import(module!)) as { Qgc: { invoke: (path: string, ...args: unknown[]) => Promise<unknown> } };
+      return Qgc.invoke('links.changeMockLinks', { prearm });
+    },
+    ['/src/bridge/Qgc.ts', reason],
+  );
+
+test('the drop-down sits beside the mode name, ahead of the status note', async ({ vehicle }) => {
   const note = vehicle.getByRole('button', { name: /^Not fully ready$|^Ready to fly$/ }).first();
   await expect(note).toBeVisible({ timeout: 30_000 });
   const picker = await vehicle.getByRole('button', { name: 'Change flight mode', exact: true }).boundingBox();
   const status = await note.boundingBox();
-  expect(picker?.x ?? Infinity, 'the drop-down picks the flight mode, so it does not read as part of the note').toBeLessThan(status?.x ?? -Infinity);
-  await flightMode(vehicle).click();
-  await expect(vehicle.getByRole('menu').getByRole('menuitem', { name: 'Position' })).toBeVisible();
+  expect(picker, 'the drop-down is drawn').not.toBeNull();
+  expect(status, 'the note is drawn').not.toBeNull();
+  expect(picker!.x, 'the drop-down picks the flight mode, so it does not read as part of the note').toBeLessThan(status!.x);
+});
+
+test('with an arming check failing the mode name still opens the modes and the note opens the reason, and in portrait the red mode name opens the reason itself', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await failArmingCheck(app, 'Compass not calibrated');
+  const note = app.getByRole('button', { name: 'Compass not calibrated', exact: true });
+  const why = app.getByRole('dialog', { name: 'Why it will not arm' });
+  const modes = app.getByRole('menu');
+  await expect(app.getByText(/Compass not calibrated/).first(), 'the mock repeats its PreArm line').toBeVisible({ timeout: 60_000 });
+  await flightMode(app).click();
+  await expect(modes.getByRole('menuitem', { name: 'Loiter' }), 'the mode name picks the mode even while something blocks arming').toBeVisible();
+  await app.keyboard.press('Escape');
+  await expect(modes).toBeHidden();
+  await note.click();
+  await expect(why, 'the note beside the mode name says why').toBeVisible();
+  await app.keyboard.press('Escape');
+  await expect(why).toBeHidden();
+  await app.setViewportSize({ width: 412, height: 860 });
+  await expect(flightMode(app), 'the chip still says what blocks arming to a screen reader').toHaveAccessibleName(/Compass not calibrated/);
+  await expect(note).toBeHidden();
+  await flightMode(app).click();
+  await expect(why, 'portrait draws no note, so the red mode name is the one tap to its reason').toBeVisible();
+  await app.keyboard.press('Escape');
+  await expect(why).toBeHidden();
+  await app.getByRole('button', { name: 'Change flight mode', exact: true }).click();
+  await expect(modes.getByRole('menuitem', { name: 'Loiter' }), 'the drop-down still picks the mode in portrait').toBeVisible();
 });
 
 test('a red reading that makes the chip say not fully ready is the take-off warning too, and take-off still goes', async ({ vehicle }) => {

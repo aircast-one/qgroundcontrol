@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
 import {
+  ChipOpens,
   MvAction,
   activeVehicleId,
+  chipOpens,
   fleetActionLine,
   fleetHeading,
   fleetIsDestructive,
@@ -20,6 +22,26 @@ const single = <T,>(items: readonly T[]): T => {
   if (items.length !== 1) throw new Error(`expected exactly one, found ${items.length}`);
   return items[0] as T;
 };
+
+describe('ChipOpensTest', () => {
+  const opens = (chip: Partial<Parameters<typeof chipOpens>[0]>) => chipOpens({ lost: false, choosing: false, disconnected: false, blocked: false, narrow: false, ...chip });
+
+  it('the mode name opens the flight modes, also while something blocks arming beside its note', () => {
+    expect(opens({})).toBe(ChipOpens.Modes);
+    expect(opens({ blocked: true }), 'the note beside the name opens the reason').toBe(ChipOpens.Modes);
+    expect(opens({ narrow: true })).toBe(ChipOpens.Modes);
+  });
+
+  it('in portrait, where no note is drawn, a blocked mode name opens the arming messages', () => {
+    expect(opens({ blocked: true, narrow: true })).toBe(ChipOpens.Why);
+  });
+
+  it('a lost link, a choice of vehicles and no vehicle come before the modes and the reason', () => {
+    expect(opens({ lost: true, choosing: true, disconnected: true, blocked: true, narrow: true })).toBe(ChipOpens.Lost);
+    expect(opens({ choosing: true, disconnected: true, blocked: true, narrow: true })).toBe(ChipOpens.Picking);
+    expect(opens({ disconnected: true, blocked: true, narrow: true })).toBe(ChipOpens.Offline);
+  });
+});
 
 describe('LoadProgressTest', () => {
   it('the chip shows load progress until the initial connect completes', () => {

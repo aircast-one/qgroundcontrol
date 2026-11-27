@@ -44,6 +44,14 @@ func mvReasonFor(_ action: MvAction) -> String? {
 let STATUS_SETTINGS_PAGE = "Status Settings"
 let CLOSE_VEHICLE = "vehicle.closeVehicle"
 
+enum ChipOpens {
+    case lost, picking, offline, why, modes
+}
+
+func chipOpens(lost: Bool, choosing: Bool, disconnected: Bool, blocked: Bool, narrow: Bool) -> ChipOpens {
+    lost ? .lost : choosing ? .picking : disconnected ? .offline : blocked && narrow ? .why : .modes
+}
+
 func readinessSubtitle(_ state: FlyState?, _ blocker: String?, _ failing: Int) -> String? {
     blocker.map { blocker in
         [state.flatMap { $0.mode.isBlank ? nil : $0.mode }, chipBlocker(blocker) + (failing > 1 ? " +\(failing - 1)" : "")]
@@ -181,14 +189,12 @@ struct VehicleStateChip: View {
         .background { Color.clear.contentShape(Rectangle()) }
         .accessibilityElement(children: .combine)
         .tapButton {
-            if lost {
-                lostMenu = true
-            } else if choices.ambiguous || taken {
-                picking = true
-            } else if disconnected {
-                offline = true
-            } else {
-                modeMenu = true
+            switch chipOpens(lost: lost, choosing: choices.ambiguous || taken, disconnected: disconnected, blocked: blocker != nil, narrow: !statusBar) {
+            case .lost: lostMenu = true
+            case .picking: picking = true
+            case .offline: offline = true
+            case .why: why = true
+            case .modes: modeMenu = true
             }
         }
         .confirmationDialog(

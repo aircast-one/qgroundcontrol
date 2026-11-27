@@ -18,6 +18,22 @@ final class ActiveVehicleTests: XCTestCase {
         ]}
         """#)
 
+    func testTheModeNameOpensTheFlightModesAlsoWhileSomethingBlocksArmingBesideItsNote() {
+        XCTAssertEqual(chipOpens(lost: false, choosing: false, disconnected: false, blocked: false, narrow: false), .modes)
+        XCTAssertEqual(chipOpens(lost: false, choosing: false, disconnected: false, blocked: true, narrow: false), .modes, "the note beside the name opens the reason")
+        XCTAssertEqual(chipOpens(lost: false, choosing: false, disconnected: false, blocked: false, narrow: true), .modes)
+    }
+
+    func testInPortraitWhereNoNoteIsDrawnABlockedModeNameOpensTheArmingMessages() {
+        XCTAssertEqual(chipOpens(lost: false, choosing: false, disconnected: false, blocked: true, narrow: true), .why)
+    }
+
+    func testALostLinkAChoiceOfVehiclesAndNoVehicleComeBeforeTheModesAndTheReason() {
+        XCTAssertEqual(chipOpens(lost: true, choosing: true, disconnected: true, blocked: true, narrow: true), .lost)
+        XCTAssertEqual(chipOpens(lost: false, choosing: true, disconnected: true, blocked: true, narrow: true), .picking)
+        XCTAssertEqual(chipOpens(lost: false, choosing: false, disconnected: true, blocked: true, narrow: true), .offline)
+    }
+
     func testTheHeaderNamesTheAircraftOnlyWhenMoreThanOneIsConnected() {
         XCTAssertEqual(activeVehicleTitle(vehicleChoices(one), "Stabilize · Disarmed"), "Stabilize · Disarmed")
         XCTAssertEqual(activeVehicleTitle(vehicleChoices(two), "Stabilize · Disarmed"), "Quadrotor 1 · Stabilize · Disarmed")

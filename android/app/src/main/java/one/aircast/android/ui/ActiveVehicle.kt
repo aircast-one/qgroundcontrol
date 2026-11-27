@@ -122,6 +122,17 @@ internal fun mvReasonFor(action: MvAction): String? =
 internal const val STATUS_SETTINGS_PAGE = "Status Settings"
 internal const val CLOSE_VEHICLE = "vehicle.closeVehicle"
 
+internal enum class ChipOpens { Lost, Picking, Offline, Why, Modes }
+
+internal fun chipOpens(lost: Boolean, choosing: Boolean, disconnected: Boolean, blocked: Boolean, narrow: Boolean): ChipOpens =
+    when {
+        lost -> ChipOpens.Lost
+        choosing -> ChipOpens.Picking
+        disconnected -> ChipOpens.Offline
+        blocked && narrow -> ChipOpens.Why
+        else -> ChipOpens.Modes
+    }
+
 internal fun readinessSubtitle(state: FlyState?, blocker: String?, failing: Int): String? =
     blocker?.let { listOfNotNull(state?.mode?.ifBlank { null }, chipBlocker(it) + if (failing > 1) " +${failing - 1}" else "").joinToString(" \u00b7 ") }
 
@@ -187,11 +198,12 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
         color = Color.Transparent,
         contentColor = MaterialTheme.aircast.outdoorForeground,
         onClick = {
-            when {
-                lost -> lostMenu = true
-                choices.ambiguous || taken -> picking = true
-                disconnected -> offline = true
-                else -> modeMenu = true
+            when (chipOpens(lost, choices.ambiguous || taken, disconnected, blocker != null, narrow)) {
+                ChipOpens.Lost -> lostMenu = true
+                ChipOpens.Picking -> picking = true
+                ChipOpens.Offline -> offline = true
+                ChipOpens.Why -> why = true
+                ChipOpens.Modes -> modeMenu = true
             }
         },
     ) {

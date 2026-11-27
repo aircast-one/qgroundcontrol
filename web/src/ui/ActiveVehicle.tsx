@@ -135,6 +135,17 @@ export const readinessSubtitle = (state: FlyState | null, blocker: string | null
     ? null
     : [state?.mode.trim() ? state.mode : null, chipBlocker(blocker) + (failing > 1 ? ` +${failing - 1}` : '')].filter((it): it is string => it !== null).join(MIDDLE_DOT);
 
+export enum ChipOpens {
+  Lost,
+  Picking,
+  Offline,
+  Why,
+  Modes,
+}
+
+export const chipOpens = (chip: { lost: boolean; choosing: boolean; disconnected: boolean; blocked: boolean; narrow: boolean }): ChipOpens =>
+  chip.lost ? ChipOpens.Lost : chip.choosing ? ChipOpens.Picking : chip.disconnected ? ChipOpens.Offline : chip.blocked && chip.narrow ? ChipOpens.Why : ChipOpens.Modes;
+
 export const VEHICLE_CONNECT_COMPLETE = 'vehicle.initialConnectComplete';
 export const VEHICLE_LOAD_PROGRESS = 'vehicle.loadProgress';
 
@@ -203,16 +214,19 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
   const noteBackdrop = useOsdBackdrop(OSD_SCRIM);
   const searching = disconnected && offlineNow?.busy === true;
   const title = lost ? signalLostTitle(silentFor, failsafe, narrow) : vanished ? LINK_LOST : gotoProgress !== '' && !choices.ambiguous ? gotoProgress : activeVehicleTitle(choices, subtitle);
-  const note = narrow ? null : osdStatusNote(title);
+  const said = osdStatusNote(title);
+  const note = narrow ? null : said;
   const lossFailsafe = lossFailsafeLine(silentFor, failsafe);
   const alarm = lostVehiclesText(lostVehicles(choices)) ?? (taken ? controlLine(station) : null);
 
-  const chipClick = () => {
-    if (lost) setLostMenu(true);
-    else if (choices.ambiguous || taken) setPicking(true);
-    else if (disconnected) setOffline(true);
-    else setModeMenu(true);
-  };
+  const chipClick = () =>
+    ({
+      [ChipOpens.Lost]: () => setLostMenu(true),
+      [ChipOpens.Picking]: () => setPicking(true),
+      [ChipOpens.Offline]: () => setOffline(true),
+      [ChipOpens.Why]: () => setWhy(true),
+      [ChipOpens.Modes]: () => setModeMenu(true),
+    })[chipOpens({ lost, choosing: choices.ambiguous || taken, disconnected, blocked: blocker !== null, narrow })]();
 
   const modeButton = pendingMode === null && !choices.ambiguous && !taken && !disconnected;
   const modeButtonLabel = lost ? SIGNAL_LOST : 'Change flight mode';
@@ -225,7 +239,7 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
       <Drawable name="ic_chevron_right" label="How to connect" style={{ color: titleColour }} />
     ) : null;
   const trailingName = pendingMode !== null ? null : choices.ambiguous || taken ? (alarm ?? 'Choose which vehicle to fly') : disconnected ? 'How to connect' : modeButtonLabel;
-  const chipName = [osdModeText(title), note, trailingName].filter((it): it is string => it !== null && it.trim() !== '').join(' ');
+  const chipName = [osdModeText(title), said, trailingName].filter((it): it is string => it !== null && it.trim() !== '').join(' ');
 
   return (
     <>
