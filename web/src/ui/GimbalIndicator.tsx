@@ -1,4 +1,4 @@
-import { Fragment, type PointerEvent, type WheelEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type PointerEvent, type WheelEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type Json, isNull, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { Qgc, makeFact, refusal } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
@@ -39,7 +39,7 @@ export const reportGimbalRefusal = (answer: Json | null): void => {
   if (reason !== null && gimbalRefused.value === null) gimbalRefused.value = reason;
 };
 
-export const sendGimbalStick = (x: number, y: number) => void (async () => reportGimbalRefusal(await Qgc.call('gimbal.stick', x, y)))();
+const sendGimbalStick = (x: number, y: number) => void (async () => reportGimbalRefusal(await Qgc.call('gimbal.stick', x, y)))();
 
 export type GimbalChoice = { name: string; managerCompid: number; deviceId: number; active: boolean };
 
@@ -276,6 +276,49 @@ export const GimbalSettings = () => {
 
 export const GIMBAL_DRAG_REPEAT_MS = 100;
 
+type StickHold = { x: number; y: number; pushed: boolean; repeating: ReturnType<typeof setInterval> };
+
+export const useGimbalStickHold = (active: boolean): { steer: (x: number, y: number) => void; stop: () => void } => {
+  const hold = useRef<StickHold | null>(null);
+  const stop = useCallback(() => {
+    const held = hold.current;
+    if (held === null) return;
+    hold.current = null;
+    clearInterval(held.repeating);
+    if (held.pushed) sendGimbalStick(0, 0);
+  }, []);
+  const steer = useCallback((x: number, y: number) => {
+    const send = () => {
+      const held = hold.current;
+      const moving = held !== null && (held.x !== 0 || held.y !== 0);
+      if (held === null || (!moving && !held.pushed)) return;
+      hold.current = { ...held, pushed: moving };
+      sendGimbalStick(held.x, held.y);
+    };
+    const held = hold.current;
+    hold.current = held === null ? { x, y, pushed: false, repeating: setInterval(send, GIMBAL_DRAG_REPEAT_MS) } : { ...held, x, y };
+    if (held === null) send();
+  }, []);
+  useEffect(() => {
+    const hidden = () => {
+      if (document.visibilityState === 'hidden') stop();
+    };
+    window.addEventListener('blur', stop);
+    window.addEventListener('pagehide', stop);
+    document.addEventListener('visibilitychange', hidden);
+    return () => {
+      window.removeEventListener('blur', stop);
+      window.removeEventListener('pagehide', stop);
+      document.removeEventListener('visibilitychange', hidden);
+      stop();
+    };
+  }, [stop]);
+  useEffect(() => {
+    if (!active) stop();
+  }, [active, stop]);
+  return { steer, stop };
+};
+
 export const screenFraction = (x: number, y: number, width: number, height: number): readonly [number, number] => [(x / width) * 2 - 1, -((y / height) * 2 - 1)];
 
 export type OnScreenGimbal = { enabled: boolean; clickAndDrag: boolean; stick: boolean };
@@ -414,24 +457,20 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
   const drag = useRef<Point | null>(null);
   const dragBegun = useRef(false);
   const wheel = useRef<Swipe | null>(null);
-  const press = useRef<{ latest: Point; width: number; height: number; repeating: ReturnType<typeof setInterval> } | null>(null);
-  useEffect(() => () => {
-    if (press.current === null) return;
-    clearInterval(press.current.repeating);
-    sendGimbalStick(0, 0);
-  }, []);
+  const press = useRef<{ pointer: number; start: readonly [number, number] } | null>(null);
+  const { steer, stop } = useGimbalStickHold(control !== null && control.enabled && control.clickAndDrag && !control.stick);
   if (control === null || control.stick) return null;
 
   const point = (pan: number, tilt: number) => void (async () => reportGimbalRefusal(await Qgc.call('gimbal.onScreen', pan, tilt)))();
   const sendDrag = (pan: number, tilt: number, begin: boolean) => void (async () => reportGimbalRefusal(await Qgc.call('gimbal.drag', pan, tilt, begin)))();
 
   const release = () => {
-    if (press.current !== null) {
-      clearInterval(press.current.repeating);
-      sendGimbalStick(0, 0);
-    }
     press.current = null;
+    stop();
     drag.current = null;
+  };
+  const lifted = (event: PointerEvent<HTMLDivElement>) => {
+    if (press.current?.pointer === event.pointerId) release();
   };
 
   const scroll = (event: WheelEvent<HTMLDivElement>) => {
@@ -489,27 +528,22 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
       className={`touch-none ${className ?? ''}`}
       onWheel={scroll}
       onPointerDown={(event) => {
+        if (press.current !== null) return;
         event.currentTarget.setPointerCapture(event.pointerId);
-        release();
         const at = pointIn(event);
-        const start = screenFraction(at.x, at.y, at.width, at.height);
-        const repeating = setInterval(() => {
-          const held = press.current;
-          if (held === null) return;
-          const now = screenFraction(held.latest.x, held.latest.y, held.width, held.height);
-          sendGimbalStick(coerceIn(now[0] - start[0], -1, 1), coerceIn(now[1] - start[1], -1, 1));
-        }, GIMBAL_DRAG_REPEAT_MS);
-        press.current = { latest: { x: at.x, y: at.y }, width: at.width, height: at.height, repeating };
+        press.current = { pointer: event.pointerId, start: screenFraction(at.x, at.y, at.width, at.height) };
+        steer(0, 0);
       }}
       onPointerMove={(event) => {
         const held = press.current;
-        if (held === null) return;
+        if (held === null || held.pointer !== event.pointerId) return;
         const at = pointIn(event);
-        press.current = { ...held, latest: { x: at.x, y: at.y } };
+        const now = screenFraction(at.x, at.y, at.width, at.height);
+        steer(coerceIn(now[0] - held.start[0], -1, 1), coerceIn(now[1] - held.start[1], -1, 1));
       }}
-      onPointerUp={release}
-      onPointerCancel={release}
-      onLostPointerCapture={release}
+      onPointerUp={lifted}
+      onPointerCancel={lifted}
+      onLostPointerCapture={lifted}
     />
   );
 };

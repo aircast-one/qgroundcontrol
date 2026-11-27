@@ -17,8 +17,8 @@ import { activeVehicleId } from '@/ui/ActiveVehicle';
 import { BesidePopup, VIDEO_RECORDING_STATE } from '@/ui/CameraControlLayer';
 import { LocalFlyScreenState, OpenOnRequest } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
-import { type GimbalChoice, GimbalModeSwitch, GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalSwitchShown, gimbalRefusal, onScreenGimbal, reportGimbalRefusal, sendGimbalStick } from '@/ui/GimbalIndicator';
-import { PWM_CENTER, PWM_MAX, PWM_MIN, RC_SEND_INTERVAL_MS, rcSendDue } from '@/ui/RcControls';
+import { type GimbalChoice, GimbalModeSwitch, GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalSwitchShown, gimbalRefusal, onScreenGimbal, reportGimbalRefusal, useGimbalStickHold } from '@/ui/GimbalIndicator';
+import { PWM_CENTER, PWM_MAX, PWM_MIN, rcSendDue } from '@/ui/RcControls';
 import { OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { LayoutWidget } from '@/ui/OverlayLayout';
 import { cameraRcControls } from '@/ui/RcControlsLayer';
@@ -193,33 +193,7 @@ export const stickDeflection = (stick: Offset): { x: number; y: number } => ({ x
 
 const GimbalStick = () => {
   const [stick, setStick] = useState<Offset>(CENTRED);
-  const latest = useRef<Offset>(CENTRED);
-  const lastSent = useRef(0);
-  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pushed = useRef(false);
-  const flush = () => {
-    pending.current = null;
-    lastSent.current = performance.now();
-    const { x, y } = stickDeflection(latest.current);
-    pushed.current = x !== 0 || y !== 0;
-    sendGimbalStick(x, y);
-  };
-  const send = (next: Offset, finished: boolean) => {
-    latest.current = next;
-    if (finished || rcSendDue(performance.now(), lastSent.current, false)) {
-      if (pending.current !== null) clearTimeout(pending.current);
-      return flush();
-    }
-    if (pending.current === null) pending.current = setTimeout(flush, RC_SEND_INTERVAL_MS - (performance.now() - lastSent.current));
-    return undefined;
-  };
-  useEffect(
-    () => () => {
-      if (pending.current !== null) clearTimeout(pending.current);
-      if (pushed.current) sendGimbalStick(0, 0);
-    },
-    [],
-  );
+  const { steer, stop } = useGimbalStickHold(true);
   return (
     <ThumbPad
       stick={stick}
@@ -229,11 +203,12 @@ const GimbalStick = () => {
       onHeld={() => undefined}
       onMove={(next) => {
         setStick(next);
-        send(next, false);
+        const { x, y } = stickDeflection(next);
+        steer(x, y);
       }}
       onRelease={() => {
         setStick(CENTRED);
-        send(CENTRED, true);
+        stop();
       }}
     />
   );
