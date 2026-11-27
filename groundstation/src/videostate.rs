@@ -944,15 +944,6 @@ impl VideoState {
         self.refresh()
     }
 
-    pub fn on_frame(&mut self, receiver: &str, at_s: u64) {
-        self.receivers
-            .entry(receiver.to_string())
-            .and_modify(|state| {
-                state.last_frame_s = Some(at_s);
-                state.reconnect_attempts = 0;
-            });
-    }
-
     fn set_status(&mut self, receiver: &str, status: Status, connecting: bool) -> Vec<Out> {
         if !Self::camera_receiver(receiver) {
             return Vec::new();
@@ -1935,12 +1926,13 @@ mod tests {
             SIGNAL_NONE,
             "and stays so through the retries instead of flickering back to connecting"
         );
-        state.on_frame(MAIN_RECEIVER, 5);
+        state.on_decoding(MAIN_RECEIVER, true, 5);
         assert_eq!(
             state.camera_signal(0),
-            SIGNAL_CONNECTING,
-            "a frame arriving ends the failure"
+            SIGNAL_LIVE,
+            "a picture ends the failure"
         );
+        state.on_decoding(MAIN_RECEIVER, false, 5 + STEADY_PICTURE_S);
         state.on_stop_complete(MAIN_RECEIVER, Outcome::Ok);
         assert_eq!(
             state.camera_signal(0),
@@ -2271,16 +2263,6 @@ mod tests {
                 delay_ms: 2000
             }),
             "the second retry waits longer"
-        );
-        state.on_frame(MAIN_RECEIVER, 20);
-        assert!(
-            state
-                .on_stop_complete(MAIN_RECEIVER, Outcome::Failed)
-                .contains(&Out::RestartAfter {
-                    receiver: MAIN_RECEIVER.to_string(),
-                    delay_ms: RESTART_DELAY_MS
-                }),
-            "a frame resets the backoff"
         );
         state.settings.reconnect_disabled = true;
         assert!(
@@ -2749,13 +2731,6 @@ mod tests {
             multi.frame_age(1, 100),
             Age::NoCamera,
             "on screen with no receiver registered is the answer noCamera is for"
-        );
-        state.on_frame(MAIN_RECEIVER, 40);
-        assert_eq!(state.frame_age(0, 100), Age::Seconds(60));
-        assert_eq!(
-            state.frame_age(0, 20).seconds(),
-            Some(0),
-            "a clock that has gone backwards reads as fresh rather than wrapping"
         );
     }
 
