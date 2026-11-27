@@ -5,8 +5,8 @@ use serde_json::{Value, json};
 
 use crate::router::Backend;
 
-pub const VIEW: &str = "view.auxSwitches";
-pub const SET: &str = "vehicle.auxSwitch";
+pub const AUX_SWITCHES_VIEW: &str = "view.auxSwitches";
+pub const AUX_SWITCH_SET: &str = "vehicle.auxSwitch";
 const SENSOR_SLOTS: std::ops::RangeInclusive<u8> = 1..=9;
 
 pub struct Switch {
@@ -72,7 +72,7 @@ pub fn set(backend: &dyn Backend, args: &str) -> Value {
         backend,
         Some(json!({ "action": "auxSwitch", "function": switch.function, "high": on })),
         vehicle,
-        SET,
+        AUX_SWITCH_SET,
         args,
     );
     if let Some(id) = vehicle

@@ -943,7 +943,7 @@ pub const VIEWS: &[View] = &[
         compute: gimbal::gimbal_view,
     },
     View {
-        path: crate::auxswitch::VIEW,
+        path: crate::auxswitch::AUX_SWITCHES_VIEW,
         deps: &[],
         compute: crate::auxswitch::view,
     },
