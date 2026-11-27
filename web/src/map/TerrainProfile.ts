@@ -30,6 +30,7 @@ export type TerrainProfile = {
   readonly markers: readonly ProfileMarker[];
   readonly band: readonly [number, number] | null;
   readonly heightHeader: string;
+  readonly heightReference: string;
   readonly distanceTicks: readonly string[];
   readonly heightTicks: readonly string[];
   readonly distance: number;
@@ -64,6 +65,7 @@ export const TerrainProfile = (fields: {
   markers?: readonly ProfileMarker[];
   band?: readonly [number, number] | null;
   heightHeader?: string;
+  heightReference?: string;
   distanceTicks?: readonly string[];
   heightTicks?: readonly string[];
 }): TerrainProfile => {
@@ -83,6 +85,7 @@ export const TerrainProfile = (fields: {
     bandText: '',
     markers: [],
     heightHeader: '',
+    heightReference: 'AMSL',
     distanceTicks: [],
     heightTicks: [],
     ...fields,
@@ -158,6 +161,7 @@ export const terrainProfile = (view: Json | null): TerrainProfile => {
     bandText: optText(view, 'bandText'),
     band: low !== null && high !== null ? [low, high] : null,
     heightHeader: optText(view, 'heightHeader'),
+    heightReference: optText(view, 'heightReference') || 'AMSL',
     distanceTicks: jsonStrings(optJSONArray(view, 'distanceTicks')),
     heightTicks: jsonStrings(optJSONArray(view, 'heightTicks')),
   });

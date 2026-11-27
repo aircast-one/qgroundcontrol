@@ -36,6 +36,7 @@ struct TerrainProfile: Equatable {
     var markers: [ProfileMarker] = []
     var band: (Double, Double)? = nil
     var heightHeader: String = ""
+    var heightReference: String = "AMSL"
     var distanceTicks: [String] = []
     var heightTicks: [String] = []
 
@@ -43,7 +44,7 @@ struct TerrainProfile: Equatable {
         lhs.points == rhs.points && lhs.clearance == rhs.clearance && lhs.lowestText == rhs.lowestText
             && lhs.highestText == rhs.highestText && lhs.distanceText == rhs.distanceText && lhs.bandText == rhs.bandText
             && lhs.markers == rhs.markers && lhs.band?.0 == rhs.band?.0 && lhs.band?.1 == rhs.band?.1
-            && lhs.heightHeader == rhs.heightHeader && lhs.distanceTicks == rhs.distanceTicks && lhs.heightTicks == rhs.heightTicks
+            && lhs.heightHeader == rhs.heightHeader && lhs.heightReference == rhs.heightReference && lhs.distanceTicks == rhs.distanceTicks && lhs.heightTicks == rhs.heightTicks
     }
 
     var distance: Double { points.last?.distance ?? 0 }
@@ -137,6 +138,7 @@ func terrainProfile(_ view: JSON?) -> TerrainProfile {
         },
         band: low.isFinite && high.isFinite ? (low, high) : nil,
         heightHeader: view["heightHeader"].string,
+        heightReference: view["heightReference"].string.ifBlank("AMSL"),
         distanceTicks: view["distanceTicks"].arrayOrNil?.map(\.string) ?? [],
         heightTicks: view["heightTicks"].arrayOrNil?.map(\.string) ?? []
     )

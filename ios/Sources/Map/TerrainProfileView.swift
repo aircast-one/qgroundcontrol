@@ -74,7 +74,7 @@ private func pathOf(_ points: [CGPoint]) -> Path {
 }
 
 func heightRange(_ profile: TerrainProfile) -> String {
-    profile.flat ? "\(profile.lowestText) AMSL" : "\(profile.bandText) AMSL"
+    "\(profile.flat ? profile.lowestText : profile.bandText) \(profile.heightReference)"
 }
 
 func profileLabel(_ profile: TerrainProfile) -> String {

@@ -41,7 +41,8 @@ export const altitudeWithFrame = (item: MissionItem): string | null => {
   const height = blankToNull(item.altitudeText) ?? blankToNull(item.altitudeBandText);
   if (height === null) return null;
   const frame = item.altitudeFrameText;
-  return frame.trim() === '' ? height : `${height} ${frame}`;
+  const framed = frame.trim() === '' ? height : `${height} ${frame}`;
+  return item.index === HOME_ITEM ? `Ground ${framed}` : framed;
 };
 
 export const rallyAltitudeLabel = (point: RallyPoint): string => `Alt ${blankToNull(point.altitudeUnits) ?? 'm'}`;

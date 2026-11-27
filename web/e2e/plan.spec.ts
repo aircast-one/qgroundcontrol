@@ -92,6 +92,18 @@ test('the raw view of a waypoint reads in plain words and its command list chang
   await expect(app.getByRole('button', { name: /^3 Delay\b/i })).toBeVisible({ timeout: 15_000 });
 });
 
+test('the profile chart and the launch row read heights from the launch, not above sea level', async ({ vehicle }) => {
+  await openPlanAtVehicle(vehicle);
+  await tapPlanMission(vehicle);
+  await expect.poll(() => itemCount(vehicle)).toBeGreaterThanOrEqual(5);
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  const chart = vehicle.getByRole('img', { name: / · \d+ m/ });
+  await expect(chart, 'the band of heights is read from the launch, as the waypoints are').toHaveAccessibleName(/m above launch · /, { timeout: 30_000 });
+  await expect(vehicle.getByText('Height above launch (m)')).toBeVisible();
+  await expect(vehicle.getByText(/^Height AMSL/)).toHaveCount(0);
+  await expect(vehicle.getByRole('button', { name: /^0 Launch Ground -?[\d,.]+ m AMSL/ }), 'the launch row is the ground’s own height, and says so').toBeVisible();
+});
+
 test('a plan being drawn survives a reload of the page', async ({ app }) => {
   await openMenu(app, 'Plan');
   await tapPlanMission(app);
@@ -253,9 +265,9 @@ test('switching a waypoint to AMSL keeps its height above the launch', async ({ 
   await vehicle.getByRole('button', { name: 'Done' }).click();
   await vehicle.getByRole('button', { name: /^Relative to launch$/i }).click();
   await vehicle.getByRole('menuitem', { name: /Mixed modes/i }).click();
-  const launch = vehicle.getByRole('button', { name: /Launch -?[\d,.]+ m AMSL/ });
+  const launch = vehicle.getByRole('button', { name: /Launch Ground -?[\d,.]+ m AMSL/ });
   await expect(launch).toBeVisible({ timeout: 30_000 });
-  const ground = Number((await launch.innerText()).match(/Launch\s+(-?[\d,.]+) m AMSL/)?.[1]?.replace(',', ''));
+  const ground = Number((await launch.innerText()).match(/Ground\s+(-?[\d,.]+) m AMSL/)?.[1]?.replace(',', ''));
   expect(ground, 'the launch has a real elevation, so the conversion is visible').toBeGreaterThan(0);
   await vehicle.getByRole('button', { name: 'Waypoint 3' }).first().click();
   await expect(vehicle.getByRole('button', { name: /^3 Waypoint 50\.0 m/ })).toBeVisible();

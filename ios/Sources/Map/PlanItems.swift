@@ -33,7 +33,8 @@ let NOT_READY_SEAL = "?"
 
 func altitudeWithFrame(_ item: MissionItem) -> String? {
     guard let height = [item.altitudeText, item.altitudeBandText].first(where: { !$0.isBlank }) else { return nil }
-    return item.altitudeFrameText.isBlank ? height : "\(height) \(item.altitudeFrameText)"
+    let framed = item.altitudeFrameText.isBlank ? height : "\(height) \(item.altitudeFrameText)"
+    return item.index == HOME_ITEM ? "Ground \(framed)" : framed
 }
 
 func rallyAltitudeLabel(_ point: RallyPoint) -> String { "Alt \(point.altitudeUnits.ifBlank("m"))" }

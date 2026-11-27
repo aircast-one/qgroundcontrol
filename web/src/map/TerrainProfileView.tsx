@@ -92,7 +92,7 @@ export const groundOutline = (terrain: readonly Offset[], height: number): reado
 
 const pathOf = (points: readonly Offset[], closed = false): string => points.map((it, index) => `${index === 0 ? 'M' : 'L'}${it.x} ${it.y}`).join(' ') + (closed ? ' Z' : '');
 
-export const heightRange = (profile: TerrainProfile): string => (profile.flat ? `${profile.lowestText} AMSL` : `${profile.bandText} AMSL`);
+export const heightRange = (profile: TerrainProfile): string => `${profile.flat ? profile.lowestText : profile.bandText} ${profile.heightReference}`;
 
 const coverageNote = (profile: TerrainProfile): string => {
   if (!profile.hasTerrain) return ' · ground height unknown';

@@ -501,6 +501,10 @@ describe('AltitudeFrameTest', () => {
     expect(altitudeWithFrame(item(''))).toBe('50.0 m');
   });
 
+  it('the launch row is the height of the ground the aircraft takes off from, so it says so and is not read as a flight height', () => {
+    expect(altitudeWithFrame({ ...item('AMSL', '0.0 m'), index: HOME_ITEM })).toBe('Ground 0.0 m AMSL');
+  });
+
   it('the two frames that are not the default say so', () => {
     expect(altitudeWithFrame(item('AMSL', '541 m'))).toBe('541 m AMSL');
     expect(altitudeWithFrame(item('AGL'))).toBe('50.0 m AGL');

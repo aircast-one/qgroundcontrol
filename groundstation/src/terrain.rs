@@ -868,8 +868,11 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
             crate::missionitems::document_reads(&document, 0).unwrap_or_default(),
             class == crate::cmdinfo::VehicleClass::FixedWing,
             class == crate::cmdinfo::VehicleClass::Rover,
+            document.home.map(|home| home[2]),
         )
     });
+    let launch = core.as_ref().and_then(|(.., launch)| *launch);
+    let above = |metres: f64| metres - launch.unwrap_or(0.0);
     let model = match &core {
         Some((reads, ..)) => core_model(backend, reads),
         None => backend.value_fields("plan.missionController.visualItems", FIELDS),
@@ -878,7 +881,7 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let inside = walked(backend, &model);
     let legs = core
         .as_ref()
-        .map(|(reads, fixed_wing, rover)| {
+        .map(|(reads, fixed_wing, rover, _)| {
             simple_segments(
                 reads,
                 *fixed_wing,
@@ -925,12 +928,13 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "minAltitudeMeters": profile.min_altitude,
         "maxAltitudeMeters": profile.max_altitude,
         "distanceText": crate::missionsummary::distance_text(profile.total_distance, crate::missionsummary::imperial(backend)),
-        "lowestText": crate::read::format_measure(vertical.show(profile.min_altitude), &vertical.name),
-        "highestText": crate::read::format_measure(vertical.show(profile.max_altitude), &vertical.name),
-        "bandText": crate::read::range_text(profile.min_altitude, profile.max_altitude, &vertical),
-        "heightHeader": format!("Height AMSL ({})", vertical.name),
+        "lowestText": crate::read::format_measure(vertical.show(above(profile.min_altitude)), &vertical.name),
+        "highestText": crate::read::format_measure(vertical.show(above(profile.max_altitude)), &vertical.name),
+        "bandText": crate::read::range_text(above(profile.min_altitude), above(profile.max_altitude), &vertical),
+        "heightReference": height_reference(launch),
+        "heightHeader": format!("Height {} ({})", height_reference(launch), vertical.name),
         "distanceTicks": axis_ticks(0.0, Unit::horizontal(backend).show(profile.total_distance), 4),
-        "heightTicks": axis_ticks(vertical.show(profile.min_altitude), vertical.show(profile.max_altitude), 3),
+        "heightTicks": axis_ticks(vertical.show(above(profile.min_altitude)), vertical.show(above(profile.max_altitude)), 3),
         "markers": markers(&model),
         "collidingItems": settled(checking, colliding_items(&model, false)),
         "collidingSimpleItems": settled(checking, colliding_items(&model, true)),
@@ -947,6 +951,13 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "collision": !checking && p.collision,
         })).collect::<Vec<_>>(),
     })
+}
+
+fn height_reference(launch: Option<f64>) -> &'static str {
+    match launch {
+        Some(_) => "above launch",
+        None => "AMSL",
+    }
 }
 
 fn settled<T: Default>(checking: bool, conflicts: T) -> T {
