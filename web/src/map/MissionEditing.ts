@@ -244,7 +244,10 @@ export const attachMissionEditing = (
     if (gesture.moved) onMoved(hit, at.lat, at.lng);
     else if (hit.kind !== 'Midpoint' || still) onSelected(hit);
   };
-  const lifted = (event: MapMouseEvent | MapTouchEvent) => release(event.point.x, event.point.y, event.lngLat, true);
+  const lifted = (event: MapMouseEvent | MapTouchEvent) => {
+    if (event.type === 'touchend' && gesture.addedInGesture && event.originalEvent.cancelable) event.originalEvent.preventDefault();
+    release(event.point.x, event.point.y, event.lngLat, true);
+  };
   const cancelled = (event: MapTouchEvent) => release(event.point.x, event.point.y, event.lngLat, false);
   const outside = (event: MouseEvent) => {
     if (!gesture.active) return;

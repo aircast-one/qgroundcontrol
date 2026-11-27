@@ -481,3 +481,44 @@ test('a right-click on the plan map asks before it adds, and adds the waypoint a
   await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(before + 1);
   await expect(app.getByRole('button', { name: `Waypoint ${before}` }).first(), 'it lands last, after the route already drawn: the takeoff takes no number, so it is waypoint as many as there were items').toBeVisible();
 });
+
+const LONG_PRESS_HAS_PASSED_MS = 1_000;
+
+test('a long press on the plan map opens the menu and it stays open when the finger lifts, but a drag or a second finger opens nothing', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openPlanAtVehicle(app);
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.getByRole('button', { name: 'Done' }).click();
+  const before = await itemCount(app);
+  const box = (await app.getByRole('region', { name: 'Map' }).boundingBox())!;
+  const at = { x: Math.round(box.x + box.width * 0.75), y: Math.round(box.y + box.height * 0.85) };
+  const finger = await app.context().newCDPSession(app);
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', points: readonly { x: number; y: number }[]) => finger.send('Input.dispatchTouchEvent', { type, touchPoints: [...points] });
+  const menu = app.getByRole('menuitem', { name: 'Add waypoint here' });
+  const held = async () => {
+    const started = Date.now();
+    await expect.poll(() => Date.now() - started, { timeout: LONG_PRESS_HAS_PASSED_MS * 3 }).toBeGreaterThan(LONG_PRESS_HAS_PASSED_MS);
+  };
+
+  await touch('touchStart', [at]);
+  await touch('touchMove', [{ x: at.x - 60, y: at.y - 60 }]);
+  await held();
+  await touch('touchEnd', []);
+  await expect(menu, 'a finger that moved was panning the map').toHaveCount(0);
+
+  await touch('touchStart', [at]);
+  await touch('touchStart', [at, { x: at.x - 80, y: at.y - 80 }]);
+  await held();
+  await touch('touchEnd', []);
+  await expect(menu, 'two fingers are a pinch').toHaveCount(0);
+  expect(await itemCount(app), 'neither gesture added a waypoint').toBe(before);
+
+  await touch('touchStart', [at]);
+  await expect(menu, 'the menu opens under the held finger').toBeVisible();
+  await touch('touchEnd', []);
+  await held();
+  await expect(menu, 'lifting the finger leaves the menu open to be read').toBeVisible();
+  await menu.click();
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(before + 1);
+});

@@ -236,6 +236,24 @@ const hitKey = (hit: MapHit | null): string => JSON.stringify(hit);
 
 type MapMenuAt = { readonly at: TrackPoint; readonly x: number; readonly y: number };
 
+export const viewMoved = (before: readonly TrackPoint[], after: readonly TrackPoint[]): boolean =>
+  before.length === after.length && before.some((corner, at) => corner.latitude !== after[at]?.latitude || corner.longitude !== after[at]?.longitude);
+
+const MapContextMenu = ({ menu, onDismiss, onAddWaypoint, onSetLaunch }: { menu: MapMenuAt; onDismiss: () => void; onAddWaypoint: (at: TrackPoint) => void; onSetLaunch: (at: TrackPoint) => void }) => {
+  const picked = (act: (at: TrackPoint) => void) => () => {
+    onDismiss();
+    act(menu.at);
+  };
+  return (
+    <div className="absolute" style={{ left: menu.x, top: menu.y }}>
+      <DropdownMenu expanded onDismissRequest={onDismiss}>
+        <DropdownMenuItem text="Add waypoint here" onClick={picked(onAddWaypoint)} />
+        <DropdownMenuItem text="Set launch here" onClick={picked(onSetLaunch)} />
+      </DropdownMenu>
+    </div>
+  );
+};
+
 export const PlanMapContent = ({
   mapStyle,
   onCentre = null,
@@ -719,6 +737,7 @@ export const PlanMapContent = ({
         }}
         selectedWaypoint={chosen?.kind === 'Waypoint' ? chosen.index : null}
         onViewChanged={(corners) => {
+          if (viewMoved(visible.value, corners)) mapMenu.value = null;
           visible.value = corners;
         }}
         tracePoints={traced?.[1] ?? NO_POINTS}
@@ -740,27 +759,15 @@ export const PlanMapContent = ({
         centreMinZoom={centreMinZoom.value}
       />
       {mapMenu.value === null ? null : (
-        <div className="absolute" style={{ left: mapMenu.value.x, top: mapMenu.value.y }}>
-          <DropdownMenu expanded onDismissRequest={() => (mapMenu.value = null)}>
-            <DropdownMenuItem
-              text="Add waypoint here"
-              onClick={() => {
-                const at = mapMenu.value?.at ?? null;
-                mapMenu.value = null;
-                panelOpen.value = false;
-                addMissionItem(KIND_WAYPOINT, 'Adding a waypoint', at, insertAfter(null, allItems.value));
-              }}
-            />
-            <DropdownMenuItem
-              text="Set launch here"
-              onClick={() => {
-                const at = mapMenu.value?.at;
-                mapMenu.value = null;
-                if (at !== undefined) onBridge(() => PlanBridge.moveItem(HOME_ITEM, at.latitude, at.longitude), { label: 'Moving the launch' });
-              }}
-            />
-          </DropdownMenu>
-        </div>
+        <MapContextMenu
+          menu={mapMenu.value}
+          onDismiss={() => (mapMenu.value = null)}
+          onAddWaypoint={(at) => {
+            panelOpen.value = false;
+            addMissionItem(KIND_WAYPOINT, 'Adding a waypoint', at, insertAfter(null, allItems.value));
+          }}
+          onSetLaunch={(at) => onBridge(() => PlanBridge.moveItem(HOME_ITEM, at.latitude, at.longitude), { label: 'Moving the launch' })}
+        />
       )}
 
       {radiusFor.value === null ? null : (
