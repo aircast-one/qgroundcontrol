@@ -15,7 +15,7 @@ import { type GimbalAzimuth, installGimbalLayer, renderGimbals } from './GimbalW
 import { type GotoLocation, attachGotoRadiusDrag, editedGoto, gotoPath, installClickMarker, installGotoLayer, previewGoto, renderClickMarker, renderGoto, renderGotoPath } from './GotoMarker';
 import { type LandingPattern, landingAreaFeatures, landingLabelFeatures, landingLoiterFeatures, landingPathFeatures } from './LandingPattern';
 import { FLY_STATE_VIEW, MapBridge, useMapPath, useMapViewFlag } from './MapBridge';
-import { type MapHit, attachMissionEditing, hitTest } from './MissionEditing';
+import { type MapHit, type MapPress, attachMissionEditing, hitTest } from './MissionEditing';
 import {
   EDGE_LABEL_SOURCE,
   GCS_SOURCE,
@@ -218,7 +218,7 @@ export type VehicleMapProps = {
   selectedWaypoint?: number | null;
   circledShapes?: ReadonlySet<string>;
   firmwareFence?: FirmwareFence | null;
-  onAdd?: (latitude: number, longitude: number, x: number, y: number) => void;
+  onAdd?: (press: MapPress) => void;
   onBlankTap?: ((latitude: number, longitude: number) => void) | null;
   onMove?: (hit: MapHit, latitude: number, longitude: number) => void;
   onWaypointSelected?: (hit: MapHit | null) => void;
@@ -483,7 +483,7 @@ export const VehicleMap = ({
       attachMissionEditing(
         loaded.getCanvasContainer(),
         loaded,
-        (latitude: number, longitude: number, x: number, y: number) => latestOnAdd.current(latitude, longitude, x, y),
+        (press: MapPress) => latestOnAdd.current(press),
         (hit: MapHit, latitude: number, longitude: number) => latestOnMove.current(hit, latitude, longitude),
         (hit: MapHit | null) => latestOnSelected.current(hit),
         (hit: MapHit, latitude: number, longitude: number) => latestOnMoved.current(hit, latitude, longitude),

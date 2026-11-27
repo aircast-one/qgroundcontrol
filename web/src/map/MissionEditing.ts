@@ -144,10 +144,12 @@ export const withinHit = (dx: number, dy: number): boolean => Math.abs(dx) <= HI
 
 export const withinTap = (dx: number, dy: number): boolean => Math.abs(dx) <= TAP_SLOP_PX && Math.abs(dy) <= TAP_SLOP_PX;
 
+export type MapPress = { readonly latitude: number; readonly longitude: number; readonly x: number; readonly y: number };
+
 export const attachMissionEditing = (
   _mapView: HTMLElement,
   map: MapLibreMap,
-  onAdd: (latitude: number, longitude: number, x: number, y: number) => void,
+  onAdd: (press: MapPress) => void,
   onMove: (hit: MapHit, latitude: number, longitude: number) => void,
   onSelected: (hit: MapHit | null) => void = () => undefined,
   onMoved: (hit: MapHit, latitude: number, longitude: number) => void = () => undefined,
@@ -178,7 +180,7 @@ export const attachMissionEditing = (
     gesture.swallowsClick = true;
     gesture.pressedAt = performance.now();
     if (tapped !== null) onSelected(tapped);
-    else onAdd(at.lat, at.lng, x, y);
+    else onAdd({ latitude: at.lat, longitude: at.lng, x, y });
   };
   const down = (event: MapMouseEvent | MapTouchEvent) => {
     cancelPress();

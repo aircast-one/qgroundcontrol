@@ -668,7 +668,7 @@ export const PlanMapContent = ({
         editable
         circledShapes={circled}
         collisionLegs={terrainHits}
-        onAdd={(lat, lon, x, y) => {
+        onAdd={({ latitude: lat, longitude: lon, x, y }) => {
           const trace = tracing.value;
           if (trace !== null) {
             tracing.value = [trace[0], [...trace[1], TrackPoint(lat, lon)]];

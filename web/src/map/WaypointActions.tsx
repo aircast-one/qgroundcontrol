@@ -168,6 +168,113 @@ export type Refusing = (label: string, work: () => Promise<string | null>) => vo
 
 const DROP_NOT_CHANGED = 'The drop was not changed.';
 
+type ActionWrites = {
+  readonly setHold: (seconds: number) => void;
+  readonly setYaw: (degrees: number | null) => void;
+  readonly setCamera: (member: string, value: unknown) => void;
+  readonly chooseAction: (choice: number) => void;
+  readonly addDrop: (onAdded: () => void) => void;
+  readonly removeDrop: () => void;
+};
+
+const actionWrites = (index: number, hold: WaypointHold | null, yaw: WaypointYaw | null, onRefusal: Refusing): ActionWrites => {
+  const write = (work: () => Promise<boolean>) => void work();
+  return {
+    setHold: (seconds) => (hold === null ? undefined : write(() => setOk(hold.path, settingJson(`${seconds}`)))),
+    setYaw: (degrees) => (yaw === null ? undefined : write(() => setOk(yaw.path, settingJson(degrees === null ? 'null' : `${degrees}`)))),
+    setCamera: (member, value) => write(() => ItemCameraBridge.set(index, member, value)),
+    chooseAction: (choice) => write(() => ItemCameraBridge.chooseAction(index, choice)),
+    addDrop: (onAdded) =>
+      onRefusal('Adding a drop', async () => {
+        const refusal = await invokeRefusal(PLACE_DROP, `[${index}]`, DROP_NOT_CHANGED);
+        if (refusal === null) onAdded();
+        return refusal;
+      }),
+    removeDrop: () => onRefusal('Removing the drop', () => invokeRefusal(REMOVE_DROP, `[${index}]`, DROP_NOT_CHANGED)),
+  };
+};
+
+type KindName = ActionKind['name'];
+
+const REMOVALS: Record<KindName, (writes: ActionWrites) => void> = {
+  Hover: (writes) => writes.setHold(0.0),
+  Camera: (writes) => writes.chooseAction(NO_CAMERA_ACTION),
+  Gimbal: (writes) => writes.setCamera('specifyGimbal', false),
+  Mode: (writes) => writes.setCamera('specifyCameraMode', false),
+  Turn: (writes) => writes.setYaw(null),
+  Drop: (writes) => writes.removeDrop(),
+};
+
+const thenOpened = (write: (writes: ActionWrites, offer: ActionOffer) => void) => (writes: ActionWrites, offer: ActionOffer, opened: () => void) => {
+  write(writes, offer);
+  opened();
+};
+
+const ADDITIONS: Record<KindName, (writes: ActionWrites, offer: ActionOffer, opened: () => void) => void> = {
+  Hover: thenOpened((writes) => writes.setHold(DEFAULT_HOVER_SECONDS)),
+  Camera: thenOpened((writes, offer) => writes.chooseAction(offer.choice)),
+  Gimbal: thenOpened((writes) => writes.setCamera('specifyGimbal', true)),
+  Mode: thenOpened((writes) => writes.setCamera('specifyCameraMode', true)),
+  Turn: thenOpened((writes) => writes.setYaw(0.0)),
+  Drop: (writes, _offer, opened) => writes.addDrop(opened),
+};
+
+type ActionEditorProps = {
+  kind: ActionKind;
+  index: number;
+  hold: WaypointHold | null;
+  yaw: WaypointYaw | null;
+  drop: WaypointDrop | null;
+  choices: CameraChoices | null;
+  extras: CameraExtras | null;
+  writes: ActionWrites;
+  onRefusal: Refusing;
+};
+
+const ActionEditor = ({ kind, index, hold, yaw, drop, choices, extras, writes, onRefusal }: ActionEditorProps) => {
+  const { setHold, setYaw, setCamera, chooseAction } = writes;
+  switch (kind.name) {
+    case 'Hover':
+      return hold === null ? null : <SettingStepper label="Hover" value={hold.seconds} unit={hold.units} step={1.0} onSet={setHold} range={HOVER_RANGE} slider />;
+    case 'Turn':
+      return <SettingStepper label="Heading" value={yaw?.degrees ?? 0.0} unit="°" step={ANGLE_STEP} onSet={(it) => setYaw(it)} range={HEADING_RANGE} slider />;
+    case 'Gimbal':
+      return extras === null ? null : (
+        <>
+          <SettingStepper label="Pitch" value={extras.pitch} unit="°" step={ANGLE_STEP} onSet={(it) => setCamera('gimbalPitch', it)} range={extras.pitchRange ?? PITCH_RANGE} slider />
+          <SettingStepper label="Yaw" value={extras.yaw} unit="°" step={ANGLE_STEP} onSet={(it) => setCamera('gimbalYaw', it)} range={extras.yawRange ?? HEADING_RANGE} slider />
+        </>
+      );
+    case 'Drop':
+      return drop === null || drop.index === null ? null : <DropEditor index={index} drop={drop} onRefusal={onRefusal} />;
+    case 'Mode':
+      return (
+        <div className="flex gap-2">
+          {CAMERA_MODES.map((label, at) => (
+            <FilterChip key={label} selected={extras?.mode === at} onClick={() => setCamera('cameraMode', at)} label={label} />
+          ))}
+        </div>
+      );
+    case 'Camera':
+      return (
+        <>
+          {(choices?.labels ?? []).map((label, at) =>
+            at === 0 ? null : (
+              <div key={at} className="flex min-h-12 w-full cursor-pointer items-center gap-3" onClick={() => chooseAction(at)}>
+                <RadioButton selected={choices?.chosen === at} onClick={null} label={sentenceCase(label)} />
+                <Text>{sentenceCase(label)}</Text>
+              </div>
+            ),
+          )}
+          {extras !== null && extras.intervalTime !== null ? <SettingStepper label="Every" value={extras.intervalTime} unit="s" step={1.0} onSet={(it) => setCamera('cameraPhotoIntervalTime', it)} range={INTERVAL_RANGE} /> : null}
+          {extras !== null && extras.intervalDistance !== null ? (
+            <SettingStepper label="Every" value={extras.intervalDistance} unit={extras.distanceUnits} step={1.0} onSet={(it) => setCamera('cameraPhotoIntervalDistance', it)} range={INTERVAL_RANGE} />
+          ) : null}
+        </>
+      );
+  }
+};
+
 export const WaypointActions = ({ index, hold, yaw, drop, onRefusal }: { index: number; hold: WaypointHold | null; yaw: WaypointYaw | null; drop: WaypointDrop | null; onRefusal: Refusing }) => {
   const camera = useMapPath(itemCameraPath(index));
   const choices = cameraChoices(camera);
@@ -177,82 +284,9 @@ export const WaypointActions = ({ index, hold, yaw, drop, onRefusal }: { index: 
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useKeyedState<ActionKind | null>([index], () => null);
   if (active.length === 0 && offers.length === 0) return null;
-  const write = (work: () => Promise<boolean>) => void work();
-  const setHold = (seconds: number) => {
-    if (hold !== null) write(() => setOk(hold.path, settingJson(`${seconds}`)));
-  };
-  const setYaw = (degrees: number | null) => {
-    if (yaw !== null) write(() => setOk(yaw.path, settingJson(degrees === null ? 'null' : `${degrees}`)));
-  };
-  const setCamera = (member: string, value: unknown) => write(() => ItemCameraBridge.set(index, member, value));
-  const chooseAction = (choice: number) => write(() => ItemCameraBridge.chooseAction(index, choice));
-  const remove = (kind: ActionKind) => {
-    switch (kind.name) {
-      case 'Hover': return setHold(0.0);
-      case 'Camera': return chooseAction(NO_CAMERA_ACTION);
-      case 'Gimbal': return setCamera('specifyGimbal', false);
-      case 'Mode': return setCamera('specifyCameraMode', false);
-      case 'Turn': return setYaw(null);
-      case 'Drop': return onRefusal('Removing the drop', () => invokeRefusal(REMOVE_DROP, `[${index}]`, DROP_NOT_CHANGED));
-    }
-  };
-  const add = (offer: ActionOffer) => {
-    switch (offer.kind.name) {
-      case 'Hover': return setHold(DEFAULT_HOVER_SECONDS);
-      case 'Camera': return chooseAction(offer.choice);
-      case 'Gimbal': return setCamera('specifyGimbal', true);
-      case 'Mode': return setCamera('specifyCameraMode', true);
-      case 'Turn': return setYaw(0.0);
-      case 'Drop':
-        return onRefusal('Adding a drop', async () => {
-          const refusal = await invokeRefusal(PLACE_DROP, `[${index}]`, DROP_NOT_CHANGED);
-          if (refusal === null) setEditing(offer.kind);
-          return refusal;
-        });
-    }
-  };
-  const editor = (kind: ActionKind) => {
-    switch (kind.name) {
-      case 'Hover':
-        return hold === null ? null : <SettingStepper label="Hover" value={hold.seconds} unit={hold.units} step={1.0} onSet={setHold} range={HOVER_RANGE} slider />;
-      case 'Turn':
-        return <SettingStepper label="Heading" value={yaw?.degrees ?? 0.0} unit="°" step={ANGLE_STEP} onSet={(it) => setYaw(it)} range={HEADING_RANGE} slider />;
-      case 'Gimbal':
-        return extras === null ? null : (
-          <>
-            <SettingStepper label="Pitch" value={extras.pitch} unit="°" step={ANGLE_STEP} onSet={(it) => setCamera('gimbalPitch', it)} range={extras.pitchRange ?? PITCH_RANGE} slider />
-            <SettingStepper label="Yaw" value={extras.yaw} unit="°" step={ANGLE_STEP} onSet={(it) => setCamera('gimbalYaw', it)} range={extras.yawRange ?? HEADING_RANGE} slider />
-          </>
-        );
-      case 'Drop':
-        return drop === null || drop.index === null ? null : <DropEditor index={index} drop={drop} onRefusal={onRefusal} />;
-      case 'Mode':
-        return (
-          <div className="flex gap-2">
-            {CAMERA_MODES.map((label, at) => (
-              <FilterChip key={label} selected={extras?.mode === at} onClick={() => setCamera('cameraMode', at)} label={label} />
-            ))}
-          </div>
-        );
-      case 'Camera':
-        return (
-          <>
-            {(choices?.labels ?? []).map((label, at) =>
-              at === 0 ? null : (
-                <div key={at} className="flex min-h-12 w-full cursor-pointer items-center gap-3" onClick={() => chooseAction(at)}>
-                  <RadioButton selected={choices?.chosen === at} onClick={null} label={sentenceCase(label)} />
-                  <Text>{sentenceCase(label)}</Text>
-                </div>
-              ),
-            )}
-            {extras !== null && extras.intervalTime !== null ? <SettingStepper label="Every" value={extras.intervalTime} unit="s" step={1.0} onSet={(it) => setCamera('cameraPhotoIntervalTime', it)} range={INTERVAL_RANGE} /> : null}
-            {extras !== null && extras.intervalDistance !== null ? (
-              <SettingStepper label="Every" value={extras.intervalDistance} unit={extras.distanceUnits} step={1.0} onSet={(it) => setCamera('cameraPhotoIntervalDistance', it)} range={INTERVAL_RANGE} />
-            ) : null}
-          </>
-        );
-    }
-  };
+  const writes = actionWrites(index, hold, yaw, onRefusal);
+  const add = (offer: ActionOffer) => ADDITIONS[offer.kind.name](writes, offer, () => setEditing(offer.kind));
+  const remove = (kind: ActionKind) => REMOVALS[kind.name](writes);
   return (
     <>
       <div className="flex w-full flex-col py-1">
@@ -275,7 +309,6 @@ export const WaypointActions = ({ index, hold, yaw, drop, onRefusal }: { index: 
                     onClick={() => {
                       setAdding(false);
                       add(offer);
-                      if (offer.kind !== ActionKind.Drop) setEditing(offer.kind);
                     }}
                   />
                 ))}
@@ -298,7 +331,11 @@ export const WaypointActions = ({ index, hold, yaw, drop, onRefusal }: { index: 
         <AlertDialog
           onDismissRequest={() => setEditing(null)}
           title={active.find((it) => it.kind === editing)?.title ?? offers.find((it) => it.kind === editing)?.title ?? ''}
-          text={<div className="flex flex-col">{editor(editing)}</div>}
+          text={
+            <div className="flex flex-col">
+              <ActionEditor kind={editing} index={index} hold={hold} yaw={yaw} drop={drop} choices={choices} extras={extras} writes={writes} onRefusal={onRefusal} />
+            </div>
+          }
           confirmButton={<TextButton onClick={() => setEditing(null)}>Done</TextButton>}
         />
       ) : null}
