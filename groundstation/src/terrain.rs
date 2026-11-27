@@ -871,8 +871,6 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         )
     });
     let launch = core.as_ref().and_then(|(.., launch)| *launch);
-    let above = |metres: f64| metres - launch.unwrap_or(0.0);
-    let reference = height_reference(launch);
     let model = match &core {
         Some((reads, ..)) => core_model(backend, reads),
         None => backend.value_fields("plan.missionController.visualItems", FIELDS),
@@ -911,6 +909,12 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .zip(summary.get("maxAMSLAltitude").and_then(Value::as_f64));
     let profile = banded(all, mission);
     let vertical = Unit::vertical(backend);
+    let heights = heights(
+        profile.min_altitude,
+        profile.max_altitude,
+        launch,
+        &vertical,
+    );
     let usable = profile.points.len() > 1 && profile.max_altitude > profile.min_altitude;
     let checking = core.is_some() && crate::coreplan::home_ground_pending();
     json!({
@@ -928,13 +932,13 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "minAltitudeMeters": profile.min_altitude,
         "maxAltitudeMeters": profile.max_altitude,
         "distanceText": crate::missionsummary::distance_text(profile.total_distance, crate::missionsummary::imperial(backend)),
-        "lowestText": crate::read::format_measure(vertical.show(above(profile.min_altitude)), &vertical.name),
-        "highestText": crate::read::format_measure(vertical.show(above(profile.max_altitude)), &vertical.name),
-        "bandText": crate::read::range_text(above(profile.min_altitude), above(profile.max_altitude), &vertical),
-        "heightReference": reference,
-        "heightHeader": format!("Height {reference} ({})", vertical.name),
+        "lowestText": heights.lowest,
+        "highestText": heights.highest,
+        "bandText": heights.band,
+        "heightReference": heights.reference,
+        "heightHeader": heights.header,
         "distanceTicks": axis_ticks(0.0, Unit::horizontal(backend).show(profile.total_distance), 4),
-        "heightTicks": axis_ticks(vertical.show(above(profile.min_altitude)), vertical.show(above(profile.max_altitude)), 3),
+        "heightTicks": heights.ticks,
         "markers": markers(&model),
         "collidingItems": settled(checking, colliding_items(&model, false)),
         "collidingSimpleItems": settled(checking, colliding_items(&model, true)),
@@ -953,6 +957,32 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
+struct Heights {
+    lowest: String,
+    highest: String,
+    band: String,
+    reference: &'static str,
+    header: String,
+    ticks: Value,
+}
+
+fn heights(lowest_amsl: f64, highest_amsl: f64, launch: Option<f64>, vertical: &Unit) -> Heights {
+    let above = |metres: f64| metres - launch.unwrap_or(0.0);
+    let reference = height_reference(launch);
+    Heights {
+        lowest: crate::read::format_measure(vertical.show(above(lowest_amsl)), &vertical.name),
+        highest: crate::read::format_measure(vertical.show(above(highest_amsl)), &vertical.name),
+        band: crate::read::range_text(above(lowest_amsl), above(highest_amsl), vertical),
+        reference,
+        header: format!("Height {reference} ({})", vertical.name),
+        ticks: json!(axis_ticks(
+            vertical.show(above(lowest_amsl)),
+            vertical.show(above(highest_amsl)),
+            3
+        )),
+    }
+}
+
 fn height_reference(launch: Option<f64>) -> &'static str {
     match launch {
         Some(_) => "above launch",
@@ -967,6 +997,68 @@ fn settled<T: Default>(checking: bool, conflicts: T) -> T {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_profile_reads_every_height_from_the_launch_and_only_a_plan_with_no_launch_reads_above_sea_level()
+     {
+        let metres = Unit {
+            name: "m".to_string(),
+            factor: 1.0,
+        };
+        let over_launch = heights(550.0, 620.0, Some(500.0), &metres);
+        assert_eq!(
+            (
+                over_launch.lowest.as_str(),
+                over_launch.highest.as_str(),
+                over_launch.band.as_str(),
+                over_launch.reference,
+                over_launch.header.as_str()
+            ),
+            (
+                "50.0 m",
+                "120 m",
+                "50 m to 120 m",
+                "above launch",
+                "Height above launch (m)"
+            ),
+            "a route 550 to 620 m above the sea over a launch at 500 m flies 50 to 120 m above it"
+        );
+        let ticks = |heights: &Heights| -> Vec<f64> {
+            heights
+                .ticks
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|tick| tick.as_str()?.parse().ok())
+                .collect()
+        };
+        assert_eq!(
+            (
+                ticks(&over_launch).first().copied(),
+                ticks(&over_launch).last().copied()
+            ),
+            (Some(50.0), Some(120.0)),
+            "the axis runs over the same numbers as the band"
+        );
+        let no_launch = heights(550.0, 620.0, None, &metres);
+        assert_eq!(
+            (
+                no_launch.band.as_str(),
+                no_launch.reference,
+                ticks(&no_launch).first().copied()
+            ),
+            ("550 m to 620 m", "AMSL", Some(550.0))
+        );
+        let feet = Unit {
+            name: "ft".to_string(),
+            factor: 3.280_84,
+        };
+        assert_eq!(
+            heights(600.0, 600.0, Some(500.0), &feet).lowest,
+            "328 ft",
+            "the launch comes off in metres before the unit is applied"
+        );
+    }
 
     #[test]
     fn conflicts_wait_for_the_ground_under_home_so_a_new_route_does_not_flash_red() {
