@@ -34,6 +34,9 @@ export const centresOnOperator = (alreadyCentred: boolean, operator: TrackPoint 
 
 export const showsWholeWorld = (zoom: number): boolean => zoom <= 1.0;
 
+export const centresOnLaunch = (alreadyCentred: boolean, remembered: boolean, zoom: number | null, vehiclePlaced: boolean): boolean =>
+  !alreadyCentred && !remembered && !vehiclePlaced && zoom !== null && showsWholeWorld(zoom);
+
 export const firstKnown = (points: readonly (TrackPoint | null)[]): TrackPoint | null => points.find((it): it is TrackPoint => it !== null && isPlottable(it.latitude, it.longitude)) ?? null;
 
 export const launchOf = (items: readonly MissionItem[]): TrackPoint | null =>
@@ -59,6 +62,7 @@ type FlownPlan = {
   readonly current: number | null;
   readonly others: readonly OtherMission[];
   readonly vehiclePlaced: boolean;
+  readonly home: TrackPoint | null;
 };
 
 const EMPTY_PLAN: FlownPlan = {
@@ -81,6 +85,7 @@ const EMPTY_PLAN: FlownPlan = {
   current: null,
   others: [],
   vehiclePlaced: false,
+  home: null,
 };
 
 const FLY_MISSION_ITEMS = 'view.flyMissionItems(geometry)';
@@ -131,6 +136,7 @@ const readFlownPlan = async (): Promise<FlownPlan> => {
     current: selected > 0 ? selected : null,
     others: otherMissions(raw),
     vehiclePlaced: vehicleChoices(vehicles).choices.some((it) => isPlottable(it.latitude, it.longitude)),
+    home: vehicleChoices(vehicles).active?.home ?? null,
   };
 };
 
@@ -178,7 +184,7 @@ export const FlyMap = ({
   const [style, setStyle] = useState<string | null>(null);
   const [plan, setPlan] = useState<FlownPlan>(EMPTY_PLAN);
   const [centre, setCentre] = useState<TrackPoint | null>(null);
-  const [zoom, setZoom] = useState(0.0);
+  const [zoom, setZoom] = useState<number | null>(null);
   const [fitRequest, setFitRequest] = useState(0);
   const gotoPreview = useValue(useContext(LocalFlyMapEdits).gotoPreview);
   const gotoCard = useValue(useContext(LocalFlyMapEdits).gotoCard);
@@ -189,7 +195,6 @@ export const FlyMap = ({
     const active = vehicleChoices(fleetJson).active;
     return active === null ? null : { latitude: active.latitude, longitude: active.longitude };
   }, [fleetJson]);
-  const home = useUpdatedRef(vehicleChoices(fleetJson).active?.home ?? null);
   useEffect(() => {
     if (gotoPreview !== null) setFitRequest((request) => request + 1);
   }, [gotoPreview]);
@@ -236,10 +241,11 @@ export const FlyMap = ({
         setCentreOn(next.operator);
         setCentreZoom(null);
         setCentreRequest((request) => request + 1);
-      } else if (!next.vehiclePlaced && showsWholeWorld(shownZoom.current)) {
-        const at = firstKnown([home.current, launchOf(next.items)]) ?? launchOf(missionItems(await PlanBridge.rawItems()));
+      } else if (centresOnLaunch(FlightMapPosition.launchCentred, saved !== null, shownZoom.current, next.vehiclePlaced)) {
+        const at = firstKnown([next.home, launchOf(next.items)]) ?? launchOf(missionItems(await PlanBridge.rawItems()));
         if (!scope.isActive()) return;
         if (at !== null) {
+          FlightMapPosition.launchCentred = true;
           setCentreOn(at);
           setCentreZoom(null);
           setCentreRequest((request) => request + 1);
@@ -325,7 +331,7 @@ export const FlyMap = ({
             />
           </div>
         )}
-        {centre !== null && zoom > 0.0 && !pip ? (
+        {centre !== null && zoom !== null && zoom > 0.0 && !pip ? (
           <ScaleBarView
             latitude={centre.latitude}
             zoom={zoom}

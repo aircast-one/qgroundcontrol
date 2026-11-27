@@ -119,9 +119,10 @@ export type TrackPoint = { readonly latitude: number; readonly longitude: number
 export const TrackPoint: { (fields: TrackPoint): TrackPoint; (latitude: number, longitude: number): TrackPoint } = (first: TrackPoint | number, longitude?: number): TrackPoint =>
   typeof first === 'number' ? { latitude: first, longitude: longitude ?? NaN } : { latitude: first.latitude, longitude: first.longitude };
 
-export const FlightMapPosition: { latest: TrackPoint | null; operatorCentred: boolean } = {
+export const FlightMapPosition: { latest: TrackPoint | null; operatorCentred: boolean; launchCentred: boolean } = {
   latest: null,
   operatorCentred: false,
+  launchCentred: false,
 };
 
 export const isPlottable = (latitude: number, longitude: number): boolean =>

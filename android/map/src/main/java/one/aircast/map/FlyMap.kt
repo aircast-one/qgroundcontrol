@@ -54,6 +54,9 @@ internal fun centresOnOperator(alreadyCentred: Boolean, operator: TrackPoint?, v
 
 internal fun showsWholeWorld(zoom: Double): Boolean = zoom <= 1.0
 
+internal fun centresOnLaunch(alreadyCentred: Boolean, remembered: Boolean, zoom: Double?, vehiclePlaced: Boolean): Boolean =
+    !alreadyCentred && !remembered && !vehiclePlaced && zoom != null && showsWholeWorld(zoom)
+
 internal fun firstKnown(points: List<TrackPoint?>): TrackPoint? =
     points.firstOrNull { it != null && isPlottable(it.latitude, it.longitude) }
 
@@ -81,6 +84,7 @@ private data class FlownPlan(
     val current: Int? = null,
     val others: List<OtherMission> = emptyList(),
     val vehiclePlaced: Boolean = false,
+    val home: TrackPoint? = null,
 )
 
 private const val FLY_MISSION_ITEMS = "view.flyMissionItems(geometry)"
@@ -115,7 +119,7 @@ fun FlyMap(
     var style by remember(context) { mutableStateOf(planMapStyle(context)) }
     var plan by remember { mutableStateOf(FlownPlan()) }
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
-    var zoom by remember { mutableDoubleStateOf(0.0) }
+    var zoom by remember { mutableStateOf<Double?>(null) }
     var fitRequest by remember { mutableIntStateOf(0) }
     val gotoPreview = LocalFlyMapEdits.current.gotoPreview
     val fleetJson by mapPath(VEHICLES_VIEW)
@@ -154,6 +158,7 @@ fun FlyMap(
                         MapBridge.markReachable()
                     }
                     planMapStyle(context).takeIf { it != style }?.let { style = it }
+                    val vehicles = vehicleChoices(runCatching { JSONObject(QGCBridge.get(VEHICLES_VIEW)) }.getOrNull())
                     FlownPlan(
                         items = missionItems(raw),
                         linkStartToHome = linksStartToHome(raw),
@@ -174,7 +179,8 @@ fun FlyMap(
                         orbit = OrbitBridge.read(),
                         current = raw?.optInt("selected", -1)?.takeIf { it > 0 },
                         others = otherMissions(raw),
-                        vehiclePlaced = vehicleChoices(runCatching { JSONObject(QGCBridge.get(VEHICLES_VIEW)) }.getOrNull()).choices.any { isPlottable(it.latitude, it.longitude) },
+                        vehiclePlaced = vehicles.choices.any { isPlottable(it.latitude, it.longitude) },
+                        home = vehicles.active?.home,
                     )
                 }
                 if (missionArrived(plan.items, next.items, ::shape)) fitRequest++
@@ -183,11 +189,9 @@ fun FlyMap(
                     centreOn = next.operator
                     centreZoom = null
                     centreRequest++
-                } else if (!next.vehiclePlaced && showsWholeWorld(zoom)) {
-                    withContext(Dispatchers.Default) {
-                        firstKnown(listOf(vehicleChoices(runCatching { JSONObject(QGCBridge.get(VEHICLES_VIEW)) }.getOrNull()).active?.home, launchOf(next.items)))
-                            ?: launchOf(missionItems(PlanBridge.rawItems()))
-                    }?.let { at ->
+                } else if (centresOnLaunch(FlightMapPosition.launchCentred, saved != null, zoom, next.vehiclePlaced)) {
+                    (firstKnown(listOf(next.home, launchOf(next.items))) ?: withContext(Dispatchers.Default) { launchOf(missionItems(PlanBridge.rawItems())) })?.let { at ->
+                        FlightMapPosition.launchCentred = true
                         centreOn = at
                         centreZoom = null
                         centreRequest++
@@ -256,11 +260,12 @@ fun FlyMap(
                 }
             },
         )
-        centre?.takeIf { zoom > 0.0 && !pip }?.let { at ->
+        zoom?.takeIf { it > 0.0 && !pip }?.let { level ->
+            val at = centre ?: return@let
             val density = androidx.compose.ui.platform.LocalDensity.current
             ScaleBarView(
                 at.latitude,
-                zoom,
+                level,
                 logoEndInsetPx?.let { end ->
                     with(density) { Modifier.align(Alignment.BottomEnd).padding(end = end.toDp(), bottom = bottomInsetPx.toDp() + SCALE_ABOVE_LOGO) }
                 } ?: Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 4.dp),

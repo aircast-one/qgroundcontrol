@@ -87,6 +87,7 @@ extension TrackPoint {
 enum FlightMapPosition {
     nonisolated(unsafe) static var latest: TrackPoint?
     nonisolated(unsafe) static var operatorCentred = false
+    nonisolated(unsafe) static var launchCentred = false
 }
 
 func isPlottable(_ latitude: Double, _ longitude: Double) -> Bool {

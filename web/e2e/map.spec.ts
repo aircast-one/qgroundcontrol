@@ -199,6 +199,31 @@ test('with no aircraft, no operator position and no remembered view, the Fly map
   await expect.poll(async () => near(await flyMapCentre(app), launch!), { message: 'Oleg’s desktop app opened on the whole world: the drone had no GPS fix and the laptop gave no position', timeout: 30_000 }).toBe(true);
 });
 
+const savedCamera = (page: Page) =>
+  page.evaluate(() => {
+    const [latitude, longitude, zoom] = (window.localStorage.getItem('aircast.fly-map-camera.camera') ?? '').split(',').map(Number);
+    return { latitude: latitude ?? NaN, longitude: longitude ?? NaN, zoom: zoom ?? NaN };
+  });
+
+test('a remembered map view comes back even when a plan with a launch is loaded, and the launch does not overwrite it', async ({ app }) => {
+  const tbilisi = { latitude: 41.7151, longitude: 44.8271 };
+  await app.evaluate((at) => window.localStorage.setItem('aircast.fly-map-camera.camera', `${at.latitude},${at.longitude},12`), tbilisi);
+  await app.reload();
+  await expect(app.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
+  await openMenu(app, 'Plan');
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  expect(await planLaunch(app), 'the plan has a launch the map could centre on').not.toBeNull();
+  await app.evaluate(async (module) => {
+    ((await import(module)) as { FlightMapPosition: { latest: Spot | null } }).FlightMapPosition.latest = null;
+  }, '/src/map/VehicleMap.tsx');
+  await openMenu(app, 'Fly');
+  await expect.poll(() => flyMapCentre(app), { message: 'the map reports where it opened', timeout: 30_000 }).not.toBeNull();
+  const kept = await savedCamera(app);
+  expect(near(kept, tbilisi), 'the remembered view goes first').toBe(true);
+  expect(Math.round(kept.zoom), 'at the zoom it was left at, not the close-up a launch is shown at').toBe(12);
+});
+
 test('a remembered map view is where the Fly map opens next time', async ({ app }) => {
   const tbilisi = { latitude: 41.7151, longitude: 44.8271 };
   await app.evaluate((at) => window.localStorage.setItem('aircast.fly-map-camera.camera', `${at.latitude},${at.longitude},12`), tbilisi);

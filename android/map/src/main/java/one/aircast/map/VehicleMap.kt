@@ -117,6 +117,9 @@ object FlightMapPosition {
 
     @Volatile
     var operatorCentred: Boolean = false
+
+    @Volatile
+    var launchCentred: Boolean = false
 }
 
 fun isPlottable(latitude: Double, longitude: Double): Boolean =

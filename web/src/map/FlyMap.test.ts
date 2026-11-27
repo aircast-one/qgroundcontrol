@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { centresOnOperator, firstKnown, keepsZoom, launchOf, missionArrived, otherMissions, pipZoom, showsWholeWorld } from './FlyMap';
+import { centresOnLaunch, centresOnOperator, firstKnown, keepsZoom, launchOf, missionArrived, otherMissions, pipZoom, showsWholeWorld } from './FlyMap';
+import { MissionItem } from './PlanBridge';
 
 describe('FlyMapFitTest', () => {
   it('the fly map fits whenever a new mission arrives from the vehicle, as onNewItemsFromVehicle does', () => {
@@ -22,13 +23,22 @@ describe('FlyMapFitTest', () => {
     const home = { latitude: 41.72, longitude: 44.88 };
     const launch = { latitude: 41.7, longitude: 44.8 };
     const unset = { latitude: 0, longitude: 0 };
-    const items = [{ index: 0, latitude: launch.latitude, longitude: launch.longitude }, { index: 1, latitude: 41.8, longitude: 44.9 }] as never;
+    const items = [MissionItem({ index: 0, sequence: 0, latitude: launch.latitude, longitude: launch.longitude, command: 'Launch', selected: false }), MissionItem({ index: 1, sequence: 1, latitude: 41.8, longitude: 44.9, command: 'Waypoint', selected: false })];
     expect(showsWholeWorld(0)).toBe(true);
     expect(showsWholeWorld(15)).toBe(false);
     expect(launchOf(items)).toEqual(launch);
     expect(firstKnown([home, launch])).toEqual(home);
     expect(firstKnown([null, unset, launch]), 'an unset home reads 0, 0, which is no place').toEqual(launch);
     expect(firstKnown([null, null])).toBeNull();
+  });
+
+  it('the map goes to the home or launch once, only when it opened on the whole world with no remembered view and no aircraft on it', () => {
+    expect(centresOnLaunch(false, false, 0.4, false)).toBe(true);
+    expect(centresOnLaunch(false, false, null, false), 'a map that has not reported its zoom yet is not known to show the whole world').toBe(false);
+    expect(centresOnLaunch(false, true, 0.4, false), 'a remembered view goes first').toBe(false);
+    expect(centresOnLaunch(true, false, 0.4, false), 'zooming back out to the world later does not snap to the launch again').toBe(false);
+    expect(centresOnLaunch(false, false, 0.4, true), 'an aircraft with a position is followed instead').toBe(false);
+    expect(centresOnLaunch(false, false, 12, false)).toBe(false);
   });
 
   it("other vehicles' missions come from the fly view, as FlyViewMap repeats PlanMapItems for every vehicle", () => {

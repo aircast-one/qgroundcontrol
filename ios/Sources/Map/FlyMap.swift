@@ -31,6 +31,10 @@ func centresOnOperator(_ alreadyCentred: Bool, _ operator: TrackPoint?, _ vehicl
 
 func showsWholeWorld(_ zoom: Double) -> Bool { zoom <= 1.0 }
 
+func centresOnLaunch(_ alreadyCentred: Bool, _ remembered: Bool, _ zoom: Double?, _ vehiclePlaced: Bool) -> Bool {
+    !alreadyCentred && !remembered && !vehiclePlaced && zoom.map(showsWholeWorld) == true
+}
+
 func firstKnown(_ points: [TrackPoint?]) -> TrackPoint? {
     points.compactMap { $0 }.first { isPlottable($0.latitude, $0.longitude) }
 }
@@ -59,6 +63,7 @@ struct FlownPlan {
     var current: Int? = nil
     var others: [OtherMission] = []
     var vehiclePlaced = false
+    var home: TrackPoint? = nil
 }
 
 private let FLY_MISSION_ITEMS = "view.flyMissionItems(geometry)"
@@ -93,8 +98,10 @@ struct FlyCamera {
     var centreZoom: Double?
     var mainZoom: Double
     var zoomedForPip = false
+    let remembered: Bool
 
     init(_ saved: SavedCamera?) {
+        remembered = saved != nil
         centreRequest = saved == nil ? 0 : 1
         centreOn = saved?.centre
         centreZoom = saved?.zoom
@@ -107,6 +114,7 @@ private func flownPlan() -> FlownPlan {
     let fences = FenceBridge.readFlown()
     let gcs = OperatorBridge.read()
     if raw != nil { MapBridge.markReachable() }
+    let vehicles = vehicleChoices(MapBridge.read(VEHICLES_VIEW))
     return FlownPlan(
         items: missionItems(raw),
         linkStartToHome: linksStartToHome(raw),
@@ -126,7 +134,8 @@ private func flownPlan() -> FlownPlan {
         orbit: OrbitBridge.read(),
         current: raw.map { $0["selected"].int(-1) }.flatMap { $0 > 0 ? $0 : nil },
         others: otherMissions(raw),
-        vehiclePlaced: vehicleChoices(MapBridge.read(VEHICLES_VIEW)).choices.contains { isPlottable($0.latitude, $0.longitude) }
+        vehiclePlaced: vehicles.choices.contains { isPlottable($0.latitude, $0.longitude) },
+        home: vehicles.active?.home
     )
 }
 
@@ -134,7 +143,7 @@ private func flownPlan() -> FlownPlan {
 final class FlyMapState {
     var plan = FlownPlan()
     var centre: TrackPoint?
-    var zoom = 0.0
+    var zoom: Double?
     var fitRequest = 0
     var camera = FlyCamera(nil)
     @ObservationIgnored private var views = 0
@@ -143,7 +152,7 @@ final class FlyMapState {
     func appeared() {
         if !shown {
             camera = FlyCamera(readCamera())
-        } else if let at = centre, zoom > 1.0 {
+        } else if let at = centre, let level = zoom, level > 1.0 {
             camera.centreOn = at
             camera.centreZoom = camera.mainZoom > 1.0 ? camera.mainZoom : nil
             camera.centreRequest += 1
@@ -158,7 +167,7 @@ final class FlyMapState {
             guard views == 0 else { return }
             plan = FlownPlan()
             centre = nil
-            zoom = 0
+            zoom = nil
             fitRequest = 0
             camera = FlyCamera(nil)
             shown = false
@@ -235,8 +244,8 @@ struct FlyMap: View {
                 otherMissions: plan.others,
                 onContextMenu: mapContextMenu
             )
-            if let at = state.centre, state.zoom > 0, !pip {
-                ScaleBarView(latitude: at.latitude, zoom: state.zoom)
+            if let at = state.centre, let level = state.zoom, level > 0, !pip {
+                ScaleBarView(latitude: at.latitude, zoom: level)
                     .padding(logoEndInsetPx.map { EdgeInsets(top: 0, leading: 0, bottom: bottomInsetPx + SCALE_ABOVE_LOGO, trailing: $0) }
                         ?? EdgeInsets(top: 0, leading: Space.s1, bottom: Space.s1, trailing: 0))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: logoEndInsetPx == nil ? .bottomLeading : .bottomTrailing)
@@ -268,9 +277,10 @@ struct FlyMap: View {
                     state.camera.centreOn = next.operator
                     state.camera.centreZoom = nil
                     state.camera.centreRequest += 1
-                } else if !next.vehiclePlaced && showsWholeWorld(state.zoom) {
-                    let launch = launchOf(next.items)
-                    if let at = await offMain({ firstKnown([vehicleChoices(MapBridge.read(VEHICLES_VIEW)).active?.home, launch]) ?? launchOf(missionItems(PlanBridge.rawItems())) }) {
+                } else if centresOnLaunch(FlightMapPosition.launchCentred, state.camera.remembered, state.zoom, next.vehiclePlaced) {
+                    let known = firstKnown([next.home, launchOf(next.items)])
+                    if let at = await offMain({ known ?? launchOf(missionItems(PlanBridge.rawItems())) }) {
+                        FlightMapPosition.launchCentred = true
                         state.camera.centreOn = at
                         state.camera.centreZoom = nil
                         state.camera.centreRequest += 1
