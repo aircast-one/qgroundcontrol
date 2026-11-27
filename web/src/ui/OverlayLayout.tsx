@@ -259,11 +259,15 @@ export const HEADING_TAPE_KEY = 'headingTape';
 
 export const MINIMAP_NAME = 'Mini map';
 
+export const ATTITUDE_KEY = 'attitude';
+
+export const ATTITUDE_NAME = 'Attitude and compass';
+
 export const BATTERY_BAR_KEY = 'batteryBar';
 
 export const batteryBarPillText = (hidden: boolean): string => `Battery bar: ${hidden ? 'Hidden' : 'Shown'}`;
 
-const HIDDEN_BY_DEFAULT: readonly string[] = [MINIMAP_KEY];
+const HIDDEN_BY_DEFAULT: readonly string[] = [MINIMAP_KEY, ATTITUDE_KEY];
 
 export const hiddenKeys = (stored: Readonly<Record<string, unknown>>): Set<string> =>
   new Set([

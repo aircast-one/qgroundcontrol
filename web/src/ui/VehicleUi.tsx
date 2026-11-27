@@ -69,6 +69,7 @@ import { PREFLIGHT, checklistOffered, preflightOffered } from './Preflight';
 import { PreflightChecklist, PreflightChecklistReset, useRememberPreflightChecklist } from './PreflightChecklistGate';
 import { FLIGHT_MODES_PAGE, SENSORS } from './SetupPages';
 import { FootNote, SearchPill, SectionHeader } from './SetupRow';
+import { AttitudeChoice } from './AttitudeInstrument';
 import { useHasSetupPage } from './SetupScreen';
 import { ARM_REQUEST, deckRequestRefusal } from './VehicleStatusSheet';
 import { TAP_LOWER } from '@/kotlin/Platform';
@@ -323,6 +324,7 @@ const useTelemetryReadings = () => {
       {choosingReadings ? (
         <InstrumentSheet
           chosen={chosen}
+          lead={<AttitudeChoice />}
           onToggle={(name) => keep(withInstrument(chosen, name))}
           onDismiss={() => {
             flyScreen.choosingReadings.value = false;
@@ -1345,11 +1347,13 @@ const QUICK_LIST_HINT = `Shown first when you ${TAP_LOWER} the mode`;
 const InstrumentSheet = ({
   chosen,
   title = CHOOSE_READINGS,
+  lead = null,
   onToggle,
   onDismiss,
 }: {
   chosen: readonly string[];
   title?: string;
+  lead?: ReactNode;
   onToggle: (path: string) => void;
   onDismiss: () => void;
 }) => {
@@ -1370,6 +1374,7 @@ const InstrumentSheet = ({
         <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="block px-4 pb-2">{instrumentChoiceNote(chosen)}</Text>
         {groups.length === 0 ? null : <SearchPill value={query} onValueChange={setQuery} placeholder={SEARCH_READINGS} />}
       </div>
+      {query === '' ? lead : null}
       {groups.length === 0 ? (
         <FootNote text={emptyCatalogueText(connected)} />
       ) : found.length === 0 ? (

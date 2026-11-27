@@ -38,6 +38,7 @@ import { FleetPanel } from '@/ui/ActiveVehicle';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { CAMERA_VIEW, cameraReading } from '@/ui/CameraControl';
 import { railAboveShutter } from '@/ui/CameraControlLayer';
+import { AttitudeGauges } from '@/ui/AttitudeInstrument';
 import { HudLadders } from '@/ui/HudLadders';
 import { useRememberDragAims, useShownSecondCamera } from '@/ui/CameraSwitch';
 import { FLY_MENU, FlyDeckLayout } from '@/ui/FlyDeck';
@@ -48,7 +49,7 @@ import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalCompactHud, LocalFlyOsd, OSD_CONTROL_SIZE, OSD_SCRIM, compactHud, osdShadow, useOsdBackdrop, useOsdTint } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText, useMap3dDrawn } from '@/ui/Map3dView';
-import { BATTERY_BAR_KEY, HEADING_TAPE_KEY, LayoutEditingNotice, LayoutWidget, LocalLayoutBounds, MINIMAP_KEY, MINIMAP_NAME, useHoldThroughToEditLayout, useJiggleAngle } from '@/ui/OverlayLayout';
+import { ATTITUDE_KEY, ATTITUDE_NAME, BATTERY_BAR_KEY, HEADING_TAPE_KEY, LayoutEditingNotice, LayoutWidget, LocalLayoutBounds, MINIMAP_KEY, MINIMAP_NAME, useHoldThroughToEditLayout, useJiggleAngle } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
@@ -616,6 +617,16 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                   >
                     <LocalAvoidedByVideoMessage.Provider value>{cameraSwitch(mapIsPip, {})}</LocalAvoidedByVideoMessage.Provider>
                   </div>
+                  {hasVehicle && !deciding && view !== FlyView.ThreeD && !hiddenWidgets.has(ATTITUDE_KEY) ? (
+                    <div
+                      className="absolute end-0 bottom-0"
+                      style={{ zIndex: layer(1), marginInlineEnd: switchEnd + corner.size.width + AircastSpace.s3, marginBottom: switchBottom }}
+                    >
+                      <LayoutWidget widgetKey={ATTITUDE_KEY} name={ATTITUDE_NAME} resizable>
+                        <AttitudeGauges />
+                      </LayoutWidget>
+                    </div>
+                  ) : null}
                   {stickInCorner ? (
                     <div
                       ref={holdStick}

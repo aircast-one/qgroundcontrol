@@ -1,7 +1,12 @@
-import { useId, useMemo } from 'react';
+import { useContext, useId, useMemo } from 'react';
 import { type Json, isNull, optBoolean, optDouble, optText } from '@/bridge/Json';
 import { useQgcPath } from '@/bridge/QgcState';
+import { useValue } from '@/kotlin/State';
+import { Checkbox, ListItem } from '@/m3';
 import { Color, aircast, argb, md, withAlpha } from '@/theme/Colors';
+import { LocalFlyScreenState } from '@/ui/FlyScreenState';
+import { ATTITUDE_KEY, ATTITUDE_NAME } from '@/ui/OverlayLayout';
+import { SectionHeader } from '@/ui/SetupRow';
 
 export const ATTITUDE_PATH = 'view.attitude';
 const HORIZON_FRACTION = 0.72;
@@ -134,5 +139,95 @@ export const OsdCompassDial = ({ size, className }: { size: number; className?: 
         </text>
       ) : null}
     </svg>
+  );
+};
+
+const SKY = argb(0xff3a78c4);
+const GROUND = argb(0xff4f8a3c);
+const WINGS = argb(0xffff6b2c);
+const LADDER = [-20, -10, 10, 20];
+const ROLL_TICKS = [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60];
+
+export const OsdAttitudeDial = ({ size, className }: { size: number; className?: string }) => {
+  const view = useQgcPath(ATTITUDE_PATH);
+  const reading = useMemo(() => attitude(view) ?? NO_VEHICLE_ATTITUDE, [view]);
+  const clip = `attitude-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const white = Color.White;
+  const radius = size / 2;
+  const center = { x: radius, y: radius };
+  const horizon = radius * HORIZON_FRACTION;
+  const step = pitchOffset(10, horizon);
+  const ring = withAlpha(white, OSD_DIAL_RING_ALPHA);
+  const wing = radius * 0.42;
+  const pointer = pointOnRing(center, radius - 3, -reading.roll);
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      role="img"
+      aria-label={`Attitude, pitch ${Math.round(reading.pitch)}°, roll ${Math.round(reading.roll)}°`}
+      className={`shrink-0 overflow-visible ${className ?? ''}`}
+    >
+      <defs>
+        <clipPath id={clip}>
+          <circle cx={center.x} cy={center.y} r={radius} />
+        </clipPath>
+      </defs>
+      <g clipPath={`url(#${clip})`}>
+        <g transform={`rotate(${-reading.roll} ${center.x} ${center.y}) translate(0 ${pitchOffset(reading.pitch, horizon)})`}>
+          <rect x={-size} y={center.y - size * 2} width={size * 3} height={size * 2} style={{ fill: SKY }} />
+          <rect x={-size} y={center.y} width={size * 3} height={size * 2} style={{ fill: GROUND }} />
+          <line x1={-size} y1={center.y} x2={size * 2} y2={center.y} strokeWidth={1.5} style={{ stroke: white }} />
+          {LADDER.map((degrees) => (
+            <g key={degrees}>
+              <line x1={center.x - radius * 0.18} y1={center.y - (degrees / 10) * step} x2={center.x + radius * 0.18} y2={center.y - (degrees / 10) * step} strokeWidth={1} style={{ stroke: white }} />
+              <text x={center.x + radius * 0.24} y={center.y - (degrees / 10) * step} dominantBaseline="central" fontSize={8} style={{ fill: white }}>
+                {Math.abs(degrees)}
+              </text>
+            </g>
+          ))}
+        </g>
+      </g>
+      {ROLL_TICKS.map((degrees) => {
+        const from = pointOnRing(center, radius - 1, degrees);
+        const to = pointOnRing(center, radius - (degrees % 30 === 0 ? 7 : 4), degrees);
+        return <line key={degrees} x1={from.x} y1={from.y} x2={to.x} y2={to.y} strokeWidth={1} style={{ stroke: white }} />;
+      })}
+      <circle cx={center.x} cy={center.y} r={radius - 0.75} fill="none" strokeWidth={1.5} style={{ stroke: ring }} />
+      <circle cx={pointer.x} cy={pointer.y} r={2.5} style={{ fill: WINGS }} />
+      <path
+        d={`M ${center.x - wing} ${center.y} L ${center.x - wing * 0.35} ${center.y} L ${center.x} ${center.y + wing * 0.25} L ${center.x + wing * 0.35} ${center.y} L ${center.x + wing} ${center.y}`}
+        fill="none"
+        strokeWidth={3}
+        strokeLinejoin="round"
+        style={{ stroke: WINGS }}
+      />
+    </svg>
+  );
+};
+
+export const ATTITUDE_GAUGE_SIZE = 104;
+
+export const AttitudeGauges = ({ size = ATTITUDE_GAUGE_SIZE }: { size?: number }) => (
+  <div className="flex items-center gap-2">
+    <OsdAttitudeDial size={size} />
+    <OsdCompassDial size={size} />
+  </div>
+);
+
+export const AttitudeChoice = () => {
+  const layout = useContext(LocalFlyScreenState).layout;
+  const shown = !useValue(layout.hidden).has(ATTITUDE_KEY);
+  return (
+    <>
+      <SectionHeader text="Instruments" />
+      <ListItem
+        headlineContent={ATTITUDE_NAME}
+        leadingContent={<Checkbox checked={shown} onCheckedChange={null} />}
+        containerColor="transparent"
+        onClick={() => layout.setHidden(ATTITUDE_KEY, shown)}
+      />
+    </>
   );
 };

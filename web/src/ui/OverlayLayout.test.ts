@@ -13,12 +13,12 @@ describe('OverlayLayoutTest', () => {
 
   it('hidden widgets are read from the stored rig keys only', () => {
     const stored = { 'OverlayRigHidden-orbit': true, 'OverlayRigHidden-traffic': false, other: true };
-    expect(hiddenKeys(stored)).toEqual(new Set(['minimap', 'orbit']));
+    expect(hiddenKeys(stored)).toEqual(new Set(['minimap', 'attitude', 'orbit']));
   });
 
-  it('the minimap starts hidden and stays shown once the pilot shows it', () => {
-    expect(hiddenKeys({})).toEqual(new Set(['minimap']));
-    expect(hiddenKeys({ 'OverlayRigHidden-minimap': false })).toEqual(new Set());
+  it('the minimap and the attitude and compass dials start hidden and stay shown once the pilot shows them', () => {
+    expect(hiddenKeys({})).toEqual(new Set(['minimap', 'attitude']));
+    expect(hiddenKeys({ 'OverlayRigHidden-minimap': false, 'OverlayRigHidden-attitude': false })).toEqual(new Set());
   });
 
   it('hiding and showing toggles one key', () => {
@@ -56,7 +56,7 @@ describe('OverlayLayoutTest', () => {
   it('the stored layout yields hidden widgets, offsets and the indicator order', () => {
     const stored = { 'OverlayRigOffset-instrumentPanel': '10.0,20.0', 'OverlayRigHidden-orbit': true, FlyViewIndicatorOrder: 'gps,battery' };
     expect(storedOffsets(stored)).toEqual(new Map([['instrumentPanel', [10, 20]]]));
-    expect(hiddenKeys(stored)).toEqual(new Set(['minimap', 'orbit']));
+    expect(hiddenKeys(stored)).toEqual(new Set(['minimap', 'attitude', 'orbit']));
     expect(storedIndicatorOrder(stored)).toEqual(['gps', 'battery']);
   });
 
@@ -189,7 +189,7 @@ describe('LayoutStateTest', () => {
     layout.setHidden('reading:vehicle/climbRate', true);
     layout.reset();
     expect(layout.offsets.value).toEqual(new Map());
-    expect(layout.hidden.value).toEqual(new Set(['minimap']));
+    expect(layout.hidden.value).toEqual(new Set(['minimap', 'attitude']));
   });
 
   it('a reading docked in the top bar leaves it when the reading is forgotten, and a reset empties the bar of readings and brings floated items home', () => {
