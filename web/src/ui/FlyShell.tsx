@@ -26,7 +26,7 @@ import { lostVehicle } from '@/map/LostVehicle';
 import { FOLLOW_VEHICLE, mapFollowing, mapWindow, vehicleOffScreen } from '@/map/MapFollow';
 import { type TrackPoint, isPlottable } from '@/map/VehicleMap';
 import { VEHICLES_VIEW, vehicleChoices } from '@/map/VehiclePicker';
-import { coerceAtLeast, same } from '@/kotlin/Std';
+import { coerceAtLeast, coerceIn, same } from '@/kotlin/Std';
 import { Surface, Text } from '@/m3';
 import { Map3d, useMap3dShown } from '@/map/Map3d';
 import { MapLayersSheet } from '@/map/MapLayersSheet';
@@ -331,13 +331,74 @@ const DESKTOP_PIP = Size(320, 180);
 
 export const thumbSize = (desktop: boolean): Size => (desktop ? DESKTOP_PIP : Size(MINIMAP_THUMB, MINIMAP_THUMB));
 
-const thumbPlace = (size: Size, lead: number): CSSProperties => ({
+const thumbPlace = (size: Size, lead: number, moved: Offset): CSSProperties => ({
   position: 'absolute',
-  left: `calc(env(safe-area-inset-left, 0px) + ${lead + AircastSpace.s3}px)`,
-  bottom: AircastSpace.s3,
+  left: `calc(env(safe-area-inset-left, 0px) + ${lead + AircastSpace.s3 + moved.x}px)`,
+  bottom: AircastSpace.s3 - moved.y,
   width: size.width,
   height: size.height,
 });
+
+const PIP_PLACE_KEY = 'pipPlace';
+const PIP_DRAG_SLOP = 8;
+
+export const pipWithin = (moved: Offset, room: Size): Offset => Offset(coerceIn(moved.x, 0, Math.max(0, room.width)), coerceIn(moved.y, Math.min(0, -room.height), 0));
+
+export const storedPipPlace = (text: string | null): Offset => {
+  const [x, y] = (text ?? '').split(',').map(Number);
+  return x !== undefined && y !== undefined && Number.isFinite(x) && Number.isFinite(y) ? Offset(x, y) : Offset(0, 0);
+};
+
+const usePipDrag = (room: Size): { moved: Offset; dragging: boolean; handlers: HTMLAttributes<HTMLElement> } => {
+  const [placed, setPlaced] = useState(() => storedPipPlace(getSharedPreferences(FLY_STORE).getString(PIP_PLACE_KEY, null)));
+  const [moving, setMoving] = useState<Offset | null>(null);
+  const latest = useUpdatedRef({ placed, room });
+  const dragged = useRef<Offset | null>(null);
+  const dropped = useRef(false);
+  const release = useRef<() => void>(() => undefined);
+  useEffect(() => () => release.current(), []);
+  return {
+    moved: pipWithin(moving ?? placed, room),
+    dragging: moving !== null,
+    handlers: {
+      onPointerDown: (event) => {
+        if (event.button !== 0) return;
+        const from = Offset(event.clientX, event.clientY);
+        dragged.current = null;
+        dropped.current = false;
+        const move = (next: PointerEvent) => {
+          const [dx, dy] = [next.clientX - from.x, next.clientY - from.y];
+          if (dragged.current === null && Math.hypot(dx, dy) < PIP_DRAG_SLOP) return;
+          dragged.current = Offset(latest.current.placed.x + dx, latest.current.placed.y + dy);
+          setMoving(dragged.current);
+        };
+        const end = () => {
+          release.current();
+          setMoving(null);
+          if (dragged.current === null) return;
+          const kept = pipWithin(dragged.current, latest.current.room);
+          getSharedPreferences(FLY_STORE).putString(PIP_PLACE_KEY, `${kept.x},${kept.y}`);
+          setPlaced(kept);
+          dropped.current = true;
+        };
+        release.current = () => {
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', end);
+          window.removeEventListener('pointercancel', end);
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', end);
+        window.addEventListener('pointercancel', end);
+      },
+      onClickCapture: (event) => {
+        if (!dropped.current) return;
+        dropped.current = false;
+        event.stopPropagation();
+        event.preventDefault();
+      },
+    },
+  };
+};
 
 type FlyScreenProps = {
   view: FlyView;
@@ -458,14 +519,21 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const toggleThumb = minimapCollapsed || syntheticPip;
   const thumb = toggleThumb ? Size(OSD_CONTROL_SIZE, OSD_CONTROL_SIZE) : pipThumb;
   const thumbLead = toggleThumb ? 0 : BOTTOM_LEAD;
-  const thumbStyle = thumbPlace(thumb, thumbLead);
-  const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + thumbLead, box.size.height - (AircastSpace.s3 + thumb.height)), thumb);
+  const pip = usePipDrag(
+    Size(
+      boxWidth - thumb.width - thumbLead - AircastSpace.s3 * 2 - safeArea.left - safeArea.right,
+      boxHeight - thumb.height - AircastSpace.s3 * 2 - safeArea.top - STATUS_ROW_HEIGHT - AircastSpace.s4,
+    ),
+  );
+  const pipDrag = editing ? {} : pip.handlers;
+  const thumbStyle = thumbPlace(thumb, thumbLead, pip.moved);
+  const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + thumbLead + pip.moved.x, box.size.height - (AircastSpace.s3 + thumb.height) + pip.moved.y), thumb);
   const pipNow = videoIsPip && !fullScreen;
   const holdThrough = useHoldThroughToEditLayout();
   const readingsArea = useRef<HTMLDivElement | null>(null);
   const pipJiggle = useJiggleAngle(mapIsPip ? MINIMAP_KEY : 'pip', editing && thumbShown && !fullScreen, thumb);
   const videoTarget = pipNow ? thumbFrame : Rect(0, 0, box.size.width, box.size.height);
-  const frame = useRememberVideoFrame(videoTarget, false);
+  const frame = useRememberVideoFrame(videoTarget, pip.dragging);
   const cameras = useRememberCameraStepper();
   const dragAims = useRememberDragAims();
   const syntheticAims = useRememberSyntheticAims();
@@ -735,7 +803,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
           <>
             <TopScrim />
             {minimapCollapsed ? (
-              <div className="absolute" style={{ ...thumbStyle, zIndex: layer(2) }}>
+              <div className="absolute touch-none" style={{ ...thumbStyle, zIndex: layer(2) }} {...pipDrag}>
                 <MinimapWidget editing={editing}>
                   <div inert={editing}>
                     <Surface
@@ -753,7 +821,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                 </MinimapWidget>
               </div>
             ) : mapIsPip ? (
-              <div className="absolute" style={{ ...thumbStyle, zIndex: layer(2) }}>
+              <div className="absolute touch-none" style={{ ...thumbStyle, zIndex: layer(2) }} {...pipDrag}>
                 <LayoutWidget widgetKey={MINIMAP_KEY} movable={false} name={MINIMAP_NAME}>
                   <div
                     role="button"
@@ -778,8 +846,9 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                 inert={editing}
                 onClick={showVideo}
                 onKeyDown={activate(showVideo)}
-                className="absolute cursor-pointer overflow-hidden rounded-shape-md"
+                className="absolute cursor-pointer touch-none overflow-hidden rounded-shape-md"
                 style={{ ...thumbStyle, zIndex: layer(3), border: `2px solid ${md('onSurface')}`, ...pipJiggle }}
+                {...pipDrag}
               />
             ) : null}
           </>

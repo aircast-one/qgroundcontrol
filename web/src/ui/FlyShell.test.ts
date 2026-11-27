@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FlyView, FlyViewEntries, Letterbox, flyViewAllowed, flyViewsOffered, railAboveMapButtons, stickInsets } from './FlyShell';
+import { FlyView, FlyViewEntries, Letterbox, Offset, Size, flyViewAllowed, flyViewsOffered, pipWithin, railAboveMapButtons, stickInsets, storedPipPlace } from './FlyShell';
 
 describe('PipRulesTest', () => {
   it("the 3D view is offered only while QGC's 3D viewer is enabled, or already showing", () => {
@@ -47,5 +47,22 @@ describe('railAboveMapButtons', () => {
     expect(railAboveMapButtons(40, 48), 'layers alone').toBe(108);
     expect(railAboveMapButtons(40, 48 * 3 + 8 * 2), 'follow, 3D and layers').toBe(220);
     expect(railAboveMapButtons(40, 0), 'before the column is measured').toBe(60);
+  });
+});
+
+describe('PipPlaceTest', () => {
+  it('a dragged picture in picture stays on screen, right of and above where it starts', () => {
+    const room = Size(800, 400);
+    expect(pipWithin(Offset(300, -200), room)).toEqual(Offset(300, -200));
+    expect(pipWithin(Offset(-50, 30), room), 'not past the start edge or below the bottom').toEqual(Offset(0, 0));
+    expect(pipWithin(Offset(5000, -5000), room), 'not off the far edge or into the status row').toEqual(Offset(800, -400));
+    expect(pipWithin(Offset(100, -100), Size(-10, -10)), 'a window smaller than the picture keeps it home').toEqual(Offset(0, 0));
+  });
+
+  it('the place is remembered as two numbers and anything else starts it home', () => {
+    expect(storedPipPlace('300,-200')).toEqual(Offset(300, -200));
+    expect(storedPipPlace(null)).toEqual(Offset(0, 0));
+    expect(storedPipPlace('300')).toEqual(Offset(0, 0));
+    expect(storedPipPlace('a,b')).toEqual(Offset(0, 0));
   });
 });
