@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { connectMock, expect, itemCount, openApp, openMenu, openPlanAtVehicle, tapPlanMission, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
@@ -445,7 +445,7 @@ test.describe('on a phone', () => {
 
 const planRows = (page: Page) =>
   page.evaluate(async (module) => {
-    const view = (await ((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.missionItems(geometry)')) as { items?: { gimbalPitch?: number | null; gimbalYaw?: number | null }[] } | null;
+    const view = (await ((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.missionItems(geometry)')) as { items?: { name?: string; gimbalPitch?: number | null; gimbalYaw?: number | null }[] } | null;
     return view?.items ?? [];
   }, '/src/bridge/Qgc.ts');
 
@@ -521,4 +521,91 @@ test('a long press on the plan map opens the menu and it stays open when the fin
   await expect(menu, 'lifting the finger leaves the menu open to be read').toBeVisible();
   await menu.click();
   await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(before + 1);
+});
+
+test('the plan Oleg drew in his recording: a waypoint after the takeoff, a second by right-click, its height, speed and four actions, another command from the raw list, and a servo added at the waypoint', async ({ app }) => {
+  test.setTimeout(240_000);
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openPlanAtVehicle(app);
+  await coreCall(app, 'advancedUi.set', true);
+  const map = (await app.getByRole('region', { name: 'Map' }).boundingBox())!;
+  const tapMap = (x: number, y: number, button: 'left' | 'right' = 'left') => app.mouse.click(map.x + map.width * x, map.y + map.height * y, { button });
+  const typed = async (scope: Page | Locator, label: string, value: string) => {
+    await scope.getByRole('button', { name: new RegExp(`^${label}: `) }).click();
+    await app.getByRole('textbox', { name: new RegExp(`^${label}`) }).fill(value);
+    await app.getByRole('button', { name: 'Set', exact: true }).click();
+  };
+  const names = async () => (await planRows(app)).map((it) => it.name ?? '');
+  const onlyTheLaunchBeforeTheTakeoff = async (when: string) => expect((await names()).indexOf('Takeoff'), `${when}, nothing but the launch is listed before the takeoff`).toBe(1);
+
+  await tapMap(0.6, 0.5);
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(2);
+  await app.getByRole('button', { name: 'Delete waypoint 1' }).click();
+  await expect(app.getByText('1 item', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await typed(app, 'Altitude', '5');
+  await expect(app.getByRole('button', { name: /^T Takeoff 5(\.0)? m/ }), 'a fresh plan: the launch and a takeoff to 5 m').toBeVisible({ timeout: 15_000 });
+
+  await app.getByRole('button', { name: /^H Launch\b/ }).click();
+  await app.getByTitle('Fold the settings').click();
+  await tapMap(0.7, 0.3);
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(2);
+  const rows = app.getByRole('button', { name: /^(H|T|\d+) (Launch|Takeoff|Waypoint)\b/ });
+  await expect(rows.nth(1), 'with the launch selected, the waypoint tapped on the map lands after the takeoff').toHaveAccessibleName(/^T Takeoff\b/);
+  await expect(rows.nth(2), 'and it is waypoint 1, not item 2').toHaveAccessibleName(/^1 Waypoint\b/);
+  await onlyTheLaunchBeforeTheTakeoff('after the first waypoint');
+
+  await tapMap(0.75, 0.85, 'right');
+  await app.getByRole('menuitem', { name: 'Add waypoint here' }).click();
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(3);
+  await expect(rows.nth(3)).toHaveAccessibleName(/^2 Waypoint\b/);
+
+  await typed(app, 'Altitude', '30');
+  await typed(app, 'Speed', '8');
+  await expect(app.getByRole('button', { name: /^Speed: 8(\.0)? m\/s/ })).toBeVisible({ timeout: 15_000 });
+  const add = async (action: string) => {
+    await app.getByRole('button', { name: 'Add action', exact: true }).click();
+    await app.getByRole('menuitem', { name: action }).click();
+    return app.getByRole('dialog');
+  };
+  const hover = await add('Hover');
+  await typed(hover, 'Hover', '10');
+  await hover.getByRole('button', { name: 'Done' }).click();
+  const tilt = await add('Tilt camera');
+  await typed(tilt, 'Pitch', '0');
+  await typed(tilt, 'Yaw', '60');
+  await tilt.getByRole('button', { name: 'Done' }).click();
+  const photo = await add('Photo');
+  await photo.getByRole('button', { name: 'Done' }).click();
+  const drop = await add('Drop payload');
+  await drop.getByRole('button', { name: 'Servo', exact: true }).click();
+  await typed(drop, 'Servo output', '4');
+  await typed(drop, 'Release PWM', '1500');
+  await typed(drop, 'Wait before dropping', '10');
+  await drop.getByRole('button', { name: 'Done' }).click();
+  await expect(app.getByRole('button', { name: /^2 Waypoint 30(\.0)? m.* · holds 10 s/ }), 'waypoint 2 flies at 30 m and hovers 10 s').toBeVisible({ timeout: 15_000 });
+  await expect(app.getByText('0° / 60°'), 'the camera looks level, 60° to the side').toBeVisible();
+  await expect(app.getByRole('button', { name: 'Take photo', exact: true })).toBeVisible();
+  await expect(app.getByText('Servo 4 to 1500 · after 10 s'), 'servo 4 opens at 1500 after a 10 s wait').toBeVisible({ timeout: 15_000 });
+  await onlyTheLaunchBeforeTheTakeoff('with every action on waypoint 2');
+
+  await app.getByRole('button', { name: 'Waypoint 1' }).first().click();
+  await app.getByRole('button', { name: 'Show advanced settings' }).click();
+  await app.getByRole('switch', { name: 'Show all values' }).click();
+  await app.getByRole('button', { name: 'Command, Waypoint' }).click();
+  await app.getByRole('menuitem', { name: 'Loiter (time)', exact: true }).click();
+  await expect(app.getByRole('button', { name: /Loiter \(time\)/ }).first(), 'another command picked from the raw list is taken').toBeVisible({ timeout: 15_000 });
+  await expect(app.getByText('That change was not accepted.'), 'Oleg was told the change was not accepted').toHaveCount(0);
+  await onlyTheLaunchBeforeTheTakeoff('after changing a command');
+  await app.getByRole('button', { name: /^1 Waypoint\b/ }).click();
+  await app.getByRole('button', { name: 'Show advanced settings' }).click();
+  await app.getByRole('button', { name: 'Change command' }).click();
+  const picker = app.getByRole('dialog').filter({ hasText: 'Select mission command' });
+  await picker.getByText('Advanced', { exact: true }).click();
+  await picker.getByText('Set servo', { exact: true }).click();
+  await expect(app.getByText('Set servo added at Waypoint 1'), 'a servo picked on a waypoint is added at it').toBeVisible({ timeout: 15_000 });
+  await expect(app.getByRole('button', { name: /^1 Waypoint 30(\.0)? m/ }), 'and the waypoint stays where it was, with its height').toBeVisible();
+  await expect(app.getByText('That change was not accepted.')).toHaveCount(0);
+  const listed = await names();
+  expect(listed.slice(1, 4), 'the list reads takeoff, the changed command, then the waypoint').toEqual(['Takeoff', 'Loiter (time)', 'Waypoint']);
+  expect(listed.slice(4).some((it) => /set servo/i.test(it)), 'the servo sits under its waypoint').toBe(true);
 });
