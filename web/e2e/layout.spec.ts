@@ -880,6 +880,25 @@ test('a reading is made bigger from its own badge and stays so after a reload, a
   expect(await topStart(distance)).toEqual(placed);
 });
 
+test('a reading is made smaller than normal from its own badge, down to the smallest size, and stays so out of layout editing', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  const climb = telemetry(vehicle, 'V.S');
+  await expect(climb).toBeVisible({ timeout: 30_000 });
+  const tall = async () => (await climb.boundingBox())!.height;
+  const normal = await tall();
+  const offSmallest = async () => Math.abs((await tall()) - normal * 0.7);
+  await editLayout(vehicle);
+  const item = climb.locator('xpath=ancestor::*[@data-layout-item][1]/..');
+  const smaller = item.getByRole('button', { name: 'Make smaller', exact: true });
+  await smaller.click();
+  await smaller.click();
+  await expect.poll(offSmallest, { message: 'two steps down is the smallest size' }).toBeLessThan(2);
+  await expect(smaller, 'the smallest size has nowhere smaller to go').toHaveCount(0);
+  await expect(item.getByRole('button', { name: 'Make bigger', exact: true })).toBeVisible();
+  await finishEditing(vehicle);
+  await expect.poll(offSmallest).toBeLessThan(2);
+});
+
 test('on a phone the readings over the picture move on their own and stop at the edges of the picture, clear of the deck and the status strip', async ({ app }) => {
   await app.emulateMedia({ reducedMotion: 'reduce' });
   await app.setViewportSize({ width: 412, height: 860 });

@@ -85,10 +85,9 @@ export class OverlayLayoutState {
     this.sizes = mutableStateOf(storedSizes(stored));
   }
 
-  resize(key: string): void {
-    const next = nextItemSize(this.sizes.value.get(key) ?? 1);
-    this.prefs.putString(SIZE_PREFIX + key, String(next));
-    this.sizes.value = new Map(this.sizes.value).set(key, next);
+  resize(key: string, size: number): void {
+    this.prefs.putString(SIZE_PREFIX + key, String(size));
+    this.sizes.value = new Map(this.sizes.value).set(key, size);
   }
 
   saveDocked(keys: readonly string[]): void {
@@ -277,11 +276,11 @@ export const hiddenKeys = (stored: Readonly<Record<string, unknown>>): Set<strin
       .map(([key]) => key.slice(HIDDEN_PREFIX.length)),
   ]);
 
-export const ITEM_SIZES: readonly number[] = [1, 1.25, 1.5, 2];
+export const ITEM_SIZES: readonly number[] = [0.7, 0.85, 1, 1.25, 1.5, 2];
 
-export const nextItemSize = (size: number): number => ITEM_SIZES[(ITEM_SIZES.indexOf(size) + 1) % ITEM_SIZES.length] ?? 1;
+export const largerItemSize = (size: number): number | null => ITEM_SIZES.find((it) => it > size) ?? null;
 
-export const resizeLabel = (size: number): string => (nextItemSize(size) > size ? 'Make bigger' : 'Back to normal size');
+export const smallerItemSize = (size: number): number | null => ITEM_SIZES.findLast((it) => it < size) ?? null;
 
 export const storedSizes = (stored: Readonly<Record<string, unknown>>): Map<string, number> =>
   new Map(
@@ -794,23 +793,36 @@ export const LayoutWidget = ({
           </Surface>
         ) : null}
         {decorated && resizable && !hidden ? (
-          <Surface
-            onClick={() => layout.resize(widgetKey)}
-            className={badgeBeside !== undefined ? OUTER_BADGE[badgeBeside] : BADGE}
-            style={badgeBeside !== undefined ? besidePlace(badgeBeside, 1) : { ...BADGE_PLACE, insetInlineStart: undefined, insetInlineEnd: -BADGE_SIZE / 2 }}
-            shape="full"
-            color={md('inverseSurface')}
-            contentColor={md('inverseOnSurface')}
-            shadow
-            label={resizeLabel(scale)}
-          >
-            <MaterialIcon name={nextItemSize(scale) > scale ? 'open_in_full' : 'close_fullscreen'} size={BADGE_SIZE - 6} className="mx-[3px]" />
-          </Surface>
+          <>
+            <SizeBadge
+              to={largerItemSize(scale)}
+              label="Make bigger"
+              icon="open_in_full"
+              onSize={(size) => layout.resize(widgetKey, size)}
+              className={badgeBeside !== undefined ? OUTER_BADGE[badgeBeside] : BADGE}
+              style={badgeBeside !== undefined ? besidePlace(badgeBeside, 1) : { ...BADGE_PLACE, insetInlineStart: undefined, insetInlineEnd: -BADGE_SIZE / 2 }}
+            />
+            <SizeBadge
+              to={smallerItemSize(scale)}
+              label="Make smaller"
+              icon="close_fullscreen"
+              onSize={(size) => layout.resize(widgetKey, size)}
+              className={badgeBeside !== undefined ? OUTER_BADGE[badgeBeside] : BADGE}
+              style={badgeBeside !== undefined ? besidePlace(badgeBeside, 2) : { ...BADGE_PLACE, top: undefined, bottom: -BADGE_RISE, insetInlineStart: undefined, insetInlineEnd: -BADGE_SIZE / 2 }}
+            />
+          </>
         ) : null}
       </div>
     </div>
   );
 };
+
+const SizeBadge = ({ to, label, icon, onSize, className, style }: { to: number | null; label: string; icon: string; onSize: (size: number) => void; className: string; style: CSSProperties }) =>
+  to === null ? null : (
+    <Surface onClick={() => onSize(to)} className={className} style={style} shape="full" color={md('inverseSurface')} contentColor={md('inverseOnSurface')} shadow label={label}>
+      <MaterialIcon name={icon} size={BADGE_SIZE - 6} className="mx-[3px]" />
+    </Surface>
+  );
 
 export const LayoutOptionsMenu = () => {
   const flyScreen = useContext(LocalFlyScreenState);
