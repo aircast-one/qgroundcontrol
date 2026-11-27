@@ -96,14 +96,30 @@ pub fn found(
     })
 }
 
+fn tailnet_address(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => matches!(ip.octets(), [100, 64..=127, ..]),
+        IpAddr::V6(ip) => ip.segments()[..3] == [0xfd7a, 0x115c, 0xa1e0],
+    }
+}
+
+pub fn on_tailnet(host: &str) -> bool {
+    host.trim_matches(['[', ']']).parse().map_or_else(
+        |_| {
+            host.trim_end_matches('.')
+                .to_ascii_lowercase()
+                .ends_with(".ts.net")
+        },
+        tailnet_address,
+    )
+}
+
 pub fn announced(datagram: &[u8], from: SocketAddr) -> Option<String> {
     let IpAddr::V4(ip) = from.ip() else {
         return None;
     };
-    let [first, second, ..] = ip.octets();
     let hello = serde_json::from_slice::<Value>(datagram).ok()?;
-    (first == 100 && (64..128).contains(&second) && hello.get("service")? == "aircastd")
-        .then_some(())?;
+    (tailnet_address(from.ip()) && hello.get("service")? == "aircastd").then_some(())?;
     let port = hello
         .get("port")
         .and_then(Value::as_u64)

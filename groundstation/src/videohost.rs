@@ -411,6 +411,16 @@ pub fn whep_endpoint(uri: &str) -> Option<String> {
     })
 }
 
+pub fn transported(uri: &str) -> String {
+    let tailnet_rtsp = url::Url::parse(uri).is_ok_and(|url| {
+        url.scheme() == "rtsp" && url.host_str().is_some_and(crate::devicefind::on_tailnet)
+    });
+    match (tailnet_rtsp, uri.split_once("://")) {
+        (true, Some((_, rest))) => format!("rtspt://{rest}"),
+        _ => uri.to_string(),
+    }
+}
+
 pub const BROWSER_PLAYS_WHEP_ONLY: &str = "This browser can only play WebRTC (WHEP) streams. Pick a WHEP source, or use the Aircast app for this camera.";
 
 fn playable(uri: &str, low_latency: bool) -> bool {
@@ -447,7 +457,7 @@ pub fn pipeline(uri: &str, latency_ms: i64, low_latency: bool) -> Option<String>
     let source = match uri.split_once("://")? {
         (scheme, _) if scheme.to_ascii_lowercase().starts_with("rtsp") => format!(
             "rtspsrc location={} latency={latency_ms} do-rtcp=true do-retransmission={retransmit} drop-on-latency=true",
-            quoted(uri)
+            quoted(&transported(uri))
         ),
         ("udp", rest) => rtp("H264", rest)?,
         ("udp265", rest) => rtp("H265", rest)?,
@@ -826,7 +836,7 @@ pub fn follow_previews(paths: &std::collections::BTreeSet<String>) {
 
 fn stream_for(host: &Host, channel: usize) -> Option<String> {
     (host.channels[channel].wanted && host.state.has_video())
-        .then(|| host.state.desired_uri(CHANNEL_RECEIVERS[channel]))
+        .then(|| transported(&host.state.desired_uri(CHANNEL_RECEIVERS[channel])))
 }
 
 fn whep_for(host: &Host, channel: usize) -> Option<String> {
@@ -1325,6 +1335,41 @@ mod tests {
         );
         assert_eq!(whep_endpoint("rtsp://cam/main"), None);
         assert_eq!(whep_endpoint("0.0.0.0:5600"), None);
+    }
+
+    #[test]
+    fn rtsp_to_a_tailnet_host_plays_over_tcp_and_lan_rtsp_keeps_udp() {
+        for tailnet in [
+            "100.64.0.18:8554",
+            "100.127.255.1",
+            "[fd7a:115c:a1e0::12]:8554",
+            "owel-red-01.tail1234.ts.net:8554",
+            "admin:p%40ss@100.101.2.3:554",
+        ] {
+            assert_eq!(
+                transported(&format!("rtsp://{tailnet}/cam")),
+                format!("rtspt://{tailnet}/cam")
+            );
+        }
+        for kept in [
+            "rtsp://192.168.1.100:8554/cam",
+            "rtsp://10.42.0.1/cam",
+            "rtsp://100.128.0.1/cam",
+            "rtsp://[fd7a:115c:a1e1::12]/cam",
+            "rtsp://falcon.local/cam",
+            "rtsp://ts.net.example.com/cam",
+            "rtspt://192.168.1.100/cam",
+            "rtspt://100.64.0.18/cam",
+            "udp://100.64.0.18:5600",
+            "http://100.64.0.18:8889/cam/whep",
+        ] {
+            assert_eq!(transported(kept), kept);
+        }
+        assert!(
+            pipeline("rtsp://100.64.0.18:8554/cam", 80, false)
+                .is_some_and(|built| built.contains("location=\"rtspt://100.64.0.18:8554/cam\"")),
+            "the GStreamer heads ask rtspsrc for TCP"
+        );
     }
 
     #[test]
