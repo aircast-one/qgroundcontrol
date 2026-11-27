@@ -2496,7 +2496,9 @@ impl Sim {
             _ if drifting => (wind.0 + pushed.0, wind.1 + pushed.1),
             _ if sticks.is_some() => pushed,
             Some(_) if distance > f64::EPSILON => {
-                let speed = cruise.min((2.0 * self.tuning.accel * distance).sqrt());
+                let speed = cruise
+                    .min((2.0 * self.tuning.accel * distance).sqrt())
+                    .min(distance / dt);
                 (north / distance * speed, east / distance * speed)
             }
             _ => (0.0, 0.0),
@@ -5067,6 +5069,38 @@ mod tests {
             (sim.alt - held).abs() < 0.1,
             "an override for another component (4G standby's aircraft computer) is not the autopilot's"
         );
+    }
+
+    #[test]
+    fn a_copter_flown_to_a_point_stops_there_level_instead_of_nodding_about_it() {
+        let mut sim = Sim::new(options(Vehicle::Copter), 128, None);
+        sim.armed = true;
+        sim.alt = 10.0;
+        let there = Target::at(sim.lat + 60.0 / METRES_PER_DEG, sim.lon, 10.0);
+        sim.fly_to(there);
+        fly(&mut sim, 5);
+        assert!(
+            sim.tilt.1 < -5.0,
+            "under way the nose is down: {:?}",
+            sim.tilt
+        );
+        fly(&mut sim, 40);
+        assert!(
+            sim.reached(there, POSITION_M),
+            "{} m short",
+            sim.offset(there).0
+        );
+        let nods: Vec<f64> = (0..50)
+            .map(|n| {
+                sim.tick(n * 100);
+                sim.tilt.1.abs().max(sim.tilt.0.abs())
+            })
+            .collect();
+        assert!(
+            nods.iter().all(|tilt| *tilt < 0.5),
+            "in the hover it sits level, tick after tick: {nods:?}"
+        );
+        assert!(sim.ground_speed() < 0.05);
     }
 
     #[test]
