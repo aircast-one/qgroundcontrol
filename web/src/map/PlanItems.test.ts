@@ -247,6 +247,11 @@ describe('AddingAfterTextTest', () => {
     expect(addingAfterText(null, plan)).toBeNull();
   });
 
+  it('with the launch selected the line names the takeoff, since nothing is flown before it', () => {
+    const takingOff = [plan[0]!, MissionItem({ index: 1, sequence: 1, latitude: 41.0, longitude: 44.0, command: 'Takeoff', selected: false, altitude: 5.0, kind: 'takeoff' }), plan[1]!];
+    expect(addingAfterText(waypoint(0), takingOff)).toBe('Tap the map to add after #1');
+  });
+
   it('with the return selected the line says the new item goes before it', () => {
     const returning = [...plan, MissionItem({ index: 3, sequence: 6, latitude: 41.0, longitude: 44.0, command: 'Return to launch', selected: false, altitude: NaN, kind: 'land', endsRoute: true })];
     expect(addingAfterText(waypoint(3), returning)).toBe('Tap the map to add before #6');

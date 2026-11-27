@@ -133,7 +133,8 @@ func selectionSequence(_ selected: MapHit?, _ items: [MissionItem]) -> Int? {
 
 func addingAfterText(_ selected: MapHit?, _ items: [MissionItem]) -> String? {
     missionItemIndex(selected).flatMap { index in items.first { $0.index == index } }.map { item in
-        pastRouteEnd(item.index, items).map { "Tap the map to add before #\($0.sequence)" } ?? "Tap the map to add after #\(item.sequence)"
+        let takeoff = items.first { $0.kind == "takeoff" && $0.index > item.index }
+        return pastRouteEnd(item.index, items).map { "Tap the map to add before #\($0.sequence)" } ?? "Tap the map to add after #\((takeoff ?? item).sequence)"
     }
 }
 

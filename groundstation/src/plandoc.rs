@@ -879,6 +879,17 @@ pub fn insert_simple(
     }
 }
 
+pub fn past_takeoff(doc: &Document, kind: &str, visual_index: i64) -> i64 {
+    let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
+    let takeoff = doc.items.iter().position(|item| {
+        matches!(item, Item::Simple(simple) if commands.get(&simple.command).is_some_and(|c| c.is_takeoff))
+    });
+    match takeoff.map(|at| at as i64 + 1) {
+        Some(takeoff) if kind != "takeoff" && (1..=takeoff).contains(&visual_index) => takeoff + 1,
+        _ => visual_index,
+    }
+}
+
 pub fn complex_count(kind: &str, item: &Value) -> Result<usize, String> {
     match TRANSECT_STYLE.contains(&kind) {
         true => item
@@ -2920,6 +2931,33 @@ mod tests {
             &set_command(&section(), 2, 19, &QT_DEFAULTS).unwrap(),
             include_str!("../tests/fixtures/edit-H-by-qt.plan"),
         );
+    }
+
+    #[test]
+    fn nothing_but_the_launch_goes_before_the_takeoff_so_an_insert_ahead_of_it_lands_just_after() {
+        let doc = section();
+        assert_eq!(
+            past_takeoff(&doc, "waypoint", 1),
+            2,
+            "after the launch is still before the takeoff, so the waypoint moves past it"
+        );
+        assert_eq!(past_takeoff(&doc, "survey", 1), 2);
+        assert_eq!(
+            past_takeoff(&doc, "waypoint", 3),
+            3,
+            "after the takeoff an item stays where it was asked for"
+        );
+        assert_eq!(
+            past_takeoff(&doc, "waypoint", -1),
+            -1,
+            "the end is past the takeoff already"
+        );
+        assert_eq!(
+            past_takeoff(&remove(&doc, 1).unwrap(), "waypoint", 1),
+            1,
+            "with no takeoff there is nothing to keep clear of"
+        );
+        assert_eq!(past_takeoff(&doc, "takeoff", 1), 1);
     }
 
     #[test]

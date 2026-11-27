@@ -2767,7 +2767,11 @@ fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
     opened(backend);
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let kind = given.get(0).and_then(Value::as_str).unwrap_or("");
-    let rest = json!([given.get(1), given.get(2), given.get(3)]).to_string();
+    let asked = given.get(3).and_then(Value::as_i64).unwrap_or(-1);
+    let index = held().document.as_ref().map_or(asked, |document| {
+        plandoc::past_takeoff(document, kind, asked)
+    });
+    let rest = json!([given.get(1), given.get(2), index]).to_string();
     let clicked = given
         .get(1)
         .and_then(Value::as_f64)
@@ -2848,7 +2852,7 @@ fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
     };
     match answered.get("ok").and_then(Value::as_bool) {
         Some(true) => {
-            let wanted = given.get(3).and_then(Value::as_i64).unwrap_or(-1);
+            let wanted = index;
             let placed = {
                 let mut state = held();
                 let count = state.document.as_ref().map_or(0, |d| d.items.len() as i64);

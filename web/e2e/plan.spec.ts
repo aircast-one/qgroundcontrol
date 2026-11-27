@@ -58,6 +58,22 @@ test('with the new return still selected, a tap on the map lands before it, wher
   await expect(app.getByText(/after the route ends/)).toHaveCount(0);
 });
 
+const coreCall = (page: Page, path: string, ...args: unknown[]) =>
+  page.evaluate(async ([module, called, given]) => ((await import(module)) as { Qgc: { call: (path: string, ...args: unknown[]) => Promise<unknown> } }).Qgc.call(called, ...given), ['/src/bridge/Qgc.ts', path, args] as const);
+
+test('with the launch selected, a new waypoint goes after the takeoff, never ahead of it', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.getByRole('button', { name: 'Done' }).click();
+  await app.getByRole('button', { name: /^0 Launch\b/ }).click();
+  const drawn = await itemCount(app);
+  expect(JSON.stringify(await coreCall(app, 'mission.insert', 'waypoint', 47.398, 8.546, 1)), 'with the launch selected the head inserts at index 1').toContain('"ok":true');
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(drawn + 1);
+  await expect(app.getByRole('button', { name: /^1 Takeoff\b/ }), 'Oleg’s plan read Launch, Waypoint, Takeoff: a waypoint added after the launch went in before the takeoff').toBeVisible();
+  await expect(app.getByRole('button', { name: /^2 Waypoint\b/ })).toBeVisible();
+});
+
 test('a plan being drawn survives a reload of the page', async ({ app }) => {
   await openMenu(app, 'Plan');
   await tapPlanMission(app);
