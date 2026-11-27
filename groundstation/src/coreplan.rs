@@ -3050,6 +3050,16 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
         changed();
         return Some(json!({ "ok": true }));
     }
+    let (property, number) = match property
+        .strip_suffix(".enumIndex")
+        .filter(|combo| combo.starts_with("comboboxFacts."))
+    {
+        Some(combo) => (
+            combo,
+            number.and_then(|at| combo_value(simple, &commands, raw, combo, at)),
+        ),
+        None => (property, number),
+    };
     match (raw, property, number) {
         (true, "comboboxFacts.0", Some(n)) => {
             return Some(item_edit(backend, &json!([index, n]).to_string(), true));
@@ -5438,6 +5448,48 @@ mod tests {
     }
 
     #[test]
+    fn a_choice_picked_by_its_place_in_the_list_writes_the_value_at_that_place() {
+        let commands = crate::cmdinfo::tree(
+            crate::cmdinfo::Firmware::ArduPilot,
+            crate::cmdinfo::VehicleClass::MultiRotor,
+        );
+        let delay = commands.keys().position(|id| *id == 93).unwrap();
+        assert_eq!(
+            combo_value(None, &commands, true, "comboboxFacts.0", delay as f64),
+            Some(93.0),
+            "the raw Command list writes its index, which is the command at that place, not a refused enumIndex"
+        );
+        assert_eq!(
+            combo_value(None, &commands, true, "comboboxFacts.1", 3.0),
+            Some(3.0)
+        );
+        let (id, param) = commands
+            .iter()
+            .find_map(|(id, info)| {
+                field_params(info, true)
+                    .first()
+                    .map(|(_, p)| (*id, p.clone()))
+            })
+            .unwrap();
+        let simple = plandoc::Simple {
+            command: id,
+            frame: 3,
+            params: [None; 7],
+            auto_continue: true,
+            altitude: None,
+            sections: Vec::new(),
+        };
+        assert_eq!(
+            combo_value(Some(&simple), &commands, false, "comboboxFacts.0", 0.0),
+            list(&param, "enumValues")[0].parse().ok()
+        );
+        assert_eq!(
+            combo_value(None, &commands, true, "comboboxFacts.0", 9999.0),
+            None
+        );
+    }
+
+    #[test]
     fn an_item_qgc_cannot_show_friendly_is_edited_raw() {
         let doc = plandoc::load(include_str!("../tests/fixtures/commands.plan"), 2).unwrap();
         let metres = crate::read::Unit {
@@ -5481,22 +5533,30 @@ mod tests {
         assert_eq!(
             names,
             [
-                "Command", "Frame", "Param1", "Param2", "Param3", "Param4", "Lat/X", "Lon/Y",
-                "Alt/Z"
+                "Command",
+                "Frame",
+                "Hold (secs)",
+                "Acceptance (m)",
+                "Pass Radius (m)",
+                "Yaw (deg)",
+                "Latitude",
+                "Longitude",
+                "Altitude"
             ],
-            "SimpleItemEditor lists comboboxFacts before textFieldFacts"
+            "the raw view lists the choices first, then each value by what it means for this command rather than Param1 or Lat/X"
         );
         assert_eq!(fields[1]["pathSuffix"], "comboboxFacts.1");
         assert_eq!(
             (fields[0]["control"].clone(), fields[0]["display"].clone()),
-            (json!("choice"), json!("MAV_CMD_NAV_WAYPOINT"))
+            (json!("choice"), json!("Waypoint")),
+            "a command reads by the name the command picker gives it, not MAV_CMD_NAV_WAYPOINT"
         );
         assert!(
             fields[1]["options"]
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|o| o["label"] == "MAV_FRAME_GLOBAL_TERRAIN_ALT" && o["raw"] == "10")
+                .any(|o| o["label"] == "Above terrain" && o["raw"] == "10")
         );
     }
 
@@ -5853,7 +5913,10 @@ const ITEM_ROOT: &str = "plan.missionController.visualItems";
 
 fn formatted(value: f64, decimals: i64) -> String {
     let places = usize::try_from(decimals).unwrap_or(0);
-    format!("{value:.places$}")
+    match value.is_nan() {
+        true => String::new(),
+        false => format!("{value:.places$}"),
+    }
 }
 
 fn list(param: &Value, key: &str) -> Vec<String> {
@@ -5964,22 +6027,23 @@ fn field_params(info: &crate::cmdinfo::Command, combo: bool) -> Vec<(u8, Value)>
 static RAW_EDIT: std::sync::Mutex<std::collections::BTreeSet<usize>> =
     std::sync::Mutex::new(std::collections::BTreeSet::new());
 const RAW_LABELS: [&str; 7] = [
-    "Param1", "Param2", "Param3", "Param4", "Lat/X", "Lon/Y", "Alt/Z",
+    "Param 1", "Param 2", "Param 3", "Param 4", "Param 5", "Param 6", "Param 7",
 ];
+const POSITION_LABELS: [&str; 3] = ["Latitude", "Longitude", "Altitude"];
 const RAW_DECIMAL_PLACES: i64 = 7;
 const MAV_FRAMES: [(&str, i64); 12] = [
-    ("MAV_FRAME_GLOBAL", 0),
-    ("MAV_FRAME_LOCAL_NED", 1),
-    ("MAV_FRAME_MISSION", 2),
-    ("MAV_FRAME_GLOBAL_RELATIVE_ALT", 3),
-    ("MAV_FRAME_LOCAL_ENU", 4),
-    ("MAV_FRAME_GLOBAL_INT", 5),
-    ("MAV_FRAME_GLOBAL_RELATIVE_ALT_INT", 6),
-    ("MAV_FRAME_LOCAL_OFFSET_NED", 7),
-    ("MAV_FRAME_BODY_NED", 8),
-    ("MAV_FRAME_BODY_OFFSET_NED", 9),
-    ("MAV_FRAME_GLOBAL_TERRAIN_ALT", 10),
-    ("MAV_FRAME_GLOBAL_TERRAIN_ALT_INT", 11),
+    ("Above sea level", 0),
+    ("Local north-east-down", 1),
+    ("Mission", 2),
+    ("Relative to launch", 3),
+    ("Local east-north-up", 4),
+    ("Above sea level (whole numbers)", 5),
+    ("Relative to launch (whole numbers)", 6),
+    ("Offset from the vehicle", 7),
+    ("Body frame", 8),
+    ("Offset from the body", 9),
+    ("Above terrain", 10),
+    ("Above terrain (whole numbers)", 11),
 ];
 const FRIENDLY_FRAMES: [i64; 3] = [0, 3, 10];
 
@@ -6063,23 +6127,28 @@ fn raw_fields(
         ),
         other => other,
     };
-    let text = RAW_LABELS.iter().enumerate().map(|(i, label)| {
+    let info = commands.get(&simple.command);
+    let text = RAW_LABELS.iter().enumerate().map(|(i, fallback)| {
+        let param = info.and_then(|c| c.params.get(&u8::try_from(i + 1).ok()?));
+        let text = |key: &str| {
+            param
+                .and_then(|p| p.get(key)?.as_str())
+                .filter(|t| !t.trim().is_empty())
+        };
+        let position = info
+            .filter(|c| c.specifies_coordinate)
+            .and_then(|_| POSITION_LABELS.get(i.checked_sub(4)?));
+        let label = text("label").or(position.copied()).unwrap_or(fallback);
         control(
-            json!({ "label": label, "decimalPlaces": RAW_DECIMAL_PLACES }),
+            json!({
+                "label": text("units").map_or_else(|| label.to_string(), |units| format!("{label} ({units})")),
+                "decimalPlaces": RAW_DECIMAL_PLACES
+            }),
             simple.params[i].unwrap_or(f64::NAN),
             format!("textFieldFacts.{i}"),
         )
     });
-    let command = choice(
-        "Command",
-        commands.values().map(|c| (c.raw_name.clone(), c.id)),
-    );
-    let frame = choice(
-        "Frame",
-        MAV_FRAMES
-            .iter()
-            .map(|(name, value)| ((*name).to_string(), *value)),
-    );
+    let [command, frame] = raw_choices(commands);
     [
         control(
             command,
@@ -6091,6 +6160,50 @@ fn raw_fields(
     .into_iter()
     .chain(text)
     .collect()
+}
+
+fn raw_choices(commands: &std::collections::BTreeMap<i64, crate::cmdinfo::Command>) -> [Value; 2] {
+    [
+        choice(
+            "Command",
+            commands.values().map(|c| {
+                let shown = match c.friendly_name.trim().is_empty() {
+                    true => &c.raw_name,
+                    false => &c.friendly_name,
+                };
+                (shown.clone(), c.id)
+            }),
+        ),
+        choice(
+            "Frame",
+            MAV_FRAMES
+                .iter()
+                .map(|(name, value)| ((*name).to_string(), *value)),
+        ),
+    ]
+}
+
+fn combo_value(
+    simple: Option<&plandoc::Simple>,
+    commands: &std::collections::BTreeMap<i64, crate::cmdinfo::Command>,
+    raw: bool,
+    combo: &str,
+    at: f64,
+) -> Option<f64> {
+    let slot: usize = combo.strip_prefix("comboboxFacts.")?.parse().ok()?;
+    let choices = match raw {
+        true => raw_choices(commands).into_iter().nth(slot)?,
+        false => {
+            field_params(commands.get(&simple?.command)?, true)
+                .into_iter()
+                .nth(slot)?
+                .1
+        }
+    };
+    list(&choices, "enumValues")
+        .get(usize::try_from(at as i64).ok()?)?
+        .parse()
+        .ok()
 }
 
 fn simple_fields(

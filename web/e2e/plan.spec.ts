@@ -74,6 +74,24 @@ test('with the launch selected, a new waypoint goes after the takeoff, never ahe
   await expect(app.getByRole('button', { name: /^2 Waypoint\b/ })).toBeVisible();
 });
 
+test('the raw view of a waypoint reads in plain words and its command list changes the command', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.getByRole('button', { name: 'Done' }).click();
+  await coreCall(app, 'advancedUi.set', true);
+  await app.getByRole('button', { name: 'Waypoint 3' }).first().click();
+  await app.getByRole('button', { name: 'Show advanced settings' }).click();
+  await app.getByRole('switch', { name: 'Show all values' }).click();
+  await expect(app.getByText('Hold (secs)'), 'the first value is the hold, not Param1').toBeVisible();
+  await expect(app.getByText('Latitude', { exact: true })).toBeVisible();
+  await expect(app.getByText(/MAV_CMD_|MAV_FRAME_|^Param1$|Lat\/X/)).toHaveCount(0);
+  await app.getByRole('button', { name: 'Command, Waypoint' }).click();
+  await app.getByRole('menuitem', { name: 'Delay', exact: true }).click();
+  await expect(app.getByText('That change was not accepted.'), 'picking a command from the list was refused for every command').toHaveCount(0);
+  await expect(app.getByRole('button', { name: /^3 Delay\b/i })).toBeVisible({ timeout: 15_000 });
+});
+
 test('a plan being drawn survives a reload of the page', async ({ app }) => {
   await openMenu(app, 'Plan');
   await tapPlanMission(app);
