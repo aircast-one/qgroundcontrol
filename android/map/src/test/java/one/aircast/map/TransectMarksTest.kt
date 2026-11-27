@@ -51,6 +51,19 @@ class TransectMarksTest {
     }
 
     @Test
+    fun `a waypoint's gimbal wedge carries its pitch, so the map can draw straight down as a ring and a shallow look as a longer wedge`() {
+        val down = leg(2).copy(heading = 90.0, gimbalYaw = 0.0, gimbalPitch = -90.0)
+        val out = leg(3).copy(heading = 90.0, gimbalYaw = 0.0, gimbalPitch = -20.0)
+        val yawOnly = leg(4).copy(heading = 90.0, gimbalYaw = 0.0)
+        val wedges = gimbalWedges(listOf(down, out, yawOnly))
+        assertEquals(listOf(-90.0, -20.0, null), wedges.map { it.pitch })
+        assertEquals("a wedge with no pitch leaves the property off, so the layer falls back to a middling look", listOf(true, true, false), wedges.map { wedgeFeature(it).hasProperty("pitch") })
+        assertTrue(-90.0 <= LOOKS_DOWN_PITCH && -20.0 > LOOKS_DOWN_PITCH)
+        val served = allMissionItems(org.json.JSONObject("""{"items":[{"sequence":1,"coordinate":{"latitude":47.0,"longitude":8.0},"heading":90,"gimbalYaw":0,"gimbalPitch":-77}]}"""))
+        assertEquals(listOf(-77.0), served.map { it.gimbalPitch })
+    }
+
+    @Test
     fun `a pattern item gets a second marker at its exit labelled with its own stop number`() {
         val survey = leg(2, complex = true).copy(stop = 1, exit = TrackPoint(47.5, 8.1), foldedCommands = 6)
         val plain = leg(3).copy(exit = TrackPoint(47.6, 8.1))

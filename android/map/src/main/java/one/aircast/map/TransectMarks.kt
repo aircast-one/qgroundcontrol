@@ -74,10 +74,16 @@ private const val GIMBAL_WEDGE_LAYER = "aircast-gimbal-wedge-layer"
 private const val GIMBAL_WEDGE_IMAGE = "aircast-mission-gimbal-wedge"
 private const val GIMBAL_WEDGE_PX = 72
 private const val GIMBAL_WEDGE_SWEEP = 90f
+private const val GIMBAL_DOWN_IMAGE = "aircast-mission-gimbal-down"
+private const val WEDGE_PITCH = "pitch"
+private const val UNKNOWN_PITCH = -45
+internal const val LOOKS_DOWN_PITCH = -80
 
-fun gimbalWedges(items: List<MissionItem>): List<TransectArrow> =
+data class GimbalWedge(val at: TrackPoint, val bearing: Double, val pitch: Double?)
+
+fun gimbalWedges(items: List<MissionItem>): List<GimbalWedge> =
     items.filter { it.heading.isFinite() && it.gimbalYaw.isFinite() }
-        .map { TransectArrow(TrackPoint(it.latitude, it.longitude), it.heading + it.gimbalYaw) }
+        .map { GimbalWedge(TrackPoint(it.latitude, it.longitude), it.heading + it.gimbalYaw, it.gimbalPitch.takeIf(Double::isFinite)) }
 
 private fun wedge(): Bitmap {
     val bitmap = Bitmap.createBitmap(GIMBAL_WEDGE_PX, GIMBAL_WEDGE_PX, Bitmap.Config.ARGB_8888)
@@ -86,19 +92,33 @@ private fun wedge(): Bitmap {
     return bitmap
 }
 
+private fun lookingDown(): Bitmap {
+    val bitmap = Bitmap.createBitmap(GIMBAL_WEDGE_PX, GIMBAL_WEDGE_PX, Bitmap.Config.ARGB_8888)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(200, 255, 255, 255); style = Paint.Style.STROKE; strokeWidth = 4f }
+    Canvas(bitmap).drawCircle(GIMBAL_WEDGE_PX / 2f, GIMBAL_WEDGE_PX / 2f, GIMBAL_WEDGE_PX / 4f, paint)
+    return bitmap
+}
+
+internal fun wedgeFeature(wedge: GimbalWedge): Feature =
+    Feature.fromGeometry(Point.fromLngLat(wedge.at.longitude, wedge.at.latitude)).apply {
+        addNumberProperty(ARROW_BEARING, wedge.bearing)
+        wedge.pitch?.let { addNumberProperty(WEDGE_PITCH, it) }
+    }
+
 fun renderGimbalWedges(style: Style, items: List<MissionItem>) {
-    (style.getSource(GIMBAL_WEDGE_SOURCE) as? GeoJsonSource)?.setGeoJson(
-        FeatureCollection.fromFeatures(gimbalWedges(items).map { Feature.fromGeometry(Point.fromLngLat(it.at.longitude, it.at.latitude)).apply { addNumberProperty(ARROW_BEARING, it.bearing) } }),
-    )
+    (style.getSource(GIMBAL_WEDGE_SOURCE) as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(gimbalWedges(items).map(::wedgeFeature)))
 }
 
 fun installTransectMarks(style: Style) {
     if (style.getSource(GIMBAL_WEDGE_SOURCE) == null) {
         style.addSource(GeoJsonSource(GIMBAL_WEDGE_SOURCE))
         style.addImage(GIMBAL_WEDGE_IMAGE, wedge())
+        style.addImage(GIMBAL_DOWN_IMAGE, lookingDown())
+        val pitch = Expression.coalesce(Expression.get(WEDGE_PITCH), Expression.literal(UNKNOWN_PITCH))
         style.addLayer(
             SymbolLayer(GIMBAL_WEDGE_LAYER, GIMBAL_WEDGE_SOURCE).withProperties(
-                PropertyFactory.iconImage(GIMBAL_WEDGE_IMAGE),
+                PropertyFactory.iconImage(Expression.switchCase(Expression.lte(pitch, Expression.literal(LOOKS_DOWN_PITCH)), Expression.literal(GIMBAL_DOWN_IMAGE), Expression.literal(GIMBAL_WEDGE_IMAGE))),
+                PropertyFactory.iconSize(Expression.interpolate(Expression.linear(), pitch, Expression.stop(-90, 0.5f), Expression.stop(0, 1.3f))),
                 PropertyFactory.iconRotate(Expression.get(ARROW_BEARING)),
                 PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP),
                 PropertyFactory.iconAllowOverlap(true),
