@@ -208,7 +208,7 @@ pub fn title(finished: bool, reached: Progress, row: Option<&crate::coreplan::Fl
         (true, ..) => COMPLETE_TITLE.to_string(),
         (false, true, Some(row)) => format!("{STOPPED_TITLE} at {}", row.place),
         (false, true, None) => format!(
-            "{STOPPED_TITLE} at waypoint {} of {}",
+            "{STOPPED_TITLE} at mission item {} of {}",
             reached.waypoint, reached.of
         ),
         (false, false, _) => STOPPED_TITLE.to_string(),
@@ -228,9 +228,9 @@ pub fn resume_place(first: usize, row: Option<&crate::coreplan::FlownRow>) -> St
             let inside = row.within.map_or(String::new(), |(at, of)| {
                 format!(", at its waypoint {at} of {of}")
             });
-            format!("the {}{inside}", row.place)
+            format!("{}{inside}", row.place)
         }
-        None => format!("waypoint {first}"),
+        None => format!("mission item {first}"),
     }
 }
 
@@ -286,15 +286,15 @@ mod tests {
     fn an_interrupted_mission_says_where_it_resumes_and_what_is_left() {
         assert_eq!(
             interrupted_detail(&resume_place(4, None), 2),
-            "The aircraft left the mission before finishing it. Resuming flies it again from waypoint 4. 2 drops are still to come."
+            "The aircraft left the mission before finishing it. Resuming flies it again from mission item 4. 2 drops are still to come."
         );
         assert_eq!(
             interrupted_detail(&resume_place(4, None), 1),
-            "The aircraft left the mission before finishing it. Resuming flies it again from waypoint 4. One drop is still to come."
+            "The aircraft left the mission before finishing it. Resuming flies it again from mission item 4. One drop is still to come."
         );
         assert_eq!(
             interrupted_detail(&resume_place(6, None), 0),
-            "The aircraft left the mission before finishing it. Resuming flies it again from waypoint 6."
+            "The aircraft left the mission before finishing it. Resuming flies it again from mission item 6."
         );
     }
 
@@ -307,7 +307,7 @@ mod tests {
         };
         assert_eq!(
             resume_label(&resume_place(49, Some(&survey))),
-            "Resume from the survey 2 of 3, at its waypoint 14 of 40",
+            "Resume from survey 2 of 3, at its waypoint 14 of 40",
             "the title names the survey as stop 2 of 3, so the button must not fall back to the vehicle's command 49"
         );
         let waypoint = crate::coreplan::FlownRow {
@@ -317,15 +317,15 @@ mod tests {
         };
         assert_eq!(
             resume_label(&resume_place(4, Some(&waypoint))),
-            "Resume from the waypoint 3 of 5"
+            "Resume from waypoint 3 of 5"
         );
         assert_eq!(
             interrupted_detail(&resume_place(49, Some(&survey)), 0),
-            "The aircraft left the mission before finishing it. Resuming flies it again from the survey 2 of 3, at its waypoint 14 of 40."
+            "The aircraft left the mission before finishing it. Resuming flies it again from survey 2 of 3, at its waypoint 14 of 40."
         );
         assert_eq!(
             resume_label(&resume_place(4, None)),
-            "Resume from waypoint 4",
+            "Resume from mission item 4",
             "with no plan rows to read, the vehicle's own number is all there is"
         );
     }
@@ -366,7 +366,7 @@ mod tests {
         assert!(returned.open);
         assert_eq!(
             title(returned.finished, returned.reached, None),
-            "Mission stopped at waypoint 49 of 140",
+            "Mission stopped at mission item 49 of 140",
             "a plan sent again while returning clears the vehicle's index, so the latch keeps the last waypoint flown"
         );
         let finished = run(&[
@@ -410,7 +410,7 @@ mod tests {
         ]);
         assert_eq!(
             title(next.finished, next.reached, None),
-            "Mission stopped at waypoint 5 of 140",
+            "Mission stopped at mission item 5 of 140",
             "ArduPilot still says complete when it arms again, and the mission flown after that is a new one"
         );
         let survey = crate::coreplan::FlownRow {

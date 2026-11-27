@@ -2226,12 +2226,18 @@ fn row_of_sequence(document: &Document, sequence: i64) -> Option<FlownRow> {
         ))
     };
     let own = name(row)?;
-    let attached = (0..row).rev().find(|index| stops[*index].is_some());
-    let positioned = crate::read::flag(&reads[row], "specifiesCoordinate")
-        || crate::missionitems::letter(&reads[row]).is_some();
+    let has_a_place = |index: usize| {
+        stops[index].is_some()
+            || crate::read::flag(&reads[index], "specifiesCoordinate")
+            || crate::missionitems::letter(&reads[index]).is_some()
+    };
+    let attached = (1..row).rev().find(|index| has_a_place(*index));
     let (place, arrived) = match (stops[row], attached) {
         (Some(_), _) => (stop_place(row)?, false),
-        (None, Some(index)) if !positioned => (format!("{} · {own}", stop_place(index)?), true),
+        (None, Some(index)) if !has_a_place(row) => (
+            format!("{} · {own}", stop_place(index).or_else(|| name(index))?),
+            true,
+        ),
         _ => (own, false),
     };
     Some(FlownRow {
@@ -5391,6 +5397,58 @@ mod tests {
     }
 
     #[test]
+    fn an_action_is_reported_at_the_place_the_aircraft_stands_numbered_or_not() {
+        let vehicle = flown_document(&flown(&[16, 22, 16, 183, 19, 183, 16], true, 0));
+        let at_waypoint = row_of_sequence(&vehicle, 3).unwrap();
+        assert_eq!(
+            (at_waypoint.place.as_str(), at_waypoint.arrived),
+            ("waypoint 1 of 2 · set servo", true)
+        );
+        let at_loiter = row_of_sequence(&vehicle, 5).unwrap();
+        assert!(
+            at_loiter.arrived
+                && at_loiter.place.starts_with("loiter")
+                && at_loiter.place.ends_with(" · set servo"),
+            "the servo after the loiter fires at the loiter, not back at waypoint 1: {}",
+            at_loiter.place
+        );
+        let flying = row_of_sequence(&vehicle, 6).unwrap();
+        let progress = crate::missionprogress::Progress {
+            current: 3,
+            last: 6,
+        };
+        assert_eq!(
+            [Some(&at_waypoint), Some(&flying), None]
+                .map(|row| crate::missionprogress::progress_line(row, &progress)),
+            [
+                "At waypoint 1 of 2 · set servo",
+                "To waypoint 2 of 2",
+                "Mission item 3 of 6"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_raw_list_cannot_be_shifted_by_a_comma_in_a_name_and_a_raw_label_names_plain_units() {
+        let listed = choice(
+            "Command",
+            [("Wait, then go".to_string(), 5), ("Land".to_string(), 21)].into_iter(),
+        );
+        assert_eq!(
+            (
+                list(&listed, "enumStrings").len(),
+                list(&listed, "enumValues")
+            ),
+            (2, vec!["5".to_string(), "21".to_string()]),
+            "the names and the values stay one to one"
+        );
+        assert_eq!(
+            ["vertical m", "horizontal m", "m/s", "deg"].map(plain_units),
+            ["m", "m", "m/s", "deg"]
+        );
+    }
+
+    #[test]
     fn a_flown_sequence_is_numbered_by_the_plan_row_that_holds_it() {
         let commands = [16, 22, 16, SPEED_SECTION, 16, 20];
         let mission = flown(&commands, true, 0);
@@ -6244,9 +6302,16 @@ fn raw_edit(
 
 fn choice(label: &str, choices: impl Iterator<Item = (String, i64)>) -> Value {
     let (names, values): (Vec<String>, Vec<String>) = choices
-        .map(|(name, value)| (name, value.to_string()))
+        .map(|(name, value)| (name.replace(',', ""), value.to_string()))
         .unzip();
     json!({ "label": label, "enumStrings": names.join(","), "enumValues": values.join(",") })
+}
+
+fn plain_units(units: &str) -> &str {
+    units
+        .strip_prefix("vertical ")
+        .or_else(|| units.strip_prefix("horizontal "))
+        .unwrap_or(units)
 }
 
 fn raw_fields(
@@ -6283,7 +6348,7 @@ fn raw_fields(
         let label = text("label").or(position.copied()).unwrap_or(fallback);
         control(
             json!({
-                "label": text("units").map_or_else(|| label.to_string(), |units| format!("{label} ({units})")),
+                "label": text("units").map_or_else(|| label.to_string(), |units| format!("{label} ({})", plain_units(units))),
                 "decimalPlaces": RAW_DECIMAL_PLACES
             }),
             simple.params[i].unwrap_or(f64::NAN),
