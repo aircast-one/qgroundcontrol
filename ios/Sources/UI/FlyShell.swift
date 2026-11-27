@@ -11,6 +11,7 @@ private let MINIMAP_HEIGHT: CGFloat = 112
 private let COMPASS_DIAL_KEY = "compassDial"
 private let ACTION_RAIL_CLEARANCE: CGFloat = 72
 private let STOP_CLEARANCE: CGFloat = 56
+private let ATTITUDE_RAIL_CLEARANCE: CGFloat = 96
 private let RAIL_CLEARANCE = STOP_CLEARANCE + Space.s3 * 2
 private let TOP_SCRIM_HEIGHT: CGFloat = 96
 private let TOP_SCRIM_ALPHA = 0.6
@@ -538,6 +539,13 @@ struct FlyScreen: View {
                 .padding(.top, STATUS_ROW_HEIGHT + Space.s4)
                 .frame(width: inner.width, height: inner.height)
                 .zIndex(2)
+            if hasVehicle && !flyScreen.flightActions.deciding && view != .ThreeD {
+                LayoutWidget(key: ATTITUDE_KEY, name: ATTITUDE_NAME, resizable: true) { AttitudeGauges() }
+                    .padding(.trailing, ATTITUDE_RAIL_CLEARANCE)
+                    .padding(.bottom, Space.s3)
+                    .frame(width: inner.width, height: inner.height, alignment: .bottomTrailing)
+                    .zIndex(2)
+            }
             if hasVehicle && !flyScreen.guidedPanelOpen {
                 let besideMini = mapIsPip ? miniSide.width : hasVideo && pipExpanded ? MINIMAP_WIDTH : PIP_TOGGLE_SIZE
                 TelemetryRow(valuesShown: true, chooser: false, compact: true, stacked: true)

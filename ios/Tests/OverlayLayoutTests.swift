@@ -4,12 +4,12 @@ import XCTest
 final class OverlayLayoutTests: XCTestCase {
     func testHiddenWidgetsAreReadFromTheStoredRigKeysOnly() {
         let stored: [String: Any] = ["OverlayRigHidden-orbit": true, "OverlayRigHidden-traffic": false, "other": true]
-        XCTAssertEqual(hiddenKeys(stored), ["minimap", "orbit"])
+        XCTAssertEqual(hiddenKeys(stored), ["minimap", "attitude", "orbit"])
     }
 
-    func testTheMiniMapStartsHiddenAndStaysShownOnceThePilotShowsIt() {
-        XCTAssertEqual(hiddenKeys([:]), ["minimap"])
-        XCTAssertEqual(hiddenKeys(["OverlayRigHidden-minimap": false]), [])
+    func testTheMiniMapAndTheAttitudeAndCompassDialsStartHiddenAndStayShownOnceThePilotShowsThem() {
+        XCTAssertEqual(hiddenKeys([:]), ["minimap", "attitude"])
+        XCTAssertEqual(hiddenKeys(["OverlayRigHidden-minimap": false, "OverlayRigHidden-attitude": false]), [])
     }
 
     func testASmallWidgetJigglesTheFullAngleAndAWideOneTurnsLessSoNoCornerSwingsMoreThanAFewPoints() {
@@ -32,10 +32,10 @@ final class OverlayLayoutTests: XCTestCase {
         layout.reset()
         layout.setHidden(MINIMAP_KEY, false)
         layout.setHidden(BATTERY_BAR_KEY, true)
-        XCTAssertEqual(layout.hidden, [BATTERY_BAR_KEY])
-        XCTAssertEqual(OverlayLayoutState(overlayLayoutStore()).hidden, [BATTERY_BAR_KEY])
+        XCTAssertEqual(layout.hidden, [BATTERY_BAR_KEY, ATTITUDE_KEY])
+        XCTAssertEqual(OverlayLayoutState(overlayLayoutStore()).hidden, [BATTERY_BAR_KEY, ATTITUDE_KEY])
         layout.reset()
-        XCTAssertEqual(layout.hidden, [MINIMAP_KEY])
+        XCTAssertEqual(layout.hidden, [MINIMAP_KEY, ATTITUDE_KEY])
     }
 
     func testAnItemStepsBiggerOrSmallerThanNormalAndStopsAtEachEndItsSizeIsStoredAndAResetDropsIt() {
@@ -91,7 +91,7 @@ final class OverlayLayoutTests: XCTestCase {
     func testTheStoredLayoutYieldsHiddenWidgetsOffsetsAndTheIndicatorOrder() {
         let stored: [String: Any] = ["OverlayRigOffset-instrumentPanel": "10.0,20.0", "OverlayRigHidden-orbit": true, "FlyViewIndicatorOrder": "gps,battery"]
         XCTAssertEqual(storedOffsets(stored), ["instrumentPanel": CGSize(width: 10, height: 20)])
-        XCTAssertEqual(hiddenKeys(stored), ["minimap", "orbit"])
+        XCTAssertEqual(hiddenKeys(stored), ["minimap", "attitude", "orbit"])
         XCTAssertEqual(storedIndicatorOrder(stored), ["gps", "battery"])
     }
 

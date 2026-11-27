@@ -45,13 +45,17 @@ let HEADING_TAPE_KEY = "headingTape"
 
 let MINIMAP_NAME = "Mini map"
 
+let ATTITUDE_KEY = "attitude"
+
+let ATTITUDE_NAME = "Attitude and compass"
+
 let BATTERY_BAR_KEY = "batteryBar"
 
 func batteryBarPillText(_ hidden: Bool) -> String { "Battery bar: \(hidden ? "Hidden" : "Shown")" }
 
 func badgeLabel(_ hidden: Bool, _ name: String?) -> String { [hidden ? "Show" : "Hide", name?.lowercased()].compactMap { $0 }.joined(separator: " ") }
 
-private let HIDDEN_BY_DEFAULT = [MINIMAP_KEY]
+private let HIDDEN_BY_DEFAULT = [MINIMAP_KEY, ATTITUDE_KEY]
 
 private let INDICATOR_ORDER = "FlyViewIndicatorOrder"
 

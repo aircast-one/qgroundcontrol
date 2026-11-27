@@ -267,6 +267,7 @@ struct TelemetryRow: View {
         if flyScreen.choosingReadings {
             InstrumentSheet(
                 chosen: picked,
+                lead: true,
                 onToggle: { name in
                     let next = withInstrument(chosen ?? [], name)
                     chosen = next
@@ -1196,10 +1197,12 @@ private struct InstrumentSheet: View {
     @HasVehicle private var connected
     let chosen: [String]
     var title: String = "Instrument tiles"
+    var lead: Bool = false
     let onToggle: (String) -> Void
     let onDismiss: () -> Void
     @State private var groups: [InstrumentGroup] = []
     @State private var shownAtOpen: [String]?
+    @FlyIsPortrait private var portrait
 
     var body: some View {
         let listed = groups
@@ -1211,11 +1214,13 @@ private struct InstrumentSheet: View {
                 .foregroundStyle(theme.colors.onSurfaceVariant)
                 .padding(.horizontal, Space.s4)
                 .padding(.bottom, Space.s2)
+            if lead && !portrait && listed.isEmpty { AttitudeChoice() }
             if listed.isEmpty {
                 FootNote(text: emptyCatalogueText(connected))
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
+                        if lead && !portrait { AttitudeChoice() }
                         ForEach(shownFirst(listed, shown), id: \.group) { group in
                             SectionHeader(text: sentenceCase(group.title))
                             ForEach(group.facts, id: \.path) { fact in
