@@ -82,3 +82,44 @@ final class GimbalTakeControlTests: XCTestCase {
         XCTAssertEqual(aimFraction(-50, 400), -0.25)
     }
 }
+
+final class GimbalStickHoldTests: XCTestCase {
+    @MainActor
+    func testAHoldSendsItsDeflectionStopsOnceWhenItEndsAndATapThatNeverMovedSendsNothing() {
+        final class Sent { var sticks: [[CGFloat]] = [] }
+        let sent = Sent()
+        let hold = StickHold { x, y in sent.sticks.append([x, y]) }
+        hold.steer(0, 0)
+        hold.stop()
+        XCTAssertEqual(sent.sticks, [], "a tap must not take the gimbal or the camera channels")
+        hold.steer(0.5, 0)
+        hold.steer(0.5, 0)
+        hold.steer(0, 0)
+        hold.steer(0, 0)
+        hold.steer(0, -1)
+        hold.stop()
+        hold.stop()
+        XCTAssertEqual(
+            sent.sticks, [[0.5, 0], [0.5, 0], [0, 0], [0, -1], [0, 0]],
+            "a held deflection is resent so the core knows the head is there; back at the start it stops once; letting go stops once")
+    }
+
+    func testStickCallsReachTheCoreInTheOrderTheyWereMadeSoTheStopIsNeverOvertakenByTheLastTick() {
+        final class Landed: @unchecked Sendable {
+            let lock = NSLock()
+            var order: [Int] = []
+            func add(_ n: Int) { lock.withLock { order.append(n) } }
+        }
+        let landed = Landed()
+        let done = expectation(description: "every call landed")
+        done.expectedFulfillmentCount = 500
+        (0..<500).forEach { n in
+            offMainInOrder {
+                landed.add(n)
+                done.fulfill()
+            }
+        }
+        wait(for: [done], timeout: 10)
+        XCTAssertEqual(landed.lock.withLock { landed.order }, Array(0..<500))
+    }
+}

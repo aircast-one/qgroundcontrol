@@ -5,6 +5,7 @@ import one.aircast.android.bridge.SetupCommands
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +35,8 @@ import one.aircast.map.AircastSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import java.util.concurrent.atomic.AtomicBoolean
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -45,7 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
@@ -291,6 +294,21 @@ internal fun GimbalSettings() {
 
 internal const val GIMBAL_DRAG_REPEAT_MS = 100L
 
+internal class StickHold(private val send: (Float, Float) -> Unit) {
+    private val pushed = AtomicBoolean(false)
+
+    fun steer(x: Float, y: Float) {
+        val moving = x != 0f || y != 0f
+        if (pushed.getAndSet(moving) || moving) send(x, y)
+    }
+
+    fun stop() {
+        if (pushed.getAndSet(false)) send(0f, 0f)
+    }
+}
+
+internal fun sendGimbalStick(x: Float, y: Float) = offMainInOrder { gimbalRefusal(Qgc.call("gimbal.stick", x.toDouble(), y.toDouble())) }
+
 internal fun screenFraction(x: Float, y: Float, width: Int, height: Int): Pair<Float, Float> =
     ((x / width) * 2f - 1f) to -((y / height) * 2f - 1f)
 
@@ -375,10 +393,8 @@ internal fun GimbalScreenControl(modifier: Modifier = Modifier) {
         scope.launch(Dispatchers.Default) { gimbalRefusal(Qgc.call("gimbal.onScreen", pan.toDouble(), tilt.toDouble())) }
         Unit
     }
-    val steer = { x: Float, y: Float ->
-        scope.launch(Dispatchers.Default) { gimbalRefusal(Qgc.call("gimbal.stick", x.toDouble(), y.toDouble())) }
-        Unit
-    }
+    val hold = remember { StickHold(::sendGimbalStick) }
+    DisposableEffect(hold) { onDispose { hold.stop() } }
     if (!control.enabled) {
         Box(
             modifier.pointerInput(Unit) {
@@ -405,22 +421,19 @@ internal fun GimbalScreenControl(modifier: Modifier = Modifier) {
                 true -> awaitEachGesture {
                     val down = awaitFirstDown()
                     val start = screenFraction(down.position.x, down.position.y, size.width, size.height)
-                    var latest = down.position
+                    val latest = MutableStateFlow(down.position)
                     val repeating = scope.launch {
-                        while (isActive) {
+                        generateSequence(Unit) { Unit }.forEach { _ ->
                             delay(GIMBAL_DRAG_REPEAT_MS)
-                            val now = screenFraction(latest.x, latest.y, size.width, size.height)
-                            steer((now.first - start.first).coerceIn(-1f, 1f), (now.second - start.second).coerceIn(-1f, 1f))
+                            val now = screenFraction(latest.value.x, latest.value.y, size.width, size.height)
+                            hold.steer((now.first - start.first).coerceIn(-1f, 1f), (now.second - start.second).coerceIn(-1f, 1f))
                         }
                     }
                     try {
-                        do {
-                            val event = awaitPointerEvent()
-                            event.changes.firstOrNull()?.let { latest = it.position }
-                        } while (event.changes.any { it.pressed })
+                        drag(down.id) { change -> latest.value = change.position }
                     } finally {
                         repeating.cancel()
-                        steer(0f, 0f)
+                        hold.stop()
                     }
                 }
             }

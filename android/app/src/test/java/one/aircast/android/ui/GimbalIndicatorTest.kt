@@ -44,4 +44,39 @@ class GimbalIndicatorTest {
         assertEquals(OnScreenGimbal(true, true), onScreenGimbal(JSONObject("""{"shown":true,"onScreen":{"enabled":true,"clickAndDrag":true}}""")))
         assertEquals("with on-screen control off the video still aims by drag, as CameraAimArea", OnScreenGimbal(false, true), onScreenGimbal(JSONObject("""{"shown":true,"onScreen":{"enabled":false,"clickAndDrag":true}}""")))
     }
+
+    @Test
+    fun `a hold sends its deflection, stops once when it ends, and a tap that never moved sends nothing`() {
+        val sent = java.util.concurrent.CopyOnWriteArrayList<Pair<Float, Float>>()
+        val hold = StickHold { x, y -> sent.add(x to y) }
+        hold.steer(0f, 0f)
+        hold.stop()
+        assertEquals("a tap must not take the gimbal or the camera channels", emptyList<Pair<Float, Float>>(), sent.toList())
+        hold.steer(0.5f, 0f)
+        hold.steer(0.5f, 0f)
+        hold.steer(0f, 0f)
+        hold.steer(0f, 0f)
+        hold.steer(0f, -1f)
+        hold.stop()
+        hold.stop()
+        assertEquals(
+            "a held deflection is resent so the core knows the head is there; back at the start it stops once; letting go stops once",
+            listOf(0.5f to 0f, 0.5f to 0f, 0f to 0f, 0f to -1f, 0f to 0f),
+            sent.toList(),
+        )
+    }
+
+    @Test
+    fun `stick calls reach the core in the order they were made, so the stop is never overtaken by the last tick`() {
+        val landed = java.util.concurrent.CopyOnWriteArrayList<Int>()
+        val done = java.util.concurrent.CountDownLatch(500)
+        (0 until 500).forEach { n ->
+            one.aircast.android.bridge.offMainInOrder {
+                landed.add(n)
+                done.countDown()
+            }
+        }
+        assertTrue(done.await(10, java.util.concurrent.TimeUnit.SECONDS))
+        assertEquals((0 until 500).toList(), landed.toList())
+    }
 }

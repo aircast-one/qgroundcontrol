@@ -422,7 +422,30 @@ private func sendOnScreen(_ pan: CGFloat, _ tilt: CGFloat) {
 private func sendStick(_ x: CGFloat, _ y: CGFloat) {
     let right = Double(min(max(x, -1), 1))
     let up = Double(min(max(y, -1), 1))
-    offMain { _ = gimbalRefusal(Qgc.call("gimbal.stick", right, up)) }
+    offMainInOrder { _ = gimbalRefusal(Qgc.call("gimbal.stick", right, up)) }
+}
+
+@MainActor
+final class StickHold {
+    private var pushed = false
+    private let send: (CGFloat, CGFloat) -> Void
+
+    init(_ send: @escaping (CGFloat, CGFloat) -> Void) {
+        self.send = send
+    }
+
+    func steer(_ x: CGFloat, _ y: CGFloat) {
+        let moving = x != 0 || y != 0
+        let went = pushed || moving
+        pushed = moving
+        if went { send(x, y) }
+    }
+
+    func stop() {
+        let went = pushed
+        pushed = false
+        if went { send(0, 0) }
+    }
 }
 
 struct GimbalScreenControl: View {
@@ -452,6 +475,7 @@ private struct GimbalAim: ViewModifier {
     @State private var start: (CGFloat, CGFloat)?
     @State private var latest: CGPoint = .zero
     @State private var repeating: Task<Void, Never>?
+    @State private var hold = StickHold(sendStick)
     @GestureState private var pressed = false
 
     func body(content: Content) -> some View {
@@ -462,7 +486,7 @@ private struct GimbalAim: ViewModifier {
 
     private func stop() {
         repeating?.cancel()
-        if start != nil { sendStick(0, 0) }
+        hold.stop()
         repeating = nil
         start = nil
         last = nil
@@ -500,7 +524,7 @@ private struct GimbalAim: ViewModifier {
                                 try? await Task.sleep(for: .milliseconds(GIMBAL_DRAG_REPEAT_MS))
                                 guard !Task.isCancelled, let from = start else { return }
                                 let now = screenFraction(latest.x, latest.y, size.width, size.height)
-                                sendStick(now.0 - from.0, now.1 - from.1)
+                                hold.steer(now.0 - from.0, now.1 - from.1)
                             }
                         }
                     }
