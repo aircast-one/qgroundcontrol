@@ -38,6 +38,20 @@ final class OverlayLayoutTests: XCTestCase {
         XCTAssertEqual(layout.hidden, [MINIMAP_KEY])
     }
 
+    func testAnItemStepsBiggerOrSmallerThanNormalAndStopsAtEachEndItsSizeIsStoredAndAResetDropsIt() {
+        let layout = OverlayLayoutState(overlayLayoutStore())
+        layout.reset()
+        XCTAssertEqual([0.7, 1, 1.5, 2].map(largerItemSize), [0.85, 1.25, 2, nil])
+        XCTAssertEqual([0.7, 0.85, 1, 2].map(smallerItemSize), [nil, 0.7, 0.85, 1.5], "below normal is where a crowded screen needs it")
+        layout.resize(HEADING_TAPE_KEY, 0.85)
+        XCTAssertEqual(layout.sizes, [HEADING_TAPE_KEY: 0.85])
+        XCTAssertEqual(OverlayLayoutState(overlayLayoutStore()).sizes, [HEADING_TAPE_KEY: 0.85])
+        XCTAssertEqual(storedSizes(["OverlayRigSize-headingTape": "0.7", "OverlayRigSize-orbit": "9", "OverlayRigOffset-orbit": "1,1"]), ["headingTape": 0.7])
+        layout.reset()
+        XCTAssertEqual(layout.sizes, [:])
+        XCTAssertEqual(OverlayLayoutState(overlayLayoutStore()).sizes, [:])
+    }
+
     func testAHeldControlKeepsHoldToEditAwayUntilEveryHoldEnds() {
         let layout = OverlayLayoutState(overlayLayoutStore())
         layout.holdGesture(true)

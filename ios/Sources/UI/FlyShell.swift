@@ -490,7 +490,7 @@ struct FlyScreen: View {
                             HStack(spacing: Space.s2) { status() }
                                 .frame(maxWidth: .infinity, minHeight: STATUS_ROW_HEIGHT)
                                 .environment(\.LocalCompactStatus, true)
-                            LayoutWidget(key: HEADING_TAPE_KEY) { HeadingTape() }
+                            LayoutWidget(key: HEADING_TAPE_KEY, resizable: true) { HeadingTape() }
                                 .frame(maxWidth: .infinity)
                             LayoutWidget(key: BATTERY_BAR_KEY, movable: false, badged: false) { BatteryReturnBar() }
                             TrafficBanner()

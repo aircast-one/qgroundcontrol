@@ -3,6 +3,7 @@ import SwiftUI
 private let LAYOUT_STORE = "fly-overlay-layout"
 private let HIDDEN_PREFIX = "OverlayRigHidden-"
 private let OFFSET_PREFIX = "OverlayRigOffset-"
+private let SIZE_PREFIX = "OverlayRigSize-"
 private let LANDSCAPE_SUFFIX = "@landscape"
 private let HIDDEN_ALPHA = 0.35
 private let JIGGLE_DEGREES = 1.2
@@ -63,6 +64,7 @@ final class OverlayLayoutState {
     private(set) var indicatorOrder: [String]
     var valueSize = ValueSize.Default
     private(set) var offsets: [String: CGSize]
+    private(set) var sizes: [String: Double]
 
     init(_ prefs: UserDefaults) {
         self.prefs = prefs
@@ -70,6 +72,12 @@ final class OverlayLayoutState {
         hidden = hiddenKeys(stored)
         indicatorOrder = storedIndicatorOrder(stored)
         offsets = storedOffsets(stored)
+        sizes = storedSizes(stored)
+    }
+
+    func resize(_ key: String, _ size: Double) {
+        prefs.set(String(size), forKey: SIZE_PREFIX + key)
+        sizes[key] = size
     }
 
     func startEditing() {
@@ -107,6 +115,7 @@ final class OverlayLayoutState {
         hidden = hiddenKeys([:])
         indicatorOrder = []
         offsets = [:]
+        sizes = [:]
     }
 }
 
@@ -173,6 +182,35 @@ func storedOffsets(_ stored: [String: Any]) -> [String: CGSize] {
             parts.count == 2 ? (key.removingPrefix(OFFSET_PREFIX), CGSize(width: parts[0], height: parts[1])) : nil
         }
     })
+}
+
+let ITEM_SIZES = [0.7, 0.85, 1, 1.25, 1.5, 2]
+
+func largerItemSize(_ size: Double) -> Double? { ITEM_SIZES.first { $0 > size } }
+
+func smallerItemSize(_ size: Double) -> Double? { ITEM_SIZES.last { $0 < size } }
+
+func storedSizes(_ stored: [String: Any]) -> [String: Double] {
+    Dictionary(uniqueKeysWithValues: stored.filter { $0.key.hasPrefix(SIZE_PREFIX) }.compactMap { key, value in
+        (value as? String).flatMap(Double.init).flatMap { size in ITEM_SIZES.contains(size) ? (key.removingPrefix(SIZE_PREFIX), size) : nil }
+    })
+}
+
+private struct ScaledLayout: Layout {
+    let scale: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let size = subviews.first?.sizeThatFits(ProposedViewSize(width: proposal.width.map { $0 / scale }, height: proposal.height.map { $0 / scale })) ?? .zero
+        return CGSize(width: size.width * scale, height: size.height * scale)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(
+            at: CGPoint(x: bounds.midX, y: bounds.midY),
+            anchor: .center,
+            proposal: ProposedViewSize(width: bounds.width / scale, height: bounds.height / scale)
+        )
+    }
 }
 
 func clampedDrag(_ left: CGFloat, _ top: CGFloat, _ right: CGFloat, _ bottom: CGFloat, _ width: CGFloat, _ height: CGFloat, _ dx: CGFloat, _ dy: CGFloat) -> CGSize {
@@ -366,6 +404,7 @@ struct LayoutWidget<Content: View>: View {
     var badgeSpot: BadgeSpot = .inside
     var dragsWith: String? = nil
     var name: String? = nil
+    var resizable: Bool = false
     @ViewBuilder let content: () -> Content
     @Environment(FlyScreenState.self) private var flyScreen
     @Environment(\.LocalAvoidedByVideoMessage) private var avoided
@@ -381,7 +420,8 @@ struct LayoutWidget<Content: View>: View {
         if !hidden || editing {
             let placedKey = orientedKey(key, !portrait)
             let decorated = editing && shown
-            content()
+            let scale = layout.sizes[key] ?? 1
+            sized(scale)
                 .onGeometryChange(for: Bool.self) { $0.size.width > 0 && $0.size.height > 0 } action: { shown = $0 }
                 .overlay {
                     if decorated {
@@ -398,11 +438,46 @@ struct LayoutWidget<Content: View>: View {
                         badge(layout, hidden).offset(badgeSpot.offset)
                     }
                 }
+                .overlay(alignment: .bottomTrailing) {
+                    if decorated && resizable && !hidden {
+                        HStack(spacing: Space.s1) {
+                            sizeBadge(layout, smallerItemSize(scale), "Make smaller", .closeFullscreen)
+                            sizeBadge(layout, largerItemSize(scale), "Make bigger", .fullscreen)
+                        }
+                        .offset(x: BADGE_SIZE / 2, y: BADGE_SIZE / 2)
+                    }
+                }
                 .modifier(Jiggle(key: key, active: decorated))
                 .holdToEditLayout()
                 .modifier(KeptOnScreen(key: placedKey, active: movable))
                 .offset(movable ? layout.offsets[placedKey] ?? .zero : .zero)
                 .modifier(AvoidedByVideoMessage(key: key, active: avoided))
+        }
+    }
+
+    @ViewBuilder
+    private func sized(_ scale: Double) -> some View {
+        if resizable {
+            ScaledLayout(scale: scale) { content().scaleEffect(scale) }
+        } else {
+            content()
+        }
+    }
+
+    @ViewBuilder
+    private func sizeBadge(_ layout: OverlayLayoutState, _ to: Double?, _ label: String, _ icon: Icon) -> some View {
+        if let to {
+            Button { layout.resize(key, to) } label: {
+                Image(icon)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(theme.colors.inverseOnSurface)
+                    .frame(width: BADGE_SIZE, height: BADGE_SIZE)
+                    .background(theme.colors.inverseSurface, in: Circle())
+                    .shadow(radius: 2)
+                    .contentShape(BadgeTouchTarget())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(label)
         }
     }
 
