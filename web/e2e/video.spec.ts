@@ -142,7 +142,7 @@ test('the switch on the video steps through every way a drag steers the gimbal',
   await expect(app.getByRole('button', { name: 'Drag the picture' })).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('holding a drag on the video keeps the gimbal turning, however late its angle reports', async ({ app }) => {
+test('holding a drag on the video turns the gimbal at a speed, however late its angle reports, and letting go stops it', async ({ app }) => {
   await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
   await connectMock(app, ['Enable gimbal']);
   const video = app.locator('video').first();
@@ -165,8 +165,15 @@ test('holding a drag on the video keeps the gimbal turning, however late its ang
   await app.mouse.down();
   await app.mouse.move(x + box.width / 8, y - box.height / 8, { steps: 10 });
   await expect.poll(async () => ((await aim())?.yaw ?? before.yaw) - before.yaw, { timeout: 6_000 }).toBeGreaterThan(5);
+  await expect.poll(async () => ((await aim())?.pitch ?? before.pitch) - before.pitch, { message: 'dragging up tilts the camera up', timeout: 6_000 }).toBeGreaterThan(1);
   await app.mouse.up();
-  expect(((await aim())?.pitch ?? before.pitch) - before.pitch, 'dragging up tilts the camera up').toBeGreaterThan(1);
+  const rates = () =>
+    app.evaluate(async (module) => {
+      const view = (await ((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.gimbal')) as { gimbals?: { commandedPitchRate: number | null; commandedYawRate: number | null }[] } | null;
+      const gimbal = view?.gimbals?.[0];
+      return [gimbal?.commandedPitchRate ?? null, gimbal?.commandedYawRate ?? null];
+    }, '/src/bridge/Qgc.ts');
+  await expect.poll(rates, { message: 'letting go stops the turn instead of leaving the gimbal on its last speed', timeout: 6_000 }).toEqual([0, 0]);
 });
 
 test('a tap on the live picture turns the gimbal along the ray through that point of the lens', async ({ app }) => {

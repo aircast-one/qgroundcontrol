@@ -413,10 +413,16 @@ private func sendDrag(_ pan: CGFloat, _ tilt: CGFloat, _ begin: Bool) {
     offMain { _ = gimbalRefusal(Qgc.call("gimbal.drag", panning, tilting, begin)) }
 }
 
-private func sendOnScreen(_ pan: CGFloat, _ tilt: CGFloat, _ point: Bool) {
+private func sendOnScreen(_ pan: CGFloat, _ tilt: CGFloat) {
     let panning = Double(pan)
     let tilting = Double(tilt)
-    offMain { _ = gimbalRefusal(Qgc.call("gimbal.onScreen", panning, tilting, point)) }
+    offMain { _ = gimbalRefusal(Qgc.call("gimbal.onScreen", panning, tilting)) }
+}
+
+private func sendStick(_ x: CGFloat, _ y: CGFloat) {
+    let right = Double(min(max(x, -1), 1))
+    let up = Double(min(max(y, -1), 1))
+    offMain { _ = gimbalRefusal(Qgc.call("gimbal.stick", right, up)) }
 }
 
 struct GimbalScreenControl: View {
@@ -456,6 +462,7 @@ private struct GimbalAim: ViewModifier {
 
     private func stop() {
         repeating?.cancel()
+        if start != nil { sendStick(0, 0) }
         repeating = nil
         start = nil
         last = nil
@@ -477,7 +484,7 @@ private struct GimbalAim: ViewModifier {
             content.gesture(
                 SpatialTapGesture().onEnded { tap in
                     let (pan, tilt) = screenFraction(tap.location.x, tap.location.y, size.width, size.height)
-                    sendOnScreen(pan, tilt, true)
+                    sendOnScreen(pan, tilt)
                 }
             )
         } else {
@@ -493,7 +500,7 @@ private struct GimbalAim: ViewModifier {
                                 try? await Task.sleep(for: .milliseconds(GIMBAL_DRAG_REPEAT_MS))
                                 guard !Task.isCancelled, let from = start else { return }
                                 let now = screenFraction(latest.x, latest.y, size.width, size.height)
-                                sendOnScreen(now.0 - from.0, now.1 - from.1, false)
+                                sendStick(now.0 - from.0, now.1 - from.1)
                             }
                         }
                     }

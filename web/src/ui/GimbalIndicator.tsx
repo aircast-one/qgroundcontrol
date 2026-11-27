@@ -39,6 +39,8 @@ export const reportGimbalRefusal = (answer: Json | null): void => {
   if (reason !== null && gimbalRefused.value === null) gimbalRefused.value = reason;
 };
 
+export const sendGimbalStick = (x: number, y: number) => void (async () => reportGimbalRefusal(await Qgc.call('gimbal.stick', x, y)))();
+
 export type GimbalChoice = { name: string; managerCompid: number; deviceId: number; active: boolean };
 
 export type GimbalIndicatorState = {
@@ -414,15 +416,20 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
   const wheel = useRef<Swipe | null>(null);
   const press = useRef<{ latest: Point; width: number; height: number; repeating: ReturnType<typeof setInterval> } | null>(null);
   useEffect(() => () => {
-    if (press.current !== null) clearInterval(press.current.repeating);
+    if (press.current === null) return;
+    clearInterval(press.current.repeating);
+    sendGimbalStick(0, 0);
   }, []);
   if (control === null || control.stick) return null;
 
-  const send = (pan: number, tilt: number, point: boolean) => void (async () => reportGimbalRefusal(await Qgc.call('gimbal.onScreen', pan, tilt, point)))();
+  const point = (pan: number, tilt: number) => void (async () => reportGimbalRefusal(await Qgc.call('gimbal.onScreen', pan, tilt)))();
   const sendDrag = (pan: number, tilt: number, begin: boolean) => void (async () => reportGimbalRefusal(await Qgc.call('gimbal.drag', pan, tilt, begin)))();
 
   const release = () => {
-    if (press.current !== null) clearInterval(press.current.repeating);
+    if (press.current !== null) {
+      clearInterval(press.current.repeating);
+      sendGimbalStick(0, 0);
+    }
     press.current = null;
     drag.current = null;
   };
@@ -469,7 +476,7 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
           if (!points || !tapped) return;
           const at = pointIn(event);
           const [pan, tilt] = screenFraction(at.x, at.y, at.width, at.height);
-          send(pan, tilt, true);
+          point(pan, tilt);
         }}
         onPointerCancel={release}
         onLostPointerCapture={release}
@@ -490,7 +497,7 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
           const held = press.current;
           if (held === null) return;
           const now = screenFraction(held.latest.x, held.latest.y, held.width, held.height);
-          send(coerceIn(now[0] - start[0], -1, 1), coerceIn(now[1] - start[1], -1, 1), false);
+          sendGimbalStick(coerceIn(now[0] - start[0], -1, 1), coerceIn(now[1] - start[1], -1, 1));
         }, GIMBAL_DRAG_REPEAT_MS);
         press.current = { latest: { x: at.x, y: at.y }, width: at.width, height: at.height, repeating };
       }}

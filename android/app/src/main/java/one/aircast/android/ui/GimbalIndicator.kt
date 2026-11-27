@@ -371,8 +371,12 @@ internal fun GimbalScreenControl(modifier: Modifier = Modifier) {
     val approximate = remember(lensJson) { lensReading(lensJson)?.approximate == true }
     val control = remember(view) { onScreenGimbal(view) } ?: return
     val scope = rememberCoroutineScope()
-    val send = { pan: Float, tilt: Float, point: Boolean ->
-        scope.launch(Dispatchers.Default) { gimbalRefusal(Qgc.call("gimbal.onScreen", pan.toDouble(), tilt.toDouble(), point)) }
+    val point = { pan: Float, tilt: Float ->
+        scope.launch(Dispatchers.Default) { gimbalRefusal(Qgc.call("gimbal.onScreen", pan.toDouble(), tilt.toDouble())) }
+        Unit
+    }
+    val steer = { x: Float, y: Float ->
+        scope.launch(Dispatchers.Default) { gimbalRefusal(Qgc.call("gimbal.stick", x.toDouble(), y.toDouble())) }
         Unit
     }
     if (!control.enabled) {
@@ -396,7 +400,7 @@ internal fun GimbalScreenControl(modifier: Modifier = Modifier) {
             when (control.clickAndDrag) {
                 false -> detectTapGestures { at ->
                     val (pan, tilt) = screenFraction(at.x, at.y, size.width, size.height)
-                    send(pan, tilt, true)
+                    point(pan, tilt)
                 }
                 true -> awaitEachGesture {
                     val down = awaitFirstDown()
@@ -406,14 +410,18 @@ internal fun GimbalScreenControl(modifier: Modifier = Modifier) {
                         while (isActive) {
                             delay(GIMBAL_DRAG_REPEAT_MS)
                             val now = screenFraction(latest.x, latest.y, size.width, size.height)
-                            send(now.first - start.first, now.second - start.second, false)
+                            steer((now.first - start.first).coerceIn(-1f, 1f), (now.second - start.second).coerceIn(-1f, 1f))
                         }
                     }
-                    do {
-                        val event = awaitPointerEvent()
-                        event.changes.firstOrNull()?.let { latest = it.position }
-                    } while (event.changes.any { it.pressed })
-                    repeating.cancel()
+                    try {
+                        do {
+                            val event = awaitPointerEvent()
+                            event.changes.firstOrNull()?.let { latest = it.position }
+                        } while (event.changes.any { it.pressed })
+                    } finally {
+                        repeating.cancel()
+                        steer(0f, 0f)
+                    }
                 }
             }
         },

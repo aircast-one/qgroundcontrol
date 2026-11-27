@@ -17,7 +17,7 @@ import { activeVehicleId } from '@/ui/ActiveVehicle';
 import { BesidePopup, VIDEO_RECORDING_STATE } from '@/ui/CameraControlLayer';
 import { LocalFlyScreenState, OpenOnRequest } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
-import { type GimbalChoice, GimbalModeSwitch, GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalSwitchShown, gimbalRefusal, onScreenGimbal, reportGimbalRefusal } from '@/ui/GimbalIndicator';
+import { type GimbalChoice, GimbalModeSwitch, GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalSwitchShown, gimbalRefusal, onScreenGimbal, reportGimbalRefusal, sendGimbalStick } from '@/ui/GimbalIndicator';
 import { PWM_CENTER, PWM_MAX, PWM_MIN, RC_SEND_INTERVAL_MS, rcSendDue } from '@/ui/RcControls';
 import { OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { LayoutWidget } from '@/ui/OverlayLayout';
@@ -144,7 +144,6 @@ const PwmSlider = ({ label, channel, pwm, onPwm }: { label: string; channel: num
 };
 
 const sendTilt = (pitch: number) => void (async () => reportGimbalRefusal(await Qgc.call('gimbal.pitch', pitch)))();
-const sendStick = (x: number, y: number) => void (async () => reportGimbalRefusal(await Qgc.call('gimbal.stick', x, y)))();
 
 const GIMBAL_REFUSAL_MS = 4000;
 export const GIMBAL_TILT_MIN = -90;
@@ -203,7 +202,7 @@ const GimbalStick = () => {
     lastSent.current = performance.now();
     const { x, y } = stickDeflection(latest.current);
     pushed.current = x !== 0 || y !== 0;
-    sendStick(x, y);
+    sendGimbalStick(x, y);
   };
   const send = (next: Offset, finished: boolean) => {
     latest.current = next;
@@ -217,7 +216,7 @@ const GimbalStick = () => {
   useEffect(
     () => () => {
       if (pending.current !== null) clearTimeout(pending.current);
-      if (pushed.current) sendStick(0, 0);
+      if (pushed.current) sendGimbalStick(0, 0);
     },
     [],
   );

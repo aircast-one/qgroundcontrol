@@ -378,22 +378,14 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
             let (Some(pan), Some(tilt)) = (number(0), number(1)) else {
                 return json!({ "ok": false, "refusal": "badPoint", "reason": "Pan and tilt are fractions of the screen from -1 to 1." });
             };
-            let point = given.get(2).and_then(Value::as_bool).unwrap_or(true);
             let (h_fov, v_fov, _) = crate::lens::field_of_view(backend);
-            let screen = json!({
-                "pan": pan,
-                "tilt": tilt,
-                "point": point,
-                "hFov": h_fov,
-                "vFov": v_fov,
-                "slide": number_setting(backend, "cameraSlideSpeed"),
-            });
+            let screen = json!({ "pan": pan, "tilt": tilt, "hFov": h_fov, "vFov": v_fov });
             crate::guided::dispatch(
                 backend,
                 Some(op("onScreen", screen)),
                 vehicle,
                 &qt_path("gimbalOnScreenControl"),
-                &json!([pan, tilt, point, !point, !point]).to_string(),
+                &json!([pan, tilt, true, false, false]).to_string(),
             )
         }
         GIMBAL_DRAG => {
