@@ -17,6 +17,7 @@ export const keepWhepPlaying = (video: HTMLVideoElement, endpoint: string, onPla
   };
   const report = (reading: WhepReport) => {
     onPlaying(reading.running && reading.frames > 0);
+    if (reading.restarted) session.connected = false;
     if (reading.running) {
       session.attempt = 0;
       session.connected = true;
@@ -29,7 +30,6 @@ export const keepWhepPlaying = (video: HTMLVideoElement, endpoint: string, onPla
     session.attempt += 1;
   };
   const start = () => {
-    session.connected = false;
     session.hangUp = playWhep(video, endpoint, report);
   };
   start();
@@ -41,20 +41,14 @@ export const keepWhepPlaying = (video: HTMLVideoElement, endpoint: string, onPla
 
 const useOnScreen = (target: { readonly current: Element | null }): boolean => {
   const [seen, setSeen] = useState(false);
-  const [shown, setShown] = useState(!document.hidden);
   useEffect(() => {
     const element = target.current;
     if (element === null) return;
     const observer = new IntersectionObserver((entries) => setSeen(entries.some((entry) => entry.isIntersecting)));
     observer.observe(element);
-    const visibility = () => setShown(!document.hidden);
-    document.addEventListener('visibilitychange', visibility);
-    return () => {
-      observer.disconnect();
-      document.removeEventListener('visibilitychange', visibility);
-    };
+    return () => observer.disconnect();
   }, []);
-  return seen && shown;
+  return seen;
 };
 
 export const WhepPreview = ({ endpoint, watch, name }: { endpoint: string; watch: string; name: string }) => {

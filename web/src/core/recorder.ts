@@ -1,5 +1,8 @@
 const MIME_TYPES: readonly string[] = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
 const CHUNK_MS = 1000;
+const recorded = new WeakSet<MediaProvider>();
+
+export const recording = (stream: MediaProvider | null): boolean => stream !== null && recorded.has(stream);
 
 export const recordedName = (file: string, mime: string): string => {
   const leaf = file.slice(file.lastIndexOf('/') + 1);
@@ -16,7 +19,9 @@ export const recordStream = (stream: MediaStream, file: string, save: (recording
   };
   recorder.onstop = () => save(new File([...held.chunks], recordedName(file, recorder.mimeType), { type: recorder.mimeType }));
   recorder.start(CHUNK_MS);
+  recorded.add(stream);
   return () => {
+    recorded.delete(stream);
     if (recorder.state !== 'inactive') recorder.stop();
   };
 };

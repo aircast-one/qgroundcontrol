@@ -1,3 +1,5 @@
+import { recording } from './recorder';
+
 export type WhepCounters = { bytes: number; lost: number; received: number; dropped: number; at: number };
 export type WhepStats = { fps: number; kbps: number; jitterMs: number; lossPercent: number | null; lostPerSecond: number; skippedPerSecond: number; counters: WhepCounters };
 export type WhepReport = { running: boolean; frames: number; width: number; height: number; error: string; restarted: boolean; stats: WhepStats | null };
@@ -6,6 +8,7 @@ type InboundVideo = { timestamp: number; framesPerSecond?: number; bytesReceived
 const ICE_GATHER_MS = 2000;
 const REPORT_MS = 500;
 const STATS_WINDOW_REPORTS = 5;
+export const HIDDEN_GRACE_MS = 10_000;
 
 const iceGathered = (peer: RTCPeerConnection): Promise<void> =>
   new Promise((resolve) => {
@@ -50,7 +53,7 @@ export const whepStats = (inbound: InboundVideo, oldest: WhepCounters | null): W
 const inboundVideo = (report: RTCStatsReport): InboundVideo | null =>
   ([...report.values()] as (InboundVideo & { type: string; kind?: string })[]).find((stat) => stat.type === 'inbound-rtp' && stat.kind === 'video') ?? null;
 
-export const playWhep = (video: HTMLVideoElement, endpoint: string, report: (reading: WhepReport) => void): (() => void) => {
+const connectWhep = (video: HTMLVideoElement, endpoint: string, report: (reading: WhepReport) => void): (() => void) => {
   const peer = new RTCPeerConnection();
   const session = { resource: null as string | null, error: '', first: true, stats: null as WhepStats | null, history: [] as readonly WhepCounters[] };
   peer.addTransceiver('video', { direction: 'recvonly' });
@@ -82,3 +85,33 @@ export const playWhep = (video: HTMLVideoElement, endpoint: string, report: (rea
     if (session.resource !== null) void fetch(session.resource, { method: 'DELETE' }).catch(() => undefined);
   };
 };
+
+const shown = (): boolean => document.visibilityState !== 'hidden';
+
+export const whileShown = (start: () => () => void, keep: () => boolean): (() => void) => {
+  const session = { stop: shown() ? start() : null, timer: undefined as ReturnType<typeof setTimeout> | undefined };
+  const pause = () => {
+    if (keep()) {
+      session.timer = setTimeout(pause, HIDDEN_GRACE_MS);
+      return;
+    }
+    session.stop?.();
+    session.stop = null;
+  };
+  const changed = () => {
+    clearTimeout(session.timer);
+    session.timer = shown() ? undefined : setTimeout(pause, HIDDEN_GRACE_MS);
+    session.stop = shown() ? (session.stop ?? start()) : session.stop;
+  };
+  document.addEventListener('visibilitychange', changed);
+  return () => {
+    document.removeEventListener('visibilitychange', changed);
+    clearTimeout(session.timer);
+    session.stop?.();
+  };
+};
+
+const watched = (video: HTMLVideoElement): boolean => document.pictureInPictureElement === video || recording(video.srcObject);
+
+export const playWhep = (video: HTMLVideoElement, endpoint: string, report: (reading: WhepReport) => void): (() => void) =>
+  whileShown(() => connectWhep(video, endpoint, report), () => watched(video));
