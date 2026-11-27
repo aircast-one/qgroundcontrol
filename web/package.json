@@ -19,6 +19,7 @@
     "@tauri-apps/api": "2.11.1",
     "@tauri-apps/plugin-process": "2.3.1",
     "@tauri-apps/plugin-updater": "2.11.0",
+    "hls.js": "1.7.4",
     "idb-keyval": "6.3.0",
     "maplibre-gl": "6.14.0",
     "material-symbols": "0.48.0",

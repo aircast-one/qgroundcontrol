@@ -4,7 +4,11 @@ metrics: false
 pprof: false
 playback: false
 rtmp: false
-hls: false
+hlsAddress: :18887
+hlsAllowOrigins: ['*']
+hlsAlwaysRemux: yes
+hlsVariant: mpegts
+hlsSegmentDuration: 1s
 srt: false
 moq: false
 rtspAddress: :18554

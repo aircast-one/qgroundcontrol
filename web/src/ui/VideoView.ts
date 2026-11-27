@@ -66,6 +66,15 @@ export const whepEndpoint = (view: Json | null, channel: number): string | null 
   return typeof endpoint === 'string' && endpoint !== '' ? endpoint : null;
 };
 
+export const hlsEndpoint = (view: Json | null, channel: number): string | null => {
+  const endpoint = optJSONArray(view, 'hlsEndpoints')?.[channel];
+  return typeof endpoint === 'string' && endpoint !== '' ? endpoint : null;
+};
+
+export const BUFFERED_VIDEO_NOTE = "Low-latency video can't get through this link, so this is buffered video, a few seconds behind.";
+
+export const TRY_LOW_LATENCY = 'Try low latency';
+
 export const streamUri = (view: Json | null, channel: number): string | null => {
   const uri = optJSONArray(view, 'streamUris')?.[channel];
   return typeof uri === 'string' && uri !== '' ? uri : null;

@@ -32,6 +32,7 @@ struct Channel {
     flowing: bool,
     problem: Option<(String, String)>,
     restarts: u64,
+    buffered: Option<String>,
 }
 
 struct Preview {
@@ -411,6 +412,24 @@ pub fn whep_endpoint(uri: &str) -> Option<String> {
     })
 }
 
+const BUFFERED_AFTER_FAILURES: u32 = 2;
+
+pub fn falls_back_to_buffered(browser: bool, failures: u32, buffered: bool, uri: &str) -> bool {
+    browser && failures >= BUFFERED_AFTER_FAILURES && !buffered && hls_twin(uri).is_some()
+}
+
+pub fn hls_twin(uri: &str) -> Option<String> {
+    let stream = whep_endpoint(uri)?.strip_suffix("/whep")?.to_string();
+    let proxied = stream.replacen("/fly/whep/", "/fly/hls/", 1);
+    let twin = match proxied != stream {
+        true => proxied,
+        false => stream
+            .contains(":8889/")
+            .then(|| stream.replacen(":8889/", ":8888/", 1))?,
+    };
+    Some(format!("{twin}/index.m3u8"))
+}
+
 pub const BROWSER_PLAYS_WHEP_ONLY: &str = "This browser can only play WebRTC (WHEP) streams. Pick a WHEP source, or use the Aircast app for this camera.";
 
 fn playable(uri: &str, low_latency: bool) -> bool {
@@ -732,6 +751,8 @@ fn object(host: &Host) -> Value {
         "nativePipeline": pipeline_for(host, MAIN_CHANNEL),
         "pipPipeline": pipeline_for(host, PIP_CHANNEL),
         "whepEndpoints": (0..VIDEO_CHANNELS).map(|channel| whep_for(host, channel)).collect::<Vec<_>>(),
+        "hlsEndpoints": (0..VIDEO_CHANNELS).map(|channel| hls_for(host, channel)).collect::<Vec<_>>(),
+        "bufferedVideo": hls_for(host, MAIN_CHANNEL).is_some(),
         "streamUris": (0..VIDEO_CHANNELS).map(|channel| stream_for(host, channel)).collect::<Vec<_>>(),
         "whepRestarts": host.channels.iter().map(|channel| channel.restarts).collect::<Vec<_>>(),
         "deviceCamera": crate::videostate::device_camera(&uri),
@@ -829,12 +850,29 @@ fn stream_for(host: &Host, channel: usize) -> Option<String> {
         .then(|| host.state.desired_uri(CHANNEL_RECEIVERS[channel]))
 }
 
+fn buffered_uri(host: &Host, channel: usize) -> Option<String> {
+    stream_for(host, channel).filter(|uri| host.channels[channel].buffered.as_ref() == Some(uri))
+}
+
 fn whep_for(host: &Host, channel: usize) -> Option<String> {
-    stream_for(host, channel).and_then(|uri| whep_endpoint(&uri))
+    match buffered_uri(host, channel) {
+        Some(_) => None,
+        None => stream_for(host, channel).and_then(|uri| whep_endpoint(&uri)),
+    }
+}
+
+fn hls_for(host: &Host, channel: usize) -> Option<String> {
+    buffered_uri(host, channel).and_then(|uri| hls_twin(&uri))
 }
 
 pub fn whep_endpoints() -> Value {
     get("video.whepEndpoints")
+        .and_then(|value| value.get("value").cloned())
+        .unwrap_or(Value::Null)
+}
+
+pub fn hls_endpoints() -> Value {
+    get("video.hlsEndpoints")
         .and_then(|value| value.get("value").cloned())
         .unwrap_or(Value::Null)
 }
@@ -1046,6 +1084,17 @@ fn report(
         .into_iter()
         .flatten()
         .collect();
+        if falls_back_to_buffered(
+            cfg!(target_family = "wasm"),
+            host.state.reconnect_attempts(receiver),
+            host.channels[channel].buffered.is_some(),
+            &uri,
+        ) {
+            log::warn!(
+                "Video channel {channel}: WebRTC never held, playing the buffered HLS twin of {uri}"
+            );
+            host.channels[channel].buffered = Some(uri);
+        }
         apply(host, outs, now_ms);
         return;
     }
@@ -1220,6 +1269,12 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             restart(host, crate::hub::now_ms());
             Some(json!({ "ok": true }))
         }
+        "video.tryLowLatency" => {
+            host.channels[MAIN_CHANNEL].buffered = None;
+            RESTART[MAIN_CHANNEL].store(true, std::sync::atomic::Ordering::Relaxed);
+            restart(host, crate::hub::now_ms());
+            Some(json!({ "ok": true }))
+        }
         "video.reportRecording" => {
             let active = given.get(0).and_then(Value::as_bool).unwrap_or(false);
             let outs = host
@@ -1306,6 +1361,43 @@ mod tests {
         assert_eq!(
             stream_switches(Some(1), None, &[Out::StopCameraStream]),
             vec![(1, false)]
+        );
+    }
+
+    #[test]
+    fn a_browser_whose_webrtc_never_holds_falls_back_to_the_same_streams_buffered_hls() {
+        assert_eq!(
+            hls_twin("http://100.88.231.116:8889/viewpro/whep").as_deref(),
+            Some("http://100.88.231.116:8888/viewpro/index.m3u8"),
+            "the device's media server serves every WHEP path as HLS on 8888"
+        );
+        assert_eq!(
+            hls_twin("https://owel-red-01.d.aircast.one/fly/whep/viewpro/whep").as_deref(),
+            Some("https://owel-red-01.d.aircast.one/fly/hls/viewpro/index.m3u8"),
+            "through the device's own /fly proxy the twin stays same-origin"
+        );
+        assert_eq!(
+            hls_twin("https://sfu.example.com/rtc/v1/whep/?app=live"),
+            None,
+            "a WHEP server we don't know has no twin to fall back to"
+        );
+        assert_eq!(hls_twin("rtsp://100.88.231.116:8554/viewpro"), None);
+        let uri = "http://100.88.231.116:8889/viewpro/whep";
+        assert!(
+            !falls_back_to_buffered(true, 1, false, uri),
+            "one lost attempt is still worth a WebRTC retry"
+        );
+        assert!(
+            falls_back_to_buffered(true, 2, false, uri),
+            "the second one in a row falls back"
+        );
+        assert!(
+            !falls_back_to_buffered(false, 5, false, uri),
+            "the native heads' WHEP has no HLS player to fall back to"
+        );
+        assert!(
+            !falls_back_to_buffered(true, 5, true, uri),
+            "already buffered"
         );
     }
 

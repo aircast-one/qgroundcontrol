@@ -18,6 +18,26 @@ test('a WHEP camera plays in the Fly view', async ({ app }) => {
   await expect(app.getByText(/^Detections:/)).toHaveCount(0);
 });
 
+test('a WHEP camera whose WebRTC never connects over the link falls back to the same stream as buffered HLS, and says so', async ({ app }) => {
+  test.setTimeout(180_000);
+  const relayed = 'http://localhost:18889/fly/whep/e2e/whep';
+  await app.route('http://localhost:18889/fly/whep/**', async (route) => {
+    if (route.request().method() !== 'POST') return route.fulfill({ status: 200 });
+    const offer = (route.request().postData() ?? '').split('\r\n').filter((line) => !line.startsWith('a=candidate')).join('\r\n');
+    const answer = await route.fetch({ url: WHEP_STREAM, postData: offer });
+    const unreachable = (await answer.text()).replace(/^(a=candidate:\S+ \d+ \S+ \d+ )\S+( \d+)/gm, '$1192.0.2.1$2');
+    return route.fulfill({ status: answer.status(), headers: { 'Content-Type': 'application/sdp' }, body: unreachable });
+  });
+  await app.route('http://localhost:18889/fly/hls/**', async (route) => route.fulfill({ response: await route.fetch({ url: route.request().url().replace('localhost:18889/fly/hls/', 'localhost:18887/') }) }));
+  await addVideoSource(app, /^WebRTC \(WHEP\)/, relayed);
+  const note = app.getByText(/^Low-latency video can't get through this link/);
+  await expect(note, 'two WebRTC attempts that never pair are enough to stop retrying them').toBeVisible({ timeout: 150_000 });
+  const video = app.locator('video').first();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.getVideoPlaybackQuality().totalVideoFrames), { message: 'the HLS twin of the same path plays', timeout: 30_000 }).toBeGreaterThan(0);
+  await app.getByRole('button', { name: 'Try low latency' }).click();
+  await expect(note).toHaveCount(0);
+});
+
 test('the camera chip on the picture opens Video sources in one tap', async ({ app }) => {
   await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
   await app.getByRole('button', { name: /^Cameras, showing/ }).click();

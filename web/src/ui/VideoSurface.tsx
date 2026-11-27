@@ -4,11 +4,12 @@ import { Qgc } from '@/bridge/Qgc';
 import { settingControl, useQgcBool, useQgcPath, useQgcValue } from '@/bridge/QgcState';
 import { type NativePlayer, VIDEO_LOG, playNative, playsNatively } from '@/core/nativeVideo';
 import { recordStream } from '@/core/recorder';
+import { playHls } from '@/core/hls';
 import { type WhepReport, playWhep } from '@/core/whep';
 import { useUpdatedRef } from '@/kotlin/Compose';
 import { createDocument } from '@/kotlin/Platform';
 import { same } from '@/kotlin/Std';
-import { Surface, Text } from '@/m3';
+import { Surface, Text, TextButton } from '@/m3';
 import { ObstacleVideoOverlay } from '@/map/ObstacleOverlay';
 import { Drawable } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
@@ -35,7 +36,7 @@ import { TrackingBoxOverlay } from '@/ui/TrackingBoxOverlay';
 import { VideoArOverlay } from '@/ui/VideoAr';
 import { usePointerGestures } from '@/ui/VideoGestures';
 import { VideoStatsPill } from '@/ui/VideoStatsPill';
-import { VIDEO_VIEW, type SourceSize, type VideoReading, nativeRecordingFile, streamUri, videoReading, whepEndpoint, whepRestarts } from '@/ui/VideoView';
+import { BUFFERED_VIDEO_NOTE, TRY_LOW_LATENCY, VIDEO_VIEW, type SourceSize, type VideoReading, hlsEndpoint, nativeRecordingFile, streamUri, videoReading, whepEndpoint, whepRestarts } from '@/ui/VideoView';
 
 export const CAMERA_STEP_ZOOM = 'vehicle.cameraManager.currentCameraInstance.stepZoom';
 
@@ -374,6 +375,7 @@ const MainPane = ({
             <DetectionOverlay className="absolute inset-0 size-full" />
             <TrackingBoxOverlay className="absolute inset-0 size-full" />
             {expanded ? <VideoStatsPill className="absolute inset-0 size-full" /> : null}
+            {expanded ? <BufferedVideoNote /> : null}
             {groundSpot !== null ? <PictureMark spot={groundSpot} /> : null}
           </>
         ) : null}
@@ -446,9 +448,24 @@ export class PipSurfaces {
 
 const pipSurfaces = new PipSurfaces((shown) => void VideoCommands.setPipShown(shown));
 
+const BufferedVideoNote = () => {
+  const buffered = hlsEndpoint(useQgcPath(VIDEO_VIEW), MAIN_VIDEO_CHANNEL) !== null;
+  return buffered ? (
+    <div role="status" className="pointer-events-none absolute inset-x-0 top-2 flex justify-center px-3">
+      <div className="pointer-events-auto flex items-center gap-2 rounded-shape-sm py-1 ps-3 pe-1" style={{ background: withAlpha(Color.Black, 0.6) }}>
+        <Text typography="labelMedium" color={Color.White}>
+          {BUFFERED_VIDEO_NOTE}
+        </Text>
+        <TextButton onClick={() => void VideoCommands.tryLowLatency()}>{TRY_LOW_LATENCY}</TextButton>
+      </div>
+    </div>
+  ) : null;
+};
+
 export const VideoChannelSurface = ({ channel, className }: { channel: number; className?: string }) => {
   const view = useQgcPath(VIDEO_VIEW);
   const endpoint = whepEndpoint(view, channel);
+  const buffered = hlsEndpoint(view, channel);
   const stream = __DESKTOP__ ? streamUri(view, channel) : null;
   const native = stream !== null && playsNatively(stream) ? stream : null;
   const restarts = whepRestarts(view, channel);
@@ -476,13 +493,13 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
     const nativePlayer = native !== null && painted !== null ? playNative(painted, native, report, (reason) => void VideoCommands.reportRecordingFailed(reason)) : null;
     player.current = nativePlayer;
     restartsSeen.current = restarts;
-    const stop = nativePlayer?.stop ?? (endpoint !== null && element !== null ? playWhep(element, endpoint, report) : null);
+    const stop = nativePlayer?.stop ?? (element === null ? null : buffered !== null ? playHls(element, buffered, report) : endpoint !== null ? playWhep(element, endpoint, report) : null);
     return () => {
       stop?.();
       player.current = null;
       mainVideoStats.remove(surface);
     };
-  }, [endpoint, native, channel, whepRestart]);
+  }, [endpoint, buffered, native, channel, whepRestart]);
   useEffect(() => {
     const nativePlayer = player.current;
     if (nativePlayer === null || restarts === restartsSeen.current) return undefined;
