@@ -191,7 +191,6 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                 lost -> lostMenu = true
                 choices.ambiguous || taken -> picking = true
                 disconnected -> offline = true
-                blocker != null -> why = true
                 else -> modeMenu = true
             }
         },
@@ -223,21 +222,6 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false),
         )
-        osdStatusNote(title)?.takeUnless { narrow }?.let { note ->
-            androidx.compose.material3.Surface(
-                onClick = { if (blocker != null) why = true else statusSettings = true },
-                shape = MaterialTheme.shapes.small,
-                color = Color.Black.copy(alpha = STATUS_BAR_SCRIM_ALPHA),
-                contentColor = when (tone) {
-                    ChipTone.Error -> MaterialTheme.colorScheme.error
-                    ChipTone.Neutral -> MaterialTheme.aircast.outdoorForeground
-                    ChipTone.Warning -> MaterialTheme.aircast.warning
-                    ChipTone.Success -> MaterialTheme.aircast.success
-                },
-            ) {
-                Text(note, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
-            }
-        }
         if (flyScreen.pendingMode != null) {
             androidx.compose.material3.CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
         } else if (choices.ambiguous || taken) {
@@ -254,6 +238,21 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                 contentDescription = if (lost) SIGNAL_LOST else "Change flight mode",
                 modifier = Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button) { if (lost) lostMenu = true else modeMenu = true },
             )
+        }
+        osdStatusNote(title)?.takeUnless { narrow }?.let { note ->
+            androidx.compose.material3.Surface(
+                onClick = { if (blocker != null) why = true else statusSettings = true },
+                shape = MaterialTheme.shapes.small,
+                color = Color.Black.copy(alpha = STATUS_BAR_SCRIM_ALPHA),
+                contentColor = when (tone) {
+                    ChipTone.Error -> MaterialTheme.colorScheme.error
+                    ChipTone.Neutral -> MaterialTheme.aircast.outdoorForeground
+                    ChipTone.Warning -> MaterialTheme.aircast.warning
+                    ChipTone.Success -> MaterialTheme.aircast.success
+                },
+            ) {
+                Text(note, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+            }
         }
         rememberVehicleLoading()?.takeUnless { lost }?.let { progress ->
             Column(Modifier.padding(start = 8.dp)) {

@@ -140,15 +140,6 @@ struct VehicleStateChip: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .layoutPriority(-1)
-            if statusBar, let note = osdStatusNote(title) {
-                Text(note)
-                    .font(.labelLarge)
-                    .lineLimit(1)
-                    .foregroundStyle(noteColour(tone))
-                    .padding(.horizontal, Space.s3)
-                    .padding(.vertical, 6)
-                    .background(Color.black.opacity(STATUS_BAR_SCRIM_ALPHA), in: RoundedRectangle(cornerRadius: Corner.small))
-            }
             if flyScreen.pendingMode != nil {
                 ProgressView().controlSize(.small).frame(width: 16, height: 16)
             } else if choices.ambiguous || taken {
@@ -160,6 +151,16 @@ struct VehicleStateChip: View {
                     .accessibilityLabel(lost ? SIGNAL_LOST : "Change flight mode")
                     .minimumTouchTarget()
                     .tapButton { if lost { lostMenu = true } else { modeMenu = true } }
+            }
+            if statusBar, let note = osdStatusNote(title) {
+                Text(note)
+                    .font(.labelLarge)
+                    .lineLimit(1)
+                    .foregroundStyle(noteColour(tone))
+                    .padding(.horizontal, Space.s3)
+                    .padding(.vertical, 6)
+                    .background(Color.black.opacity(STATUS_BAR_SCRIM_ALPHA), in: RoundedRectangle(cornerRadius: Corner.small))
+                    .tapButton { if blocker != nil { why = true } else { statusSettings = true } }
             }
             if let progress = loading, !lost {
                 VStack(alignment: .leading, spacing: 2) {
@@ -186,8 +187,6 @@ struct VehicleStateChip: View {
                 picking = true
             } else if disconnected {
                 offline = true
-            } else if blocker != nil {
-                why = true
             } else {
                 modeMenu = true
             }

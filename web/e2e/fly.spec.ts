@@ -37,6 +37,16 @@ test('the flight mode menu changes the mode', async ({ vehicle }) => {
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Position/);
 });
 
+test('the drop-down sits beside the mode name, ahead of the status note, and the mode name opens the same menu', async ({ vehicle }) => {
+  const note = vehicle.getByRole('button', { name: /^Not fully ready$|^Ready to fly$/ }).first();
+  await expect(note).toBeVisible({ timeout: 30_000 });
+  const picker = await vehicle.getByRole('button', { name: 'Change flight mode', exact: true }).boundingBox();
+  const status = await note.boundingBox();
+  expect(picker?.x ?? Infinity, 'the drop-down picks the flight mode, so it does not read as part of the note').toBeLessThan(status?.x ?? -Infinity);
+  await flightMode(vehicle).click();
+  await expect(vehicle.getByRole('menu').getByRole('menuitem', { name: 'Position' })).toBeVisible();
+});
+
 test('a red reading that makes the chip say not fully ready is the take-off warning too, and take-off still goes', async ({ vehicle }) => {
   await expect(vehicle.getByRole('button', { name: 'Not fully ready', exact: true })).toBeVisible();
   await vehicle.getByRole('button', { name: 'Take off' }).click();

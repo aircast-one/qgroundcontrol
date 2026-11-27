@@ -211,7 +211,6 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
     if (lost) setLostMenu(true);
     else if (choices.ambiguous || taken) setPicking(true);
     else if (disconnected) setOffline(true);
-    else if (blocker !== null) setWhy(true);
     else setModeMenu(true);
   };
 
@@ -261,6 +260,11 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
             </Text>
             {trailing}
           </div>
+          {modeButton ? (
+            <button type="button" className="flex min-h-8 min-w-8 items-center justify-center rounded-shape-sm" aria-label={modeButtonLabel} onClick={() => (lost ? setLostMenu(true) : setModeMenu(true))}>
+              <Drawable name="ic_arrow_drop_down" />
+            </button>
+          ) : null}
           {note !== null ? (
             <Surface
               onClick={() => (blocker !== null ? setWhy(true) : setStatusSettings(true))}
@@ -271,11 +275,6 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
             >
               <Text typography="labelLarge" maxLines={1} ellipsis className="block">{note}</Text>
             </Surface>
-          ) : null}
-          {modeButton ? (
-            <button type="button" className="flex min-h-8 min-w-8 items-center justify-center rounded-shape-sm" aria-label={modeButtonLabel} onClick={() => (lost ? setLostMenu(true) : setModeMenu(true))}>
-              <Drawable name="ic_arrow_drop_down" />
-            </button>
           ) : null}
           {loading !== null && !lost ? (
             <div className="flex flex-col pl-2">
