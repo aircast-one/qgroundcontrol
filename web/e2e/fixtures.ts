@@ -118,9 +118,9 @@ export const slideAcross = async (page: Page, target: Locator): Promise<void> =>
   if (box === null) throw new Error('slide target is not on screen');
   const y = box.y + box.height / 2;
   await page.mouse.move(box.x + 10, y);
+  const pressed = await target.getAttribute('aria-label', { timeout: 1_000 }).catch(() => null);
   await page.mouse.down();
   const caught = await target.evaluate((slide, pointer) => slide.hasPointerCapture(pointer), MOUSE_POINTER, { timeout: 1_000 }).catch(() => true);
-  const pressed = await target.getAttribute('aria-label', { timeout: 1_000 }).catch(() => null);
   await page.mouse.move(box.x + box.width - 4, y, { steps: 20 });
   await page.mouse.up();
   const released = await target.getAttribute('aria-label', { timeout: 1_000 }).catch(() => null);
