@@ -2678,6 +2678,98 @@ pub fn after_scan_removed(before: &Document, after: Document) -> Document {
     }
 }
 
+fn camera_kind(command: i64) -> Option<StepKind> {
+    match command {
+        CMD_SET_CAMERA_MODE => Some(StepKind::Mode),
+        CMD_DO_MOUNT_CONTROL => Some(StepKind::Gimbal),
+        _ if CAMERA_COMMANDS.contains(&command) => Some(StepKind::Camera),
+        _ => None,
+    }
+}
+
+fn only(state: &CameraState, kinds: &[StepKind]) -> CameraState {
+    let kept = |kind: StepKind| kinds.contains(&kind);
+    CameraState {
+        mode: state.mode.filter(|_| kept(StepKind::Mode)),
+        gimbal: state.gimbal.filter(|_| kept(StepKind::Gimbal)),
+        action: match kept(StepKind::Camera) {
+            true => state.action,
+            false => 0,
+        },
+        ..state.clone()
+    }
+}
+
+pub fn run_commands(doc: &Document, at: usize) -> Vec<Simple> {
+    match doc.items.get(at) {
+        Some(Item::Simple(owner)) if owner.command == CMD_NAV_WAYPOINT => owner
+            .sections
+            .iter()
+            .cloned()
+            .chain(simples(&doc.items[at + 1..at + 1 + riders_after(doc, at)]))
+            .collect(),
+        Some(Item::Simple(other)) => other.sections.clone(),
+        _ => Vec::new(),
+    }
+}
+
+const CAMERA_KINDS: [StepKind; 3] = [StepKind::Mode, StepKind::Gimbal, StepKind::Camera];
+
+fn set_run_camera(doc: &Document, at: usize, property: &str, value: &Value) -> Option<Document> {
+    let Item::Simple(owner) = doc.items.get(at)? else {
+        return None;
+    };
+    let riders = at + 1..at + 1 + riders_after(doc, at);
+    let ridden = |kind: StepKind| -> Vec<usize> {
+        riders
+            .clone()
+            .filter(|i| matches!(&doc.items[*i], Item::Simple(s) if camera_kind(s.command) == Some(kind)))
+            .collect()
+    };
+    let state = edited_camera(&camera_state(&run_commands(doc, at)), property, value)?;
+    let in_sections: Vec<StepKind> = CAMERA_KINDS
+        .into_iter()
+        .filter(|kind| ridden(*kind).is_empty())
+        .collect();
+    let sections = camera_items(&only(&state, &in_sections))
+        .into_iter()
+        .chain(
+            owner
+                .sections
+                .iter()
+                .filter(|s| !CAMERA_COMMANDS.contains(&s.command))
+                .cloned(),
+        )
+        .collect();
+    let folded = replaced(
+        doc,
+        at,
+        Simple {
+            sections,
+            ..owner.clone()
+        },
+    );
+    CAMERA_KINDS
+        .into_iter()
+        .rev()
+        .filter(|kind| !ridden(*kind).is_empty())
+        .try_fold(folded, |edited, kind| {
+            let places = ridden(kind);
+            let cleared = places
+                .iter()
+                .rev()
+                .try_fold(edited, |left, place| remove(&left, place + 1).ok())?;
+            Some(
+                camera_items(&only(&state, &[kind]))
+                    .into_iter()
+                    .rev()
+                    .fold(cleared, |placed, item| {
+                        inserted_at(&placed, places[0], Item::Simple(item))
+                    }),
+            )
+        })
+}
+
 pub fn set_camera(
     doc: &Document,
     visual_index: usize,
@@ -2692,21 +2784,214 @@ pub fn set_camera(
         _ => {
             let (at, current) = simple_at(doc, visual_index)?;
             (current.command == CMD_NAV_WAYPOINT)
-                .then(|| {
-                    with_camera(&current.sections, property, value).map(|sections| {
-                        replaced(
-                            doc,
-                            at,
-                            Simple {
-                                sections,
-                                ..current.clone()
-                            },
-                        )
-                    })
-                })
+                .then(|| set_run_camera(doc, at, property, value))
                 .flatten()
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StepKind {
+    Hover,
+    Wait,
+    Gimbal,
+    Camera,
+    Mode,
+    Drop,
+    Command,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Step {
+    pub kind: StepKind,
+    pub commands: Vec<Simple>,
+    pub item: Option<usize>,
+    pub seconds: Option<f64>,
+}
+
+pub fn steps(
+    doc: &Document,
+    waypoint_visual: usize,
+    servos: &[crate::payloadcheck::Servo],
+) -> Option<Vec<Step>> {
+    let (at, owner) = simple_at(doc, waypoint_visual)?;
+    (owner.command == CMD_NAV_WAYPOINT).then_some(())?;
+    let hover = owner.params[0]
+        .filter(|seconds| *seconds > 0.0)
+        .map(|seconds| Step {
+            kind: StepKind::Hover,
+            commands: Vec::new(),
+            item: None,
+            seconds: Some(seconds),
+        });
+    let folded = owner
+        .sections
+        .iter()
+        .filter(|section| section.command != CMD_DO_CHANGE_SPEED)
+        .map(|section| (section.clone(), None));
+    let riding = (at + 1..at + 1 + riders_after(doc, at)).filter_map(|i| match &doc.items[i] {
+        Item::Simple(rider) => Some((rider.clone(), Some(i + 1))),
+        Item::Complex { .. } => None,
+    });
+    let run = folded
+        .chain(riding)
+        .fold(Vec::<Step>::new(), |listed, (command, item)| {
+            let closes_photos = command.command == CMD_IMAGE_STOP_CAPTURE
+                && listed.last().is_some_and(|last| {
+                    last.kind == StepKind::Camera
+                        && last.commands.last().map(|c| c.command)
+                            == Some(CMD_DO_SET_CAM_TRIGG_DIST)
+                });
+            let kind = camera_kind(command.command).unwrap_or(match command.command {
+                CMD_NAV_DELAY => StepKind::Wait,
+                _ if is_waypoint_drop(&Item::Simple(command.clone()), servos) => StepKind::Drop,
+                _ => StepKind::Command,
+            });
+            match closes_photos {
+                true => listed
+                    .iter()
+                    .enumerate()
+                    .map(|(i, step)| match i + 1 == listed.len() {
+                        true => Step {
+                            commands: step
+                                .commands
+                                .iter()
+                                .cloned()
+                                .chain([command.clone()])
+                                .collect(),
+                            ..step.clone()
+                        },
+                        false => step.clone(),
+                    })
+                    .collect(),
+                false => listed
+                    .into_iter()
+                    .chain([Step {
+                        kind,
+                        seconds: (kind == StepKind::Wait)
+                            .then(|| command.params[0])
+                            .flatten(),
+                        commands: vec![command],
+                        item,
+                    }])
+                    .collect(),
+            }
+        });
+    Some(hover.into_iter().chain(run).collect())
+}
+
+pub const NO_SUCH_ACTION: &str = "This waypoint has no such action to move.";
+pub const ACTION_AT_THE_END: &str = "That action is already at that end of the waypoint's actions.";
+
+fn delay_of(seconds: f64) -> Simple {
+    mission_command(
+        CMD_NAV_DELAY,
+        [
+            seconds,
+            TIME_OF_DAY_UNUSED,
+            TIME_OF_DAY_UNUSED,
+            TIME_OF_DAY_UNUSED,
+            0.0,
+            0.0,
+            0.0,
+        ],
+    )
+}
+
+pub fn move_action(
+    doc: &Document,
+    waypoint_visual: usize,
+    from: usize,
+    later: bool,
+    servos: &[crate::payloadcheck::Servo],
+) -> Result<Document, String> {
+    let listed = steps(doc, waypoint_visual, servos).ok_or_else(|| NOT_A_WAYPOINT.to_string())?;
+    (from < listed.len())
+        .then_some(())
+        .ok_or_else(|| NO_SUCH_ACTION.to_string())?;
+    let to = match later {
+        true => Some(from + 1).filter(|to| *to < listed.len()),
+        false => from.checked_sub(1),
+    }
+    .ok_or_else(|| ACTION_AT_THE_END.to_string())?;
+    let order: Vec<&Step> = (0..listed.len())
+        .map(|i| match i {
+            i if i == from => &listed[to],
+            i if i == to => &listed[from],
+            i => &listed[i],
+        })
+        .collect();
+    let (at, owner) = simple_at(doc, waypoint_visual).ok_or_else(|| NOT_A_WAYPOINT.to_string())?;
+    let arrives_holding = order
+        .first()
+        .filter(|first| first.kind == StepKind::Hover)
+        .and_then(|first| first.seconds);
+    let flown: Vec<&Step> = order
+        .iter()
+        .skip(usize::from(arrives_holding.is_some()))
+        .copied()
+        .collect();
+    let leading_camera = flown
+        .iter()
+        .enumerate()
+        .take_while(|(i, step)| {
+            CAMERA_KINDS.contains(&step.kind)
+                && !flown[..*i].iter().any(|before| before.kind == step.kind)
+        })
+        .count();
+    let commands_of = |step: &Step| match step.kind {
+        StepKind::Hover => vec![delay_of(step.seconds.unwrap_or(0.0))],
+        _ => step.commands.clone(),
+    };
+    let speed = owner
+        .sections
+        .iter()
+        .filter(|section| section.command == CMD_DO_CHANGE_SPEED)
+        .cloned();
+    let run: Vec<Item> = flown[..leading_camera]
+        .iter()
+        .flat_map(|step| commands_of(step))
+        .chain(speed)
+        .chain(
+            flown[leading_camera..]
+                .iter()
+                .flat_map(|step| commands_of(step)),
+        )
+        .map(Item::Simple)
+        .collect();
+    let arriving = Simple {
+        params: std::array::from_fn(|i| match i {
+            0 => Some(arrives_holding.unwrap_or(0.0)),
+            _ => owner.params[i],
+        }),
+        sections: Vec::new(),
+        ..owner.clone()
+    };
+    let folded = fold_rest(
+        &std::iter::once(Item::Simple(arriving))
+            .chain(run)
+            .collect::<Vec<_>>(),
+        vehicle_class(doc.vehicle_type),
+    );
+    let riders = riders_after(doc, at);
+    let grown = folded.len();
+    Ok(kept_jumps(
+        doc,
+        Document {
+            items: doc.items[..at]
+                .iter()
+                .cloned()
+                .chain(folded)
+                .chain(doc.items[at + 1 + riders..].iter().cloned())
+                .collect(),
+            ..doc.clone()
+        },
+        &|was| match was {
+            was if was <= at => Some(was),
+            was if was > at + riders => Some(was + grown - 1 - riders),
+            _ => None,
+        },
+    ))
 }
 
 fn camera_span(rest: &[Simple], found: Vec<Found>) -> usize {
@@ -4442,6 +4727,382 @@ mod tests {
         assert!(
             save(&as_flown(&bare)) == save(&bare),
             "with nothing queued before it a short delay is left as the pilot wrote it"
+        );
+    }
+
+    fn kinds(
+        doc: &Document,
+        waypoint: usize,
+        servos: &[crate::payloadcheck::Servo],
+    ) -> Vec<StepKind> {
+        steps(doc, waypoint, servos)
+            .unwrap()
+            .iter()
+            .map(|step| step.kind)
+            .collect()
+    }
+
+    fn sent_after(doc: &Document, from: usize) -> Vec<(i64, Option<f64>, Option<f64>)> {
+        doc.items[from..]
+            .iter()
+            .flat_map(|item| match item {
+                Item::Simple(s) => std::iter::once(s)
+                    .chain(s.sections.iter())
+                    .map(|s| (s.command, s.params[0], s.params[1]))
+                    .collect(),
+                Item::Complex { .. } => Vec::new(),
+            })
+            .collect()
+    }
+
+    fn olegs_first_waypoint(servos: &[crate::payloadcheck::Servo]) -> Document {
+        let aimed = [
+            ("specifyGimbal", json!(true)),
+            ("gimbalPitch", json!(0.0)),
+            ("gimbalYaw", json!(60.0)),
+            ("cameraAction", json!(6)),
+        ]
+        .iter()
+        .try_fold(route(2, ""), |doc, (property, value)| {
+            set_camera(&doc, 2, property, value)
+        })
+        .unwrap();
+        let dropping = place_drop(&aimed, 2, None, &QT_DEFAULTS, servos).unwrap();
+        set_param(&dropping, 2, 1, 10.0).unwrap()
+    }
+
+    #[test]
+    fn the_pilot_orders_a_waypoints_actions_and_the_mission_items_follow_that_order() {
+        let servos = [bay(4, 1500.0)];
+        let first = olegs_first_waypoint(&servos);
+        assert_eq!(
+            kinds(&first, 2, &servos),
+            [
+                StepKind::Hover,
+                StepKind::Gimbal,
+                StepKind::Camera,
+                StepKind::Drop
+            ],
+            "as added: hold on arrival, aim, shoot, drop"
+        );
+        let aim_first = move_action(&first, 2, 0, true, &servos).unwrap();
+        let ordered = move_action(&aim_first, 2, 1, true, &servos).unwrap();
+        assert_eq!(
+            sent_after(&ordered, 1)[..5],
+            [
+                (CMD_NAV_WAYPOINT, Some(0.0), Some(0.0)),
+                (CMD_DO_MOUNT_CONTROL, Some(0.0), Some(0.0)),
+                (CMD_IMAGE_START_CAPTURE, Some(0.0), Some(0.0)),
+                (CMD_NAV_DELAY, Some(10.0), Some(-1.0)),
+                (SERVO, Some(4.0), Some(1500.0))
+            ],
+            "Oleg's waypoint: camera yaw 60 pitch 0, photo, hold 10 s, then servo 4 to 1500; a hold that is not first is a delay the aircraft flies"
+        );
+        assert_eq!(
+            kinds(&ordered, 2, &servos),
+            [
+                StepKind::Gimbal,
+                StepKind::Camera,
+                StepKind::Wait,
+                StepKind::Drop
+            ]
+        );
+        let closing = set_param(
+            &insert_simple(&ordered, SERVO, 0.0, 0.0, 7, &QT_DEFAULTS),
+            7,
+            1,
+            4.0,
+        )
+        .and_then(|doc| set_param(&doc, 7, 2, 2000.0))
+        .unwrap();
+        let second = [
+            ("specifyGimbal", json!(true)),
+            ("gimbalPitch", json!(-20.0)),
+            ("gimbalYaw", json!(90.0)),
+        ]
+        .iter()
+        .try_fold(closing, |doc, (property, value)| {
+            set_camera(&doc, 6, property, value)
+        })
+        .unwrap();
+        let servo_first = move_action(&second, 6, 0, true, &servos).unwrap();
+        assert_eq!(
+            sent_after(&servo_first, 5)[..3],
+            [
+                (CMD_NAV_WAYPOINT, Some(0.0), Some(0.0)),
+                (SERVO, Some(4.0), Some(2000.0)),
+                (CMD_DO_MOUNT_CONTROL, Some(-20.0), Some(0.0))
+            ],
+            "the next waypoint: servo to 2000, then camera yaw 90, 20 down"
+        );
+        let reloaded = load(&save(&servo_first).to_string(), 2).unwrap();
+        assert!(
+            save(&reloaded) == save(&servo_first)
+                && [2, 6]
+                    .iter()
+                    .all(|waypoint| kinds(&reloaded, *waypoint, &servos)
+                        == kinds(&servo_first, *waypoint, &servos)),
+            "a saved plan reads back in the order it was written"
+        );
+        let tilted = set_camera(&servo_first, 6, "gimbalPitch", &json!(-35.0)).unwrap();
+        assert_eq!(
+            sent_after(&tilted, 5)[1..3],
+            [
+                (SERVO, Some(4.0), Some(2000.0)),
+                (CMD_DO_MOUNT_CONTROL, Some(-35.0), Some(0.0))
+            ],
+            "the camera is edited where it stands in the order"
+        );
+        assert_eq!(
+            camera_state(&run_commands(&tilted, 5)).gimbal,
+            Some((-35.0, 90.0)),
+            "and every reader finds it there"
+        );
+        let reads = crate::missionitems::document_reads(&tilted, -1).unwrap();
+        assert_eq!(
+            reads[6]["specifiedGimbalYaw"], 90.0,
+            "the map wedge reads the yaw from a camera command that follows the servo"
+        );
+        let shot = set_camera(&tilted, 6, "cameraAction", &json!(6)).unwrap();
+        assert_eq!(
+            kinds(&shot, 6, &servos),
+            [StepKind::Camera, StepKind::Drop, StepKind::Gimbal],
+            "a new camera action starts on arrival, and can then be moved"
+        );
+        let untilted = set_camera(&shot, 6, "specifyGimbal", &json!(false)).unwrap();
+        assert_eq!(
+            kinds(&untilted, 6, &servos),
+            [StepKind::Camera, StepKind::Drop]
+        );
+        assert_eq!(
+            move_action(&servo_first, 6, 1, true, &servos).unwrap_err(),
+            ACTION_AT_THE_END
+        );
+        assert_eq!(
+            move_action(&servo_first, 6, 5, true, &servos).unwrap_err(),
+            NO_SUCH_ACTION
+        );
+        assert_eq!(
+            move_action(&servo_first, 1, 0, true, &servos).unwrap_err(),
+            NOT_A_WAYPOINT
+        );
+    }
+
+    #[test]
+    fn every_action_can_stand_in_every_place_and_nothing_is_lost_or_added_on_the_way() {
+        let servos = [bay(4, 1500.0)];
+        let start = olegs_first_waypoint(&servos);
+        let weight = |doc: &Document| {
+            let sent = sent_after(doc, 1);
+            let waited: f64 = sent
+                .iter()
+                .take_while(|(command, ..)| *command != CMD_NAV_WAYPOINT || sent[0].0 == *command)
+                .take(6)
+                .filter(|(command, ..)| [CMD_NAV_WAYPOINT, CMD_NAV_DELAY].contains(command))
+                .take(2)
+                .filter_map(|(_, seconds, _)| *seconds)
+                .sum();
+            let others: Vec<i64> = {
+                let commands: Vec<i64> = sent
+                    .iter()
+                    .skip(1)
+                    .map(|(command, ..)| *command)
+                    .take_while(|command| *command != CMD_NAV_WAYPOINT)
+                    .filter(|command| *command != CMD_NAV_DELAY)
+                    .collect();
+                [CMD_DO_MOUNT_CONTROL, CMD_IMAGE_START_CAPTURE, SERVO]
+                    .into_iter()
+                    .filter(|wanted| commands.contains(wanted))
+                    .collect()
+            };
+            (waited, others)
+        };
+        let moves = [
+            (3, false),
+            (2, false),
+            (1, false),
+            (0, true),
+            (1, true),
+            (2, true),
+            (0, true),
+            (1, true),
+            (3, false),
+            (2, false),
+            (1, false),
+            (0, true),
+            (2, true),
+        ];
+        let visited = moves
+            .iter()
+            .fold(vec![start.clone()], |seen, (from, later)| {
+                let next = move_action(seen.last().unwrap(), 2, *from, *later, &servos).unwrap();
+                seen.into_iter().chain([next]).collect()
+            });
+        visited.iter().for_each(|doc| {
+            assert_eq!(
+                weight(doc),
+                (
+                    10.0,
+                    vec![CMD_DO_MOUNT_CONTROL, CMD_IMAGE_START_CAPTURE, SERVO]
+                ),
+                "ten seconds of waiting, one aim, one photo and one drop in every order"
+            );
+            assert_eq!(kinds(doc, 2, &servos).len(), 4);
+            let reloaded = load(&save(doc).to_string(), 2).unwrap();
+            assert_eq!(
+                (kinds(&reloaded, 2, &servos), save(&reloaded)),
+                (kinds(doc, 2, &servos), save(doc)),
+                "each order reads back as written"
+            );
+            assert_eq!(
+                doc.items.len() - riders_after(doc, 1),
+                start.items.len() - 1
+            );
+        });
+        let orders: std::collections::BTreeSet<String> = visited
+            .iter()
+            .map(|doc| format!("{:?}", kinds(doc, 2, &servos)))
+            .collect();
+        assert!(orders.len() >= 8, "the moves reach many orders: {orders:?}");
+        assert!(
+            visited
+                .iter()
+                .any(|doc| kinds(doc, 2, &servos).first() == Some(&StepKind::Drop)),
+            "the drop can come first"
+        );
+    }
+
+    #[test]
+    fn a_reordered_waypoint_moves_and_dies_whole_keeps_jumps_true_and_is_still_sent_so_it_all_runs()
+    {
+        let servos = [bay(4, 1500.0)];
+        let jumping = insert_simple(
+            &olegs_first_waypoint(&servos),
+            CMD_DO_JUMP,
+            0.0,
+            0.0,
+            -1,
+            &QT_DEFAULTS,
+        );
+        let last = jumping.items.len();
+        let to_third = set_param(&jumping, last, 1, 6.0).unwrap();
+        let target = |doc: &Document| match doc.items.last() {
+            Some(Item::Simple(jump)) => jump.params[0].and_then(|seq| row_of_sequence(doc, seq)),
+            _ => None,
+        };
+        assert_eq!(
+            target(&to_third),
+            Some(4),
+            "the jump goes to the second waypoint"
+        );
+        let reordered = move_action(&to_third, 2, 0, true, &servos).unwrap();
+        assert_eq!(
+            target(&reordered).map(|row| match &reordered.items[row - 1] {
+                Item::Simple(s) => (s.command, s.params[4]),
+                Item::Complex { .. } => (0, None),
+            }),
+            Some((CMD_NAV_WAYPOINT, Some(47.002))),
+            "a hold turned into a delay adds a mission item, and the jump still lands on the same waypoint"
+        );
+        let (moved, landed) = move_item(&reordered, 2, true).unwrap();
+        assert_eq!(
+            (kinds(&moved, landed, &servos), kinds(&moved, 2, &servos)),
+            (kinds(&reordered, 2, &servos), Vec::new()),
+            "moved down the list, the waypoint keeps its actions in their order"
+        );
+        let gone = remove_with_riders(&reordered, 2).unwrap();
+        assert_eq!(
+            flown_commands(&gone)
+                .iter()
+                .map(|it| it.0)
+                .collect::<Vec<_>>(),
+            [
+                CMD_NAV_TAKEOFF,
+                CMD_NAV_WAYPOINT,
+                CMD_NAV_WAYPOINT,
+                CMD_DO_JUMP
+            ]
+        );
+        let ending = move_action(
+            &move_action(&olegs_first_waypoint(&servos), 2, 0, true, &servos).unwrap(),
+            2,
+            2,
+            true,
+            &servos,
+        )
+        .unwrap();
+        let at_the_end = Document {
+            items: ending.items[..1 + 1 + riders_after(&ending, 1)].to_vec(),
+            ..ending.clone()
+        };
+        assert_eq!(
+            sent_after(&as_flown(&at_the_end), 1)
+                .iter()
+                .map(|(command, seconds, _)| (*command, *seconds))
+                .collect::<Vec<_>>(),
+            [
+                (CMD_NAV_WAYPOINT, Some(0.0)),
+                (CMD_DO_MOUNT_CONTROL, Some(0.0)),
+                (CMD_NAV_DELAY, Some(10.0)),
+                (SERVO, Some(4.0)),
+                (CMD_IMAGE_START_CAPTURE, Some(0.0)),
+                (CMD_NAV_DELAY, Some(SHORTEST_DELAY_SECONDS))
+            ],
+            "aim, hold, then drop and photo on the last waypoint: two commands are left after the hold, so the mission is closed with a delay for both to run"
+        );
+    }
+
+    #[test]
+    fn every_plan_in_the_repository_loads_and_is_sent_as_it_was_written_when_nothing_is_reordered()
+    {
+        let plans: Vec<std::path::PathBuf> = ["../test/MissionManager", "tests/fixtures"]
+            .iter()
+            .flat_map(|folder| {
+                std::fs::read_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(folder))
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .map(|entry| entry.path())
+            })
+            .filter(|path| path.extension().is_some_and(|suffix| suffix == "plan"))
+            .collect();
+        let sent = |plan: &Value| {
+            crate::planitems::flatten(plan).ok().map(|items| {
+                items
+                    .iter()
+                    .map(|item| {
+                        (
+                            item.command,
+                            item.frame,
+                            item.params.map(|value| format!("{value:.7}")),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+        };
+        let checked: Vec<String> = plans
+            .iter()
+            .filter_map(|path| {
+                let text = std::fs::read_to_string(path).ok()?;
+                let written = sent(&serde_json::from_str(&text).ok()?)?;
+                let loaded = load(&text, 2).ok()?;
+                let name = path.file_name()?.to_string_lossy().to_string();
+                assert_eq!(
+                    sent(&save(&loaded)),
+                    Some(written),
+                    "{name} is uploaded item for item as the file holds it"
+                );
+                let again = load(&save(&loaded).to_string(), 2).ok()?;
+                assert!(
+                    save(&again) == save(&loaded),
+                    "{name} reads back the same after a save"
+                );
+                Some(name)
+            })
+            .collect();
+        assert!(
+            checked.len() >= 5,
+            "the fixtures were found and checked: {checked:?}"
         );
     }
 

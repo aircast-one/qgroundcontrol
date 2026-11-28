@@ -25,6 +25,7 @@ pub const MOVE_ITEM: &str = "core.plan.moveItem";
 pub const PLACE_DROP: &str = "core.plan.placeDrop";
 pub const REMOVE_DROP: &str = "core.plan.removeDrop";
 pub const SET_DROP_RELEASE: &str = "core.plan.setDropRelease";
+pub const MOVE_ACTION: &str = "core.plan.moveAction";
 pub const DRAFT_DEPS: &[&str] = &[CHANGED];
 pub const RESTORE_DRAFT: &str = "core.plan.restoreDraft";
 const ACTIONS: &[&str] = &[
@@ -34,6 +35,7 @@ const ACTIONS: &[&str] = &[
     PLACE_DROP,
     REMOVE_DROP,
     SET_DROP_RELEASE,
+    MOVE_ACTION,
     OPEN,
     SAVE,
     SEND,
@@ -274,6 +276,7 @@ pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
         PLACE_DROP => place_drop(backend, args),
         REMOVE_DROP => remove_drop(args),
         SET_DROP_RELEASE => set_drop_release(backend, args),
+        MOVE_ACTION => move_action(args),
         RESTORE_DRAFT => first_text(args).map_or_else(
             || refused("Restoring needs the plan that was kept."),
             |text| restore_draft(&text),
@@ -6708,6 +6711,7 @@ fn facts_in(
                     map.into_iter()
                         .chain([("launchAltitude".to_string(), launch.unwrap_or(Value::Null))])
                         .chain([("drop".to_string(), drop_fact(document, index))])
+                        .chain([("actions".to_string(), actions_fact(document, index))])
                         .chain(crate::itemfacts::command_info(&read))
                         .chain(takeoff_wizard)
                         .collect(),
@@ -6718,6 +6722,68 @@ fn facts_in(
             )
         }
         other => other,
+    }
+}
+
+fn step_name(kind: plandoc::StepKind) -> &'static str {
+    match kind {
+        plandoc::StepKind::Hover => "Hover",
+        plandoc::StepKind::Wait => "Wait",
+        plandoc::StepKind::Gimbal => "Gimbal",
+        plandoc::StepKind::Camera => "Camera",
+        plandoc::StepKind::Mode => "Mode",
+        plandoc::StepKind::Drop => "Drop",
+        plandoc::StepKind::Command => "Command",
+    }
+}
+
+fn actions_fact(document: &Document, waypoint: usize) -> Value {
+    let commands = plandoc::commands_at(document, waypoint.saturating_sub(1));
+    plandoc::steps(document, waypoint, &plan_servos(document)).map_or(Value::Null, |steps| {
+        let last = steps.len().saturating_sub(1);
+        json!(
+            steps
+                .iter()
+                .enumerate()
+                .map(|(at, step)| {
+                    let title = match step.kind {
+                        plandoc::StepKind::Wait => "Wait".to_string(),
+                        plandoc::StepKind::Command => step
+                            .commands
+                            .first()
+                            .and_then(|command| commands.get(&command.command))
+                            .map_or_else(String::new, |info| {
+                                crate::label::sentence(&info.friendly_name)
+                            }),
+                        kind => step_name(kind).to_string(),
+                    };
+                    json!({
+                        "kind": step_name(step.kind),
+                        "title": title,
+                        "seconds": step.seconds,
+                        "item": step.item,
+                        "earlier": at > 0,
+                        "later": at < last,
+                    })
+                })
+                .collect::<Vec<_>>()
+        )
+    })
+}
+
+fn move_action(args: &str) -> Value {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let place = |i: usize| {
+        given
+            .get(i)
+            .and_then(Value::as_u64)
+            .and_then(|v| usize::try_from(v).ok())
+    };
+    match (place(0), place(1), given.get(2).and_then(Value::as_bool)) {
+        (Some(waypoint), Some(from), Some(later)) => {
+            edit(|doc| plandoc::move_action(doc, waypoint, from, later, &plan_servos(doc)))
+        }
+        _ => refused("Moving an action needs the waypoint, the action's place and a direction."),
     }
 }
 
@@ -7081,7 +7147,7 @@ pub fn camera_section(index: usize) -> Option<Value> {
             Some(Some(plandoc::Item::Simple(simple)))
                 if simple.command == plandoc::CMD_NAV_WAYPOINT =>
             {
-                shown(&simple.sections)
+                shown(&plandoc::run_commands(&document, index - 1))
             }
             _ => json!({ "kind": "null" }),
         },
