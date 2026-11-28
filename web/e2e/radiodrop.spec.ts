@@ -9,7 +9,7 @@ const flip = async (page: Page, raw: Readonly<Record<number, number>>) => {
   await setRadioChannels(page, raw);
   await page.waitForTimeout(100);
 };
-const flyWithRadio = async (page: Page) => {
+const flyWithRadio = async (page: Page, onConnect: () => Promise<void> = async () => undefined) => {
   await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
   await page.addLocatorHandler(page.getByText(/ before this vehicle can fly\.$/), () => page.getByRole('button', { name: 'Later', exact: true }).click());
   await plugInR2d2Radio(page);
@@ -17,6 +17,7 @@ const flyWithRadio = async (page: Page) => {
   await expect(page.getByText(RADIO_FOUND)).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Use', exact: true }).click();
   await connectMock(page, [], 'APM ArduCopter Vehicle');
+  await onConnect();
   await openMenu(page, 'All status');
   await expect(page.getByText('Radio · live')).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press('Escape');
@@ -49,8 +50,7 @@ test('flipping the R2D2 drop switch up drops the payload through the app', async
 
 test('the six-position switch picks which bay the drop switch drops', async ({ page }) => {
   test.setTimeout(180_000);
-  await flyWithRadio(page);
-  await expect(page.getByText("The drone reads flight modes on CH5, so the radio's bay switch is off.", { exact: false }), 'a stock copter reads flight modes on the bay channel, and the app says so').toBeVisible({ timeout: 30_000 });
+  await flyWithRadio(page, () => expect(page.getByText("The drone reads flight modes on CH5, so the radio's bay switch is off.", { exact: false }), 'a stock copter reads flight modes on the bay channel, and the app says so').toBeVisible({ timeout: 30_000 }));
   await readFlightModesOn(page, 10);
   await openMenu(page, 'Settings');
   await page.getByPlaceholder('Search settings').fill('bay');
