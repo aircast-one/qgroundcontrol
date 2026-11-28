@@ -37,6 +37,7 @@ const played = (text: string, clip: string, volume: number): Promise<void> =>
     if (url !== null) {
       const audio = new Audio(url);
       audio.volume = volume;
+      audio.muted = navigator.webdriver;
       audio.onended = () => resolve();
       audio.onerror = () => resolve();
       speech.stopCurrent = () => {
@@ -45,6 +46,7 @@ const played = (text: string, clip: string, volume: number): Promise<void> =>
       };
       return void audio.play().catch(() => resolve());
     }
+    if (navigator.webdriver) return resolve();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = SPEECH_LANGUAGE;
     utterance.volume = volume;
@@ -83,7 +85,7 @@ export const SpeechOut = {
   start(): void {
     if (speech.started) return;
     speech.started = true;
-    speech.ready = typeof speechSynthesis !== 'undefined' && !navigator.webdriver;
+    speech.ready = typeof speechSynthesis !== 'undefined';
     speech.poller = setTimeout(() => void poll(), POLL_MS);
   },
 
