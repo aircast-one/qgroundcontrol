@@ -286,18 +286,14 @@ test('the keyboard lifts an action from its grip, moves it with the arrows, drop
   await expect.poll(async () => afterWaypoint(await savedMission(vehicle), 1)).toEqual([MOUNT, PHOTO, DELAY]);
 });
 
-test('a wait is retimed from its own row, and a tap on the plan right after a move never picks a row by its old place', async ({ app: vehicle }) => {
+test('a wait is retimed from its own row, and a tap on the plan right after a move opens the waypoint the pilot saw', async ({ app: vehicle }) => {
   await planned(vehicle);
   const order = actionOrder(vehicle);
   await aimedWaypoint(vehicle, 1, '10', '45');
   await mouseDragAction(vehicle, 'Hover', order.nth(2));
   await vehicle.getByRole('button', { name: 'Waypoint 2' }).first().click();
-  await expect(vehicle.getByRole('button', { name: WRONG_ROW }), 'the strip never opens the row that used to be waypoint 2').toHaveCount(0);
-  await expect(async () => {
-    await vehicle.getByRole('button', { name: 'Waypoint 2' }).first().click();
-    await expect(vehicle.getByRole('button', { name: 'Delete waypoint 2' })).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 15_000 });
-  await expect(vehicle.getByRole('button', { name: WRONG_ROW })).toHaveCount(0);
+  await expect(vehicle.getByRole('button', { name: 'Delete waypoint 2' }), 'one tap, straight after the move, opens waypoint 2').toBeVisible({ timeout: 15_000 });
+  await expect(vehicle.getByRole('button', { name: WRONG_ROW }), 'and never the row that used to be waypoint 2').toHaveCount(0);
   await vehicle.getByRole('button', { name: /^1 Waypoint\b/ }).click();
   await expect(order).toHaveText([/^Gimbal/, /^Take photo/, /^Wait10 s/], { timeout: 15_000 });
   await order.nth(2).getByRole('button', { name: /^Wait/ }).click();

@@ -25,6 +25,7 @@ import {
   rallyAltitudeIsEditable,
   rallyAltitudeLabel,
   rowAt,
+  sameItemIn,
   selectionAfterRemove,
   selectionSequence,
   sequenceLabel,
@@ -636,5 +637,18 @@ describe('RallyAltitudeEditTest', () => {
 
     expect(rallyAltitudeLabel(point)).toBe('Alt m');
     expect(point.altitude).toBeCloseTo(point.altitudeMetres, 9);
+  });
+});
+
+describe('a tap on rows read before the plan changed', () => {
+  const waypoint = (index: number, latitude: number) => MissionItem({ index, sequence: index, latitude, longitude: 8, command: 'Waypoint', selected: false, commandId: 16 });
+  const delay = (index: number) => MissionItem({ index, sequence: index, latitude: Number.NaN, longitude: Number.NaN, command: 'Delay', selected: false, commandId: 93 });
+
+  it('picks the item the pilot saw, wherever the change moved it', () => {
+    const seen = waypoint(3, 47.2);
+    const fresh = [waypoint(1, 47.1), delay(2), delay(3), waypoint(4, 47.2)];
+    expect(sameItemIn(seen, fresh)?.index).toBe(4);
+    expect(sameItemIn(delay(3), [waypoint(1, 47.1), delay(2), delay(4)])?.index, 'of two alike, the nearest to where it was').toBe(2);
+    expect(sameItemIn(seen, [waypoint(1, 47.1)]), 'gone since').toBeNull();
   });
 });

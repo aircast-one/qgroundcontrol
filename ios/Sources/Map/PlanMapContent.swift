@@ -8,6 +8,18 @@ let NO_REVISION = -1
 func planRevision(_ view: JSON?) -> Int { view.flatMap { $0.has("revision") ? $0["revision"].int(NO_REVISION) : nil } ?? NO_REVISION }
 
 func rowsAreStale(_ planRevision: Int, _ rowsRevision: Int) -> Bool { planRevision > rowsRevision }
+
+struct WaitingPick: Equatable {
+    let item: MissionItem
+    let revision: Int
+}
+
+private func same(_ a: Double, _ b: Double) -> Bool { a == b || (a.isNaN && b.isNaN) }
+
+func sameItemIn(_ tapped: MissionItem, _ fresh: [MissionItem]) -> MissionItem? {
+    fresh.filter { $0.commandId == tapped.commandId && same($0.latitude, tapped.latitude) && same($0.longitude, tapped.longitude) }
+        .min { abs($0.index - tapped.index) < abs($1.index - tapped.index) }
+}
 private let FIELD_ZOOM = 16.0
 private let FAILURE_MESSAGE_MS = 2500
 private let PANEL_MAX_FRACTION: CGFloat = 0.5
@@ -152,6 +164,7 @@ struct PlanMapContent: View {
     @State private var readsStarted = 0
     @State private var noteSeen: Int?
     @State private var rowsRevision = NO_REVISION
+    @State private var waitingPick: WaitingPick?
     @State private var planReads = 0
     @State private var patternWait: (wanted: Int, since: Int)?
     @State private var layer = PlanLayer.Mission
@@ -1248,7 +1261,8 @@ struct PlanMapContent: View {
     }
 
     private func freshPick(_ index: Int) {
-        if !rowsAreStale(planRevision(planStatus), rowsRevision) { focusItem(index) }
+        guard rowsAreStale(planRevision(planStatus), rowsRevision) else { return focusItem(index) }
+        waitingPick = allItems.first { $0.index == index }.map { WaitingPick(item: $0, revision: planRevision(planStatus)) }
     }
 
     private func pickRow(_ row: ItemRow) { freshPick(row.index) }
@@ -1289,6 +1303,9 @@ struct PlanMapContent: View {
         landingList = next.landings
         surveyStatsMap = next.stats
         planReads = readNumber
+        guard let waiting = waitingPick, next.revision >= waiting.revision else { return }
+        waitingPick = nil
+        sameItemIn(waiting.item, next.all).map { focusItem($0.index) }
     }
 
     private func say(_ message: String) {

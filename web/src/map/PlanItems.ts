@@ -113,6 +113,11 @@ export const selectionAfterRemove = (removed: number, countBefore: number): MapH
   return last > HOME_ITEM ? { kind: 'Waypoint', index: Math.min(removed, last) } : null;
 };
 
+export const sameItemIn = (tapped: MissionItem, fresh: readonly MissionItem[]): MissionItem | null =>
+  fresh
+    .filter((it) => it.commandId === tapped.commandId && Object.is(it.latitude, tapped.latitude) && Object.is(it.longitude, tapped.longitude))
+    .reduce<MissionItem | null>((nearest, it) => (nearest === null || Math.abs(it.index - tapped.index) < Math.abs(nearest.index - tapped.index) ? it : nearest), null);
+
 export const missionItemIndex = (selected: MapHit | null): number | null => {
   switch (selected?.kind) {
     case 'Waypoint':

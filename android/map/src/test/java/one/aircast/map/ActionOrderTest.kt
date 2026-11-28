@@ -78,4 +78,14 @@ class StaleRowsTest {
         assertEquals(NO_REVISION, planRevision(null))
         assertEquals(listOf(true, false, false), listOf(6L to 5L, 5L to 5L, 4L to 5L).map { (plan, rows) -> rowsAreStale(plan, rows) })
     }
+
+    private fun waypoint(index: Int, latitude: Double) = MissionItem(index, index, latitude, 8.0, "Waypoint", false, commandId = 16)
+    private fun delay(index: Int) = MissionItem(index, index, Double.NaN, Double.NaN, "Delay", false, commandId = 93)
+
+    @Test
+    fun `a tap held while the rows were stale picks the item the pilot saw, wherever it moved`() {
+        assertEquals(4, sameItemIn(waypoint(3, 47.2), listOf(waypoint(1, 47.1), delay(2), delay(3), waypoint(4, 47.2)))?.index)
+        assertEquals("of two alike, the nearest to where it was", 2, sameItemIn(delay(3), listOf(waypoint(1, 47.1), delay(2), delay(4)))?.index)
+        assertNull("gone since", sameItemIn(waypoint(3, 47.2), listOf(waypoint(1, 47.1))))
+    }
 }

@@ -94,6 +94,7 @@ import {
   patternName,
   rallyAltitudeIsEditable,
   rallyAltitudeLabel,
+  sameItemIn,
   selectionSequence,
   sheetDetail,
   surveyTiles,
@@ -308,6 +309,7 @@ export const PlanMapContent = ({
   const readsStarted = useRemembered(0);
   const planReads = useRemembered(0);
   const rowsRevision = useRemembered(NO_REVISION);
+  const waitingPick = useRemembered<{ readonly item: MissionItem; readonly revision: number } | null>(null);
   const layer = useRemembered<PlanLayer>(PlanLayer.Mission);
   const mapMenu = useRemembered<MapMenuAt | null>(null);
   const selectedKey = hitKey(selected.value);
@@ -548,6 +550,11 @@ export const PlanMapContent = ({
     surveyStatsMap.value = nextStats;
     rowsRevision.value = Math.max(rowsRevision.value, readRevision);
     planReads.value = readNumber;
+    const waiting = waitingPick.value;
+    if (waiting === null || readRevision < waiting.revision) return;
+    waitingPick.value = null;
+    const fresh = sameItemIn(waiting.item, nextAll);
+    if (fresh !== null) focusItem(fresh.index);
   };
 
   const planRevision = optInt(planStatus, 'revision', NO_REVISION);
@@ -555,7 +562,9 @@ export const PlanMapContent = ({
     if (rowsAreStale(planRevision, rowsRevision.value)) void refresh();
   }, [planRevision]);
   const freshPick = (index: number): void => {
-    if (!rowsAreStale(planRevision, rowsRevision.value)) focusItem(index);
+    if (!rowsAreStale(planRevision, rowsRevision.value)) return focusItem(index);
+    const item = allItems.value.find((it) => it.index === index);
+    waitingPick.value = item === undefined ? null : { item, revision: planRevision };
   };
 
   const started = useDocumentStarted();

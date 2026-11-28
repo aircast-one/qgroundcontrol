@@ -62,4 +62,12 @@ final class ActionOrderTests: XCTestCase {
         XCTAssertEqual(planRevision(nil), NO_REVISION)
         XCTAssertEqual([(6, 5), (5, 5), (4, 5)].map { rowsAreStale($0.0, $0.1) }, [true, false, false])
     }
+
+    func testATapHeldWhileTheRowsWereStalePicksTheItemThePilotSaw() {
+        let waypoint = { (index: Int, latitude: Double) in MissionItem(index: index, sequence: index, latitude: latitude, longitude: 8, command: "Waypoint", selected: false, commandId: 16) }
+        let delay = { (index: Int) in MissionItem(index: index, sequence: index, latitude: .nan, longitude: .nan, command: "Delay", selected: false, commandId: 93) }
+        XCTAssertEqual(sameItemIn(waypoint(3, 47.2), [waypoint(1, 47.1), delay(2), delay(3), waypoint(4, 47.2)])?.index, 4)
+        XCTAssertEqual(sameItemIn(delay(3), [waypoint(1, 47.1), delay(2), delay(4)])?.index, 2, "of two alike, the nearest to where it was")
+        XCTAssertNil(sameItemIn(waypoint(3, 47.2), [waypoint(1, 47.1)]), "gone since")
+    }
 }

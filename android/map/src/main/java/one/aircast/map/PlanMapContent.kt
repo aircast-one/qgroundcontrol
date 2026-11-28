@@ -97,6 +97,12 @@ internal const val NO_REVISION = -1L
 internal fun planRevision(view: JSONObject?): Long = view?.takeIf { it.has("revision") }?.optLong("revision", NO_REVISION) ?: NO_REVISION
 
 internal fun rowsAreStale(planRevision: Long, rowsRevision: Long): Boolean = planRevision > rowsRevision
+
+internal data class WaitingPick(val item: MissionItem, val revision: Long)
+
+internal fun sameItemIn(tapped: MissionItem, fresh: List<MissionItem>): MissionItem? =
+    fresh.filter { it.commandId == tapped.commandId && it.latitude.equals(tapped.latitude) && it.longitude.equals(tapped.longitude) }
+        .minByOrNull { kotlin.math.abs(it.index - tapped.index) }
 private const val FIELD_ZOOM = 16.0
 private const val FAILURE_MESSAGE_MS = 2500L
 private const val PANEL_MAX_FRACTION = 0.5f
@@ -202,6 +208,7 @@ internal fun PlanMapContent(
     var readsStarted by remember { mutableIntStateOf(0) }
     var noteSeen by remember { mutableStateOf<Int?>(null) }
     var rowsRevision by remember { mutableLongStateOf(NO_REVISION) }
+    var waitingPick by remember { mutableStateOf<WaitingPick?>(null) }
     var planReads by remember { mutableIntStateOf(0) }
     var layer by remember { mutableStateOf(PlanLayer.Mission) }
     var mapMenu by remember { mutableStateOf<MapMenuAt?>(null) }
@@ -376,7 +383,8 @@ internal fun PlanMapContent(
         }
     }
     fun freshPick(index: Int) {
-        if (!rowsAreStale(planRevision(planStatus), rowsRevision)) focusItem(index)
+        if (!rowsAreStale(planRevision(planStatus), rowsRevision)) return focusItem(index)
+        waitingPick = allItems.firstOrNull { it.index == index }?.let { WaitingPick(it, planRevision(planStatus)) }
     }
     fun pickRow(row: ItemRow) = freshPick(row.index)
     fun addRallyAt(latitude: Double, longitude: Double) {
@@ -488,6 +496,10 @@ internal fun PlanMapContent(
                 landingList = nextLandings
                 surveyStatsMap = nextStats
                 planReads = readNumber
+                waitingPick?.takeIf { readRevision >= it.revision }?.let { waiting ->
+                    waitingPick = null
+                    sameItemIn(waiting.item, nextAll)?.let { focusItem(it.index) }
+                }
             }
         }
     }
