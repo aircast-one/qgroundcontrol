@@ -59,6 +59,18 @@ internal fun videoReading(view: JSONObject?): VideoReading? {
     )
 }
 
+internal fun hlsEndpoint(view: JSONObject?, channel: Int): String? =
+    (view?.optJSONArray("hlsEndpoints")?.opt(channel) as? String)?.ifEmpty { null }
+
+internal fun bufferedNoteShown(view: JSONObject?, channel: Int, playing: Boolean): Boolean =
+    playing && hlsEndpoint(view, channel) != null
+
+internal const val BUFFERED_VIDEO_NOTE = "Low-latency video can't get through this link, so this is buffered video, a few seconds behind."
+
+internal const val BUFFERED_VIDEO_SHORT = "Buffered video, a few seconds behind."
+
+internal const val TRY_LOW_LATENCY = "Try low latency"
+
 internal fun videoPreviewPath(endpoint: String): String = "view.videoPreview($endpoint)"
 
 internal data class VideoPreview(val channel: Int?, val playing: Boolean, val trying: Boolean, val text: String)

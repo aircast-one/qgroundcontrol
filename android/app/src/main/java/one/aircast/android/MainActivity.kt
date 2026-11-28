@@ -499,6 +499,7 @@ fun AircastShell(hostView: android.view.View?) {
         withContext(Dispatchers.Default) {
             VideoCommands.setNativeRendering(true)
             VideoCommands.initNative()
+            VideoCommands.setBufferedPlayback(true)
         }
     }
 

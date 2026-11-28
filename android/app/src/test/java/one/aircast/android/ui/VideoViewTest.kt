@@ -2,7 +2,9 @@ package one.aircast.android.ui
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VideoViewTest {
@@ -107,6 +109,27 @@ class VideoViewTest {
             videoPreview(JSONObject("""{"kind":"object","class":"VideoPreview","channel":null,"playing":false,"trying":false,"text":"Open the camera to watch it.","pipeline":null}""")),
         )
         assertNull(videoPreview(JSONObject("""{"kind":"refused","reason":"view.videoPreview takes a WHEP address"}""")))
+    }
+
+    private val twin = "http://falcon:8888/front/index.m3u8"
+
+    private fun fallen(endpoints: String) = JSONObject("""{"kind":"object","class":"Video","hlsEndpoints":$endpoints}""")
+
+    @Test
+    fun `the core names the buffered twin per channel and nothing for a camera on WebRTC`() {
+        val view = fallen("""[null,"$twin"]""")
+        assertNull(hlsEndpoint(view, MAIN_VIDEO_CHANNEL))
+        assertEquals(twin, hlsEndpoint(view, PIP_VIDEO_CHANNEL))
+        assertNull(hlsEndpoint(fallen("""[""]"""), MAIN_VIDEO_CHANNEL))
+        assertNull(hlsEndpoint(null, MAIN_VIDEO_CHANNEL))
+    }
+
+    @Test
+    fun `the notice shows only for a channel whose buffered twin is playing`() {
+        val view = fallen("""[null,"$twin"]""")
+        assertTrue(bufferedNoteShown(view, PIP_VIDEO_CHANNEL, playing = true))
+        assertFalse("nothing is said over a twin that shows no picture yet", bufferedNoteShown(view, PIP_VIDEO_CHANNEL, playing = false))
+        assertFalse(bufferedNoteShown(view, MAIN_VIDEO_CHANNEL, playing = true))
     }
 }
 

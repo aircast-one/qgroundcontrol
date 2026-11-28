@@ -33,6 +33,8 @@ private const val VIDEO_ACTIVE_SOURCE = "video.setActiveVideoSource"
 private const val VIDEO_START_RECORDING = "video.startRecording"
 private const val VIDEO_STOP_RECORDING = "video.stopRecording"
 private const val VIDEO_RESTART = "video.restart"
+private const val VIDEO_BUFFERED_PLAYBACK = "video.setBufferedPlayback"
+private const val VIDEO_TRY_LOW_LATENCY = "video.tryLowLatency"
 private const val VIDEO_DEVICE_CAMERA_ROTATION = "video.setDeviceCameraRotation"
 private const val VIDEO_PICTURE_IN_PICTURE = "settings.videoSettings.multiViewEnabled"
 private const val VIDEO_PIP_SHOWN = "video.setPipShown"
@@ -99,6 +101,8 @@ internal object VideoCommands {
     fun setActiveSource(slot: Int): Boolean = Qgc.invoke(VIDEO_ACTIVE_SOURCE, slot)
     fun setRecording(recording: Boolean): Boolean = Qgc.invoke(if (recording) VIDEO_START_RECORDING else VIDEO_STOP_RECORDING)
     fun restart(): Boolean = Qgc.invoke(VIDEO_RESTART)
+    fun setBufferedPlayback(plays: Boolean): Boolean = Qgc.invoke(VIDEO_BUFFERED_PLAYBACK, plays)
+    fun tryLowLatency(channel: Int): Boolean = Qgc.invoke(VIDEO_TRY_LOW_LATENCY, channel)
     fun setDeviceCameraRotation(degrees: Int): Boolean = Qgc.invoke(VIDEO_DEVICE_CAMERA_ROTATION, degrees)
     fun setPictureInPicture(shown: Boolean): Boolean = Qgc.set(VIDEO_PICTURE_IN_PICTURE, shown)
     fun setPipShown(shown: Boolean): Boolean = Qgc.invoke(VIDEO_PIP_SHOWN, shown)

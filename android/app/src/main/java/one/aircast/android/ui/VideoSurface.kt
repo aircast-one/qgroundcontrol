@@ -18,6 +18,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import one.aircast.map.AircastSpace
@@ -242,6 +245,7 @@ private fun MainPane(video: VideoReading?, synthetic: Boolean, modifier: Modifie
             HoldRing(pressing.takeIf { holds })
             ground.spot?.let { PictureMark(it) }
         }
+        if (expanded) BufferedVideoNote(MAIN_VIDEO_CHANNEL, video?.decoding == true, BUFFERED_VIDEO_NOTE, Modifier.align(Alignment.TopCenter).padding(top = BUFFERED_NOTE_TOP))
         }
         if (expanded && video?.decoding == true) LookAtReticle(Modifier.align(Alignment.Center))
         if (expanded && video?.decoding == true) GimbalModeSwitch(Modifier.align(Alignment.BottomEnd).padding(AircastSpace.s2))
@@ -284,8 +288,28 @@ private fun SecondPane(camera: CameraEntry, modifier: Modifier) {
             CameraStatusDot(shownCameraStatus(camera, showing = true, page = syntheticPage()))
             Text(camera.short, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.aircast.outdoorForeground, maxLines = 1)
         }
+        if (camera.source != SYNTHETIC_SOURCE) BufferedVideoNote(PIP_VIDEO_CHANNEL, camera.status == CameraStatus.Live, BUFFERED_VIDEO_SHORT, Modifier.align(Alignment.BottomCenter))
     }
 }
+
+@Composable
+private fun BufferedVideoNote(channel: Int, playing: Boolean, text: String, modifier: Modifier) {
+    val videoJson by qgcPath(VIDEO_VIEW)
+    if (!bufferedNoteShown(videoJson, channel, playing)) return
+    Row(
+        modifier.padding(AircastSpace.s2).background(Color.Black.copy(alpha = BUFFERED_NOTE_SCRIM), RoundedCornerShape(8.dp)).padding(start = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text, style = MaterialTheme.typography.labelMedium, color = Color.White, modifier = Modifier.weight(1f, fill = false))
+        TextButton(onClick = { offMainInOrder { VideoCommands.tryLowLatency(channel) } }) {
+            Text(TRY_LOW_LATENCY, style = MaterialTheme.typography.labelLarge, color = Color.White, textDecoration = TextDecoration.Underline)
+        }
+    }
+}
+
+private const val BUFFERED_NOTE_SCRIM = 0.55f
+private val BUFFERED_NOTE_TOP = 72.dp
 
 private val PANE_DIVIDER = 2.dp
 
