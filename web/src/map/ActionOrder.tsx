@@ -1,5 +1,5 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   type Announcements,
   type CollisionDetection,
@@ -25,7 +25,7 @@ import { IconButton, Text } from '@/m3';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { swallowReleaseClick } from '@/ui/OverlayLayout';
-import { type ShownAction, announcements, canDrop, dropMove, movedOrder, projectedPlaces, shownAt, stepKeys } from './ActionOrderModel';
+import { type ShownAction, announcements, canDrop, dropMove, movedOrder, projectedPlaces, refusalAt, shownAt, stepKeys } from './ActionOrderModel';
 
 const GRIP = 'data-drag-grip';
 const TOUCH_HOLD_MS = 250;
@@ -33,6 +33,7 @@ const TOUCH_SLOP_PX = 8;
 const OUTSIDE_MARGIN_PX = 32;
 const SETTLED = 0.35;
 const SETTLE_FADE = 'opacity 160ms ease-out';
+const ABOVE_LIFTED_ROW = 1000;
 const LIFT_FILTER = 'brightness(1.15) drop-shadow(0 8px 12px rgb(0 0 0 / 0.55))';
 
 const fromGrip = (target: EventTarget | null): boolean => target instanceof Element && target.closest(`[${GRIP}]`) !== null;
@@ -95,6 +96,7 @@ export const ActionRow = <A,>({
   grip,
   lifted = false,
   refused = false,
+  marked = false,
   onEdit,
   onRemove,
 }: {
@@ -102,12 +104,19 @@ export const ActionRow = <A,>({
   grip: ReactNode;
   lifted?: boolean;
   refused?: boolean;
+  marked?: boolean;
   onEdit: (() => void) | null;
   onRemove: (() => void) | null;
 }) => (
   <div
     className="flex items-center bg-secondary-container text-on-secondary-container"
-    style={{ borderRadius: 14, outline: refused ? `2px solid ${md('error')}` : 'none', cursor: refused ? 'not-allowed' : undefined, filter: lifted ? LIFT_FILTER : 'none' }}
+    style={{
+      borderRadius: 14,
+      outline: refused || marked ? `2px solid ${md('error')}` : 'none',
+      outlineOffset: marked ? 2 : 0,
+      cursor: refused ? 'not-allowed' : undefined,
+      filter: lifted ? LIFT_FILTER : 'none',
+    }}
   >
     {grip}
     <button type="button" className="flex min-w-0 flex-1 items-center pl-1 text-left" onClick={onEdit ?? undefined} disabled={onEdit === null}>
@@ -136,21 +145,25 @@ const SortableRow = <A,>({
   id,
   shown,
   enabled,
+  reasonId,
   onEdit,
   onRemove,
 }: {
   id: string;
   shown: ShownAction<A>;
   enabled: boolean;
+  reasonId: string | null;
   onEdit: (() => void) | null;
   onRemove: (() => void) | null;
 }) => {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: !enabled });
   const style: CSSProperties = { transform: CSS.Translate.toString(transform), transition: [transition, SETTLE_FADE].filter((it) => it !== undefined).join(', '), opacity: isDragging ? SETTLED : 1, touchAction: 'manipulation' };
+  const marked = reasonId !== null;
   return (
-    <li ref={setNodeRef} style={style} {...listeners}>
+    <li ref={setNodeRef} style={marked ? { ...style, position: 'relative', zIndex: ABOVE_LIFTED_ROW } : style} aria-describedby={reasonId ?? undefined} {...listeners}>
       <ActionRow
         step={shown}
+        marked={marked}
         grip={
           <button type="button" ref={setActivatorNodeRef} {...{ [GRIP]: '' }} {...attributes} aria-label={`Reorder ${shown.title}`} className="cursor-grab touch-none" style={{ touchAction: 'none' }}>
             <GripIcon />
@@ -204,7 +217,7 @@ export const ActionOrderList = <A,>({ waypoint, steps, onMove, onEdit, onRemove 
       const from = placeOf(active.id);
       const to = placeOf(target?.id);
       if (from === null || to === null) return `${titleOf(active.id)} is outside the list. Let go to put it back.`;
-      return announcements.over(titleOf(active.id), to, shownSteps.length, shownSteps[from]?.refusal ?? null, canDrop(shownSteps[from], to));
+      return announcements.over(titleOf(active.id), to, shownSteps.length, refusalAt(shownSteps[from], to)?.reason ?? null, canDrop(shownSteps[from], to));
     },
     onDragEnd: ({ active, over: target }) => {
       const from = placeOf(active.id);
@@ -250,6 +263,8 @@ export const ActionOrderList = <A,>({ waypoint, steps, onMove, onEdit, onRemove 
   const active = lifted === null ? undefined : shownSteps[lifted];
   const refused = active !== undefined && lifted !== null && over !== null && over !== lifted && !canDrop(active, over);
   const outside = active !== undefined && over === null;
+  const refusal = refused ? refusalAt(active, over) : null;
+  const reasonId = useId();
   return (
     <>
       <DndContext
@@ -270,6 +285,7 @@ export const ActionOrderList = <A,>({ waypoint, steps, onMove, onEdit, onRemove 
                 id={ids[at] ?? ''}
                 shown={shownAtProjected(step, at)}
                 enabled={pending === null}
+                reasonId={refusal !== null && refusal.about === at && at !== lifted ? reasonId : null}
                 onEdit={pending === null ? onEdit(step) : null}
                 onRemove={pending === null ? onRemove(step) : null}
               />
@@ -282,9 +298,9 @@ export const ActionOrderList = <A,>({ waypoint, steps, onMove, onEdit, onRemove 
           ) : null}
         </DragOverlay>
       </DndContext>
-      {refused && active?.refusal !== null && active?.refusal !== undefined ? (
-        <Text typography="bodySmall" color={md('error')}>
-          {active.refusal}
+      {refusal !== null ? (
+        <Text id={reasonId} typography="bodySmall" color={md('error')}>
+          {refusal.reason}
         </Text>
       ) : null}
       {outside ? (

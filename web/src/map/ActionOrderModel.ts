@@ -2,13 +2,15 @@ import { type Json, isNull, jsonObjects, optDouble, optInt, optJSONArray, optTex
 import type { DrawableName } from '@/res/drawables';
 import { trimmedNumber } from './CameraSectionExtras';
 
+export type RefusedPlace = { readonly place: number; readonly reason: string; readonly about: number };
+
 export type ActionStep = {
   readonly kind: string;
   readonly title: string;
   readonly seconds: number | null;
   readonly item: number | null;
   readonly places: readonly number[];
-  readonly refusal: string | null;
+  readonly refused: readonly RefusedPlace[];
 };
 
 export const actionSteps = (view: Json | null): readonly ActionStep[] =>
@@ -18,7 +20,7 @@ export const actionSteps = (view: Json | null): readonly ActionStep[] =>
     seconds: isNull(step, 'seconds') ? null : optDouble(step, 'seconds'),
     item: isNull(step, 'item') ? null : optInt(step, 'item'),
     places: (optJSONArray(step, 'places') ?? []).filter((it): it is number => typeof it === 'number' && Number.isInteger(it) && it >= 0),
-    refusal: isNull(step, 'refusal') || optText(step, 'refusal').trim() === '' ? null : optText(step, 'refusal'),
+    refused: jsonObjects(optJSONArray(step, 'refused')).map((it) => ({ place: optInt(it, 'place'), reason: optText(it, 'reason'), about: optInt(it, 'about') })),
   }));
 
 export type ShownAction<A> = {
@@ -31,7 +33,7 @@ export type ShownAction<A> = {
   readonly item: number | null;
   readonly seconds: number | null;
   readonly places: readonly number[];
-  readonly refusal: string | null;
+  readonly refused: readonly RefusedPlace[];
 };
 
 export type ActiveAction = { readonly kind: { readonly name: string }; readonly title: string; readonly value: string; readonly icon: DrawableName };
@@ -56,12 +58,12 @@ export const orderedActions = <A extends ActiveAction>(steps: readonly ActionSte
       item: step.item,
       seconds: step.seconds,
       places: step.places,
-      refusal: step.refusal,
+      refused: step.refused,
     };
   });
   const fixed = active
     .filter((it) => !steps.some((step) => step.kind === it.kind.name))
-    .map((action): ShownAction<A> => ({ action, kind: action.kind.name, title: action.title, value: action.value, icon: action.icon, place: null, item: null, seconds: null, places: [], refusal: null }));
+    .map((action): ShownAction<A> => ({ action, kind: action.kind.name, title: action.title, value: action.value, icon: action.icon, place: null, item: null, seconds: null, places: [], refused: [] }));
   return [...listed, ...fixed];
 };
 
@@ -73,6 +75,8 @@ export const movedOrder = <T>(list: readonly T[], from: number, to: number): rea
 };
 
 export const canDrop = <A>(step: ShownAction<A> | undefined, to: number): boolean => step !== undefined && step.place !== null && step.places.includes(to);
+
+export const refusalAt = <A>(step: ShownAction<A> | undefined, to: number | null): RefusedPlace | null => step?.refused.find((it) => it.place === to) ?? null;
 
 export const projectedPlaces = <A>(steps: readonly ShownAction<A>[], from: number | null, over: number | null): readonly number[] => {
   const identity = steps.map((_, at) => at);

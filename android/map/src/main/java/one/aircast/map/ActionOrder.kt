@@ -41,7 +41,9 @@ import androidx.compose.ui.zIndex
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class ActionStep(val kind: String, val title: String, val seconds: Double?, val item: Int?, val places: List<Int>, val refusal: String?)
+data class RefusedPlace(val place: Int, val reason: String, val about: Int)
+
+data class ActionStep(val kind: String, val title: String, val seconds: Double?, val item: Int?, val places: List<Int>, val refused: List<RefusedPlace>)
 
 private fun JSONArray?.ints(): List<Int> = this?.let { array -> (0 until array.length()).mapNotNull { at -> array.opt(at) as? Number }.map { it.toInt() } }.orEmpty()
 
@@ -54,7 +56,8 @@ fun actionSteps(view: JSONObject?): List<ActionStep> =
                 seconds = if (step.isNull("seconds")) null else step.optDouble("seconds"),
                 item = if (step.isNull("item")) null else step.optInt("item"),
                 places = step.optJSONArray("places").ints(),
-                refusal = if (step.isNull("refusal")) null else step.optString("refusal").ifBlank { null },
+                refused = step.optJSONArray("refused")?.let { all -> (0 until all.length()).mapNotNull { all.optJSONObject(it) } }.orEmpty()
+                    .map { RefusedPlace(it.optInt("place"), it.optString("reason"), it.optInt("about")) },
             )
         }
     }.orEmpty()
@@ -72,7 +75,7 @@ internal data class ShownAction(
     val item: Int?,
     val seconds: Double?,
     val places: List<Int>,
-    val refusal: String?,
+    val refused: List<RefusedPlace>,
 )
 
 private fun secondsText(seconds: Double?): String = seconds?.let { "${trimmedNumber(it)} s" }.orEmpty()
@@ -90,16 +93,18 @@ internal fun orderedActions(steps: List<ActionStep>, active: List<WaypointAction
             item = step.item,
             seconds = step.seconds,
             places = step.places,
-            refusal = step.refusal,
+            refused = step.refused,
         )
     } + active.filter { action -> steps.none { it.kind == action.kind.name } }.map { action ->
-        ShownAction(action, action.kind.name, action.title, action.value, action.icon, null, null, null, emptyList(), null)
+        ShownAction(action, action.kind.name, action.title, action.value, action.icon, null, null, null, emptyList(), emptyList())
     }
 
 internal fun <T> movedOrder(list: List<T>, from: Int, to: Int): List<T> =
     if (from !in list.indices || to !in list.indices) list else list.filterIndexed { at, _ -> at != from }.let { without -> without.take(to) + list[from] + without.drop(to) }
 
 internal fun canDrop(step: ShownAction?, to: Int?): Boolean = step?.place != null && to != null && to in step.places
+
+internal fun refusalAt(step: ShownAction?, to: Int?): RefusedPlace? = step?.refused?.firstOrNull { it.place == to }
 
 internal fun projectedPlaces(steps: List<ShownAction>, from: Int?, over: Int?): List<Int> {
     val identity = steps.indices.toList()
@@ -154,11 +159,13 @@ internal fun ActionOrderList(
     val projected = projectedPlaces(orderable, drag?.lifted, drag?.over)
     val active = drag?.let { orderable.getOrNull(it.lifted) }
     val refused = drag?.let { it.over != null && it.over != it.lifted && !canDrop(active, it.over) } == true
+    val refusal = if (refused) refusalAt(active, drag?.over) else null
     val outside = drag != null && drag?.over == null
     val gap = with(LocalDensity.current) { 8.dp.toPx() }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         orderable.forEachIndexed { at, step ->
             val lifted = drag?.lifted == at
+            val marked = !lifted && refusal?.about == at
             val shift = when {
                 drag == null || lifted -> 0f
                 else -> ((projected.getOrNull(at) ?: at) - at) * ((heights[drag?.lifted ?: 0] ?: 0f) + gap)
@@ -168,7 +175,7 @@ internal fun ActionOrderList(
             val moveTo = { to: Int -> dropMove(waypoint, step, to)?.let { onMove(it); true } ?: false }
             Box(
                 Modifier
-                    .zIndex(if (lifted) 1f else 0f)
+                    .zIndex(if (marked) 2f else if (lifted) 1f else 0f)
                     .graphicsLayer {
                         translationY = if (lifted) drag?.dy ?: 0f else offset
                         shadowElevation = if (lifted) 12f else 0f
@@ -202,17 +209,17 @@ internal fun ActionOrderList(
                         )
                     },
             ) {
-                ActionRow(shown, grip = true, lifted = lifted, refused = lifted && refused, onEdit = if (drag == null) onEdit(step) else null, onRemove = if (drag == null) onRemove(step) else null)
+                ActionRow(shown, grip = true, lifted = lifted, refused = lifted && refused, marked = marked, onEdit = if (drag == null) onEdit(step) else null, onRemove = if (drag == null) onRemove(step) else null)
             }
         }
-        if (refused) active?.refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        refusal?.let { Text(it.reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         if (outside) Text("Let go to put it back.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         fixed.forEach { step -> ActionRow(step, grip = false, onEdit = onEdit(step), onRemove = onRemove(step)) }
     }
 }
 
 @Composable
-private fun ActionRow(step: ShownAction, grip: Boolean, lifted: Boolean = false, refused: Boolean = false, onEdit: (() -> Unit)?, onRemove: (() -> Unit)?) {
+private fun ActionRow(step: ShownAction, grip: Boolean, lifted: Boolean = false, refused: Boolean = false, marked: Boolean = false, onEdit: (() -> Unit)?, onRemove: (() -> Unit)?) {
     Surface(
         onClick = onEdit ?: {},
         enabled = onEdit != null,
@@ -220,7 +227,7 @@ private fun ActionRow(step: ShownAction, grip: Boolean, lifted: Boolean = false,
         color = if (lifted) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
         tonalElevation = if (lifted) 6.dp else 0.dp,
-        border = if (refused) BorderStroke(2.dp, MaterialTheme.colorScheme.error) else null,
+        border = if (refused || marked) BorderStroke(2.dp, MaterialTheme.colorScheme.error) else null,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(Modifier.padding(start = if (grip) 4.dp else 12.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -9,13 +9,16 @@ import org.junit.Test
 class ActionOrderTest {
     private val anywhere = "[0,1,2,3]"
 
+    private fun refusedOutside(places: String): String =
+        (0..3).filterNot { "$it" in places }.joinToString(",", "[", "]") { """{"place":$it,"reason":"Hover stays first.","about":0}""" }
+
     private fun steps(hoverPlaces: String = anywhere, otherPlaces: String = anywhere): List<ActionStep> = actionSteps(
         JSONObject(
             """{"actions":[
-            {"kind":"Hover","title":"Hover","seconds":10,"item":null,"places":$hoverPlaces,"refusal":"stays first"},
-            {"kind":"Gimbal","title":"Gimbal","seconds":null,"item":null,"places":$otherPlaces,"refusal":null},
-            {"kind":"Camera","title":"Camera","seconds":null,"item":null,"places":$otherPlaces,"refusal":null},
-            {"kind":"Command","title":"Set servo","seconds":null,"item":5,"places":$otherPlaces,"refusal":null}]}""",
+            {"kind":"Hover","title":"Hover","seconds":10,"item":null,"places":$hoverPlaces,"refused":${refusedOutside(hoverPlaces)}},
+            {"kind":"Gimbal","title":"Gimbal","seconds":null,"item":null,"places":$otherPlaces,"refused":${refusedOutside(otherPlaces)}},
+            {"kind":"Camera","title":"Camera","seconds":null,"item":null,"places":$otherPlaces,"refused":${refusedOutside(otherPlaces)}},
+            {"kind":"Command","title":"Set servo","seconds":null,"item":5,"places":$otherPlaces,"refused":${refusedOutside(otherPlaces)}}]}""",
         ),
     )
 
@@ -41,6 +44,8 @@ class ActionOrderTest {
         val ordered = orderedActions(steps("[0]", "[1,2,3]"), active).filter { it.place != null }
         assertEquals("held over the hold, which may not move, no row makes room", listOf(0, 1, 2, 3), projectedPlaces(ordered, 3, 0))
         assertNull(dropMove(2, ordered[3], 0))
+        assertEquals("the reason names the hold, the row it is about", RefusedPlace(0, "Hover stays first.", 0), refusalAt(ordered[3], 0))
+        assertNull("a place it may take has no reason", refusalAt(ordered[3], 1))
         assertEquals(listOf(0, 2, 3, 1), projectedPlaces(ordered, 3, 1))
         assertEquals("[2, 3, 1]", dropMove(2, ordered[3], 1))
         assertNull("let go where it started", dropMove(2, ordered[3], 3))

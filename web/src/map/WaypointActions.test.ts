@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CameraExtras } from './ItemCamera';
 import { legLabels } from './MissionLayers';
 import { MissionItem } from './PlanBridge';
-import { actionSteps, canDrop, dropMove, movedOrder, orderedActions, orderedCount, projectedPlaces, shownAt } from './ActionOrderModel';
+import { actionSteps, canDrop, dropMove, movedOrder, orderedActions, orderedCount, projectedPlaces, refusalAt, shownAt } from './ActionOrderModel';
 import { activeActions, addActionsHint, cameraIcon, dropText, offeredActions, startingChoice, waypointDrop, waypointYaw } from './WaypointActions';
 
 describe('WaypointActionsTest', () => {
@@ -94,15 +94,17 @@ describe('WaypointActionsTest', () => {
     expect(offeredActions(noHold, noTurn, null, null, null).map((it) => it.title)).not.toContain('Drop payload');
   });
 
-  const coreSteps = (places: readonly (readonly number[])[], refusal: string | null = null) =>
+  const STAYS_FIRST = 'Hover stays first.';
+  const coreSteps = (places: readonly (readonly number[])[]) =>
     actionSteps({
-      actions: [
-        { kind: 'Hover', title: 'Hover', seconds: 10, item: null, places: places[0], refusal },
-        { kind: 'Gimbal', title: 'Gimbal', seconds: null, item: null, places: places[1], refusal: null },
-        { kind: 'Camera', title: 'Camera', seconds: null, item: null, places: places[2], refusal: null },
-        { kind: 'Command', title: 'Set servo', seconds: null, item: 5, places: places[3], refusal: null },
-        { kind: 'Drop', title: 'Drop', seconds: null, item: 6, places: places[4], refusal: null },
-      ],
+      actions: ['Hover', 'Gimbal', 'Camera', 'Command', 'Drop'].map((kind, at) => ({
+        kind,
+        title: kind === 'Command' ? 'Set servo' : kind,
+        seconds: kind === 'Hover' ? 10 : null,
+        item: kind === 'Command' ? 5 : kind === 'Drop' ? 6 : null,
+        places: places[at],
+        refused: [0, 1, 2, 3, 4].filter((place) => !(places[at] ?? []).includes(place)).map((place) => ({ place, reason: STAYS_FIRST, about: 0 })),
+      })),
     });
   const anywhere = [0, 1, 2, 3, 4];
   const active = () => activeActions({ seconds: 10.0, units: 's', path: 'h' }, { degrees: 90.0, units: 'deg', path: 'y' }, { labels, chosen: 1 }, { ...idleCamera, commandsGimbal: true, yaw: 60.0 }, dropFact({ index: 6, wait: 10 }));
@@ -119,8 +121,10 @@ describe('WaypointActionsTest', () => {
   });
 
   it('a slot the aircraft cannot fly opens nothing, and a drop there sends no move', () => {
-    const ordered = orderedActions(coreSteps([[0], [1, 2, 3, 4], [1, 2, 3, 4], [1, 2, 3, 4], [1, 2, 3, 4]], 'stays first'), active()).filter((it) => it.place !== null);
+    const ordered = orderedActions(coreSteps([[0], [1, 2, 3, 4], [1, 2, 3, 4], [1, 2, 3, 4], [1, 2, 3, 4]]), active()).filter((it) => it.place !== null);
     expect(projectedPlaces(ordered, 4, 0), 'the drop held over the first place: the hold may not move, so nothing makes room').toEqual([0, 1, 2, 3, 4]);
+    expect(refusalAt(ordered[4], 0), 'the reason names the hold, the row it is about').toEqual({ place: 0, reason: STAYS_FIRST, about: 0 });
+    expect(refusalAt(ordered[4], 1), 'a place it may take has no reason').toBeNull();
     expect(dropMove(2, ordered[4], 0), 'and letting go there sends nothing').toBeNull();
     expect(projectedPlaces(ordered, 4, 1)).toEqual([0, 2, 3, 4, 1]);
     expect(dropMove(2, ordered[4], 1), 'a place it may take is one move, from where it was to where it lands').toBe('[2,4,1]');

@@ -220,7 +220,7 @@ export const actionOrder = (page: Page): Locator => page.getByRole('list', { nam
 
 export const actionGrip = (page: Page, title: string): Locator => page.getByRole('button', { name: `Reorder ${title}`, exact: true });
 
-const centreOf = async (target: Locator): Promise<{ x: number; y: number }> => {
+export const centreOf = async (target: Locator): Promise<{ x: number; y: number }> => {
   const box = await target.boundingBox();
   if (box === null) throw new Error('the row is not on screen');
   return { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) };

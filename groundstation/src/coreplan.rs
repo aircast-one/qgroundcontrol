@@ -6787,7 +6787,7 @@ fn actions_fact(document: &Document, waypoint: usize) -> Value {
                 steps
                     .iter()
                     .zip(places)
-                    .map(|(step, (to, refusal))| {
+                    .map(|(step, (to, refused))| {
                         let title = match step.kind {
                             plandoc::StepKind::Wait => "Wait".to_string(),
                             plandoc::StepKind::Command => step
@@ -6805,7 +6805,10 @@ fn actions_fact(document: &Document, waypoint: usize) -> Value {
                             "seconds": step.seconds,
                             "item": step.item,
                             "places": to,
-                            "refusal": refusal,
+                            "refused": refused
+                                .iter()
+                                .map(|it| json!({ "place": it.place, "reason": it.reason, "about": it.about }))
+                                .collect::<Vec<_>>(),
                         })
                     })
                     .collect::<Vec<_>>()

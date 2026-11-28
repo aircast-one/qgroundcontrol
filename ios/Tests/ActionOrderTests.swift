@@ -2,13 +2,17 @@ import XCTest
 @testable import Aircast
 
 final class ActionOrderTests: XCTestCase {
+    private func refusedOutside(_ places: String) -> String {
+        "[" + (0...3).filter { !places.contains("\($0)") }.map { #"{"place":\#($0),"reason":"Hover stays first.","about":0}"# }.joined(separator: ",") + "]"
+    }
+
     private func steps(_ hoverPlaces: String = "[0,1,2,3]", _ otherPlaces: String = "[0,1,2,3]") -> [ActionStep] {
         actionSteps(JSON.parse(#"""
         {"actions":[
-        {"kind":"Hover","title":"Hover","seconds":10,"item":null,"places":\#(hoverPlaces),"refusal":"stays first"},
-        {"kind":"Gimbal","title":"Gimbal","seconds":null,"item":null,"places":\#(otherPlaces),"refusal":null},
-        {"kind":"Camera","title":"Camera","seconds":null,"item":null,"places":\#(otherPlaces),"refusal":null},
-        {"kind":"Command","title":"Set servo","seconds":null,"item":5,"places":\#(otherPlaces),"refusal":null}]}
+        {"kind":"Hover","title":"Hover","seconds":10,"item":null,"places":\#(hoverPlaces),"refused":\#(refusedOutside(hoverPlaces))},
+        {"kind":"Gimbal","title":"Gimbal","seconds":null,"item":null,"places":\#(otherPlaces),"refused":\#(refusedOutside(otherPlaces))},
+        {"kind":"Camera","title":"Camera","seconds":null,"item":null,"places":\#(otherPlaces),"refused":\#(refusedOutside(otherPlaces))},
+        {"kind":"Command","title":"Set servo","seconds":null,"item":5,"places":\#(otherPlaces),"refused":\#(refusedOutside(otherPlaces))}]}
         """#))
     }
 
@@ -32,6 +36,8 @@ final class ActionOrderTests: XCTestCase {
         let ordered = orderedActions(steps("[0]", "[1,2,3]"), active).filter { $0.place != nil }
         XCTAssertEqual(projectedPlaces(ordered, 3, 0), [0, 1, 2, 3])
         XCTAssertNil(dropMove(2, ordered[3], 0))
+        XCTAssertEqual(refusalAt(ordered[3], 0), RefusedPlace(place: 0, reason: "Hover stays first.", about: 0), "the reason names the hold, the row it is about")
+        XCTAssertNil(refusalAt(ordered[3], 1), "a place it may take has no reason")
         XCTAssertEqual(projectedPlaces(ordered, 3, 1), [0, 2, 3, 1])
         XCTAssertEqual(dropMove(2, ordered[3], 1), ActionMove(waypoint: 2, from: 3, to: 1))
         XCTAssertNil(dropMove(2, ordered[3], 3))

@@ -2934,10 +2934,24 @@ fn delay_of(seconds: f64) -> Simple {
     )
 }
 
-pub const HOLD_STAYS_FIRST: &str = "This hold is the waypoint's own and stays first: the aircraft can only wait later for a second or more, and only a multirotor waits over a point.";
-pub const MODE_BEFORE_CAMERA: &str = "The camera mode is set before the photo or video it is for, or the camera shoots in the old mode.";
+pub const HOLD_STAYS_FIRST: &str =
+    "Hover stays first. To wait later in the list, make it 1 s or longer.";
+pub const PLANE_HOLD_STAYS_FIRST: &str =
+    "Hover stays first. A plane can't stop in the air, so it can't wait between other actions.";
+pub const VEHICLE_HOLD_STAYS_FIRST: &str =
+    "Hover stays first. This vehicle can't wait between other actions.";
+pub const MODE_BEFORE_CAMERA: &str =
+    "Set the camera mode before the photo or video. Otherwise the camera shoots in the old mode.";
 
-fn flyable(doc: &Document, order: &[&Step]) -> Result<(), String> {
+fn hold_stays_first(doc: &Document) -> &'static str {
+    match vehicle_class(doc.vehicle_type) {
+        VehicleClass::MultiRotor => HOLD_STAYS_FIRST,
+        VehicleClass::FixedWing | VehicleClass::Vtol => PLANE_HOLD_STAYS_FIRST,
+        _ => VEHICLE_HOLD_STAYS_FIRST,
+    }
+}
+
+fn refused(doc: &Document, order: &[&Step]) -> Option<(&'static str, &'static [StepKind])> {
     let hover_moved = order.iter().enumerate().any(|(at, step)| {
         step.kind == StepKind::Hover
             && at > 0
@@ -2952,10 +2966,29 @@ fn flyable(doc: &Document, order: &[&Step]) -> Result<(), String> {
         _ => false,
     };
     match (hover_moved, shoots_first) {
-        (true, _) => Err(HOLD_STAYS_FIRST.to_string()),
-        (_, true) => Err(MODE_BEFORE_CAMERA.to_string()),
-        _ => Ok(()),
+        (true, _) => Some((hold_stays_first(doc), &[StepKind::Hover])),
+        (_, true) => Some((MODE_BEFORE_CAMERA, &[StepKind::Mode, StepKind::Camera])),
+        _ => None,
     }
+}
+
+fn flyable(doc: &Document, order: &[&Step]) -> Result<(), String> {
+    refused(doc, order).map_or(Ok(()), |(reason, _)| Err(reason.to_string()))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefusedPlace {
+    pub place: usize,
+    pub reason: &'static str,
+    pub about: usize,
+}
+
+fn concerned(listed: &[Step], from: usize, about: &[StepKind]) -> usize {
+    about
+        .iter()
+        .filter_map(|kind| listed.iter().position(|step| step.kind == *kind))
+        .find(|at| *at != from)
+        .unwrap_or(from)
 }
 
 fn moved<'a>(listed: &'a [Step], from: usize, to: usize) -> Vec<&'a Step> {
@@ -2977,21 +3010,31 @@ pub fn action_places(
     doc: &Document,
     waypoint_visual: usize,
     servos: &[crate::payloadcheck::Servo],
-) -> Option<Vec<(Vec<usize>, Option<String>)>> {
+) -> Option<Vec<(Vec<usize>, Vec<RefusedPlace>)>> {
     let listed = steps(doc, waypoint_visual, servos)?;
     Some(
         (0..listed.len())
             .map(|from| {
-                let answers: Vec<(usize, Result<(), String>)> = (0..listed.len())
-                    .map(|to| (to, flyable(doc, &moved(&listed, from, to))))
+                let answers: Vec<(usize, Option<(&'static str, &'static [StepKind])>)> = (0
+                    ..listed.len())
+                    .map(|to| (to, refused(doc, &moved(&listed, from, to))))
                     .collect();
                 (
                     answers
                         .iter()
-                        .filter(|(_, answer)| answer.is_ok())
+                        .filter(|(_, answer)| answer.is_none())
                         .map(|(to, _)| *to)
                         .collect(),
-                    answers.iter().find_map(|(_, answer)| answer.clone().err()),
+                    answers
+                        .iter()
+                        .filter_map(|(to, answer)| {
+                            answer.map(|(reason, about)| RefusedPlace {
+                                place: *to,
+                                reason,
+                                about: concerned(&listed, from, about),
+                            })
+                        })
+                        .collect(),
                 )
             })
             .collect(),
@@ -5248,10 +5291,23 @@ mod tests {
             "on a multirotor every action may go anywhere: a ten second hold becomes a wait"
         );
         let brief = set_param(&first, 2, 1, 0.5).unwrap();
+        let hold_refused = |place| RefusedPlace {
+            place,
+            reason: HOLD_STAYS_FIRST,
+            about: 0,
+        };
         assert_eq!(
             action_places(&brief, 2, &servos).unwrap()[0],
-            (vec![0], Some(HOLD_STAYS_FIRST.to_string())),
+            (
+                vec![0],
+                vec![hold_refused(1), hold_refused(2), hold_refused(3)]
+            ),
             "a hold shorter than a second cannot become a wait, so it may not leave first place"
+        );
+        assert_eq!(
+            action_places(&brief, 2, &servos).unwrap()[2].1,
+            vec![hold_refused(0)],
+            "the photo held over first place is refused for the hold's sake, and the hold is the row the reason is about"
         );
         assert_eq!(
             places(&brief)[1..],
@@ -5275,6 +5331,21 @@ mod tests {
             move_action(&moded, 2, mode_at, camera_at, &servos).unwrap_err(),
             MODE_BEFORE_CAMERA,
             "a camera mode dropped after the photo it is for would leave the photo in the old mode"
+        );
+        let refusal_at = |from: usize, to: usize| {
+            action_places(&moded, 2, &servos).unwrap()[from]
+                .1
+                .iter()
+                .find(|refused| refused.place == to)
+                .map(|refused| refused.about)
+        };
+        assert_eq!(
+            (
+                refusal_at(mode_at, camera_at),
+                refusal_at(camera_at, mode_at)
+            ),
+            (Some(camera_at), Some(mode_at)),
+            "a refusal points at the other row of the pair: the photo when the mode is dragged past it, the mode when the photo is dragged above it"
         );
         assert!(
             mode_at < camera_at && !places(&moded)[mode_at].contains(&camera_at),

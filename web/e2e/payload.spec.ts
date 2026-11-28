@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { actionGrip, actionOrder, armPayload, closeSettings, connectMock, dropFromStrip, expect, flightMode, itemCount, keyboardMoveAction, mouseDragAction, openMenu, openPlanAtVehicle, savedMission, showMapFull, slideAcross, takeOff, tapPlanMission, test, touchDragAction, vehicleStatus } from './fixtures';
+import { actionGrip, actionOrder, armPayload, centreOf, closeSettings, connectMock, dropFromStrip, expect, flightMode, itemCount, keyboardMoveAction, mouseDragAction, openMenu, openPlanAtVehicle, savedMission, showMapFull, slideAcross, takeOff, tapPlanMission, test, touchDragAction, vehicleStatus } from './fixtures';
 
 test.describe.configure({ timeout: 180_000 });
 test.use({ video: process.env.E2E_VIDEO === undefined ? 'off' : { mode: 'on', size: { width: 1280, height: 800 } } });
@@ -241,8 +241,11 @@ test('an order the aircraft cannot fly opens no slot and sends nothing, and drag
   const before = afterWaypoint(await savedMission(vehicle), 1);
   await mouseDragAction(vehicle, 'Take photo', order.nth(0), {
     whileHeld: async () => {
-      await expect(vehicle.getByText(/^This hold is the waypoint's own and stays first/), 'held over the hold, the photo says why it cannot go there').toBeVisible();
+      await expect(vehicle.getByText('Hover stays first. To wait later in the list, make it 1 s or longer.', { exact: true }), 'held over the hold, the photo says why it cannot go there').toBeVisible();
       await expect(order.nth(0), 'and no slot opens: the hold stays first').toHaveText(/^Hover/);
+      await expect(order.nth(0), 'the hold is the row the reason is about, and it is marked so').toHaveAccessibleDescription(/^Hover stays first/);
+      const hold = await centreOf(order.nth(0));
+      expect(await vehicle.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('li')?.textContent ?? '', [hold.x, hold.y] as const), 'and it stays in view, above the photo held over it').toMatch(/^Hover0\.5 s/);
       await expect.poll(() => order.evaluateAll((rows) => rows.map((row) => new DOMMatrix(getComputedStyle(row).transform).m42)), { message: 'and no row slides aside to make room' }).toEqual([0, 0, 0]);
       if (PROOF) await vehicle.screenshot({ path: `${PROOF}/drag-refused.png` });
     },

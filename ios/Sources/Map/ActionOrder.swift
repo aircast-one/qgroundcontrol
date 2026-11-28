@@ -1,12 +1,18 @@
 import SwiftUI
 
+struct RefusedPlace: Equatable {
+    let place: Int
+    let reason: String
+    let about: Int
+}
+
 struct ActionStep: Equatable {
     let kind: String
     let title: String
     let seconds: Double?
     let item: Int?
     let places: [Int]
-    let refusal: String?
+    let refused: [RefusedPlace]
 }
 
 func actionSteps(_ view: JSON?) -> [ActionStep] {
@@ -17,7 +23,7 @@ func actionSteps(_ view: JSON?) -> [ActionStep] {
             seconds: step["seconds"].isNull ? nil : step["seconds"].nonNanDouble,
             item: step["item"].isNull ? nil : step["item"].int(0),
             places: step["places"].array.compactMap { $0.isNull ? nil : $0.int(-1) }.filter { $0 >= 0 },
-            refusal: step["refusal"].isNull || step["refusal"].string.isBlank ? nil : step["refusal"].string
+            refused: step["refused"].array.map { RefusedPlace(place: $0["place"].int(-1), reason: $0["reason"].string, about: $0["about"].int(-1)) }
         )
     }
 }
@@ -35,7 +41,7 @@ struct ShownAction: Equatable {
     let item: Int?
     let seconds: Double?
     let places: [Int]
-    let refusal: String?
+    let refused: [RefusedPlace]
 }
 
 private func secondsText(_ seconds: Double?) -> String { seconds.map { "\(trimmedNumber($0)) s" } ?? "" }
@@ -53,11 +59,11 @@ func orderedActions(_ steps: [ActionStep], _ active: [WaypointAction]) -> [Shown
             item: step.item,
             seconds: step.seconds,
             places: step.places,
-            refusal: step.refusal
+            refused: step.refused
         )
     }
     let fixed = active.filter { action in !steps.contains { $0.kind == "\(action.kind)" } }.map { action in
-        ShownAction(action: action, kind: "\(action.kind)", title: action.title, value: action.value, icon: action.icon, place: nil, item: nil, seconds: nil, places: [], refusal: nil)
+        ShownAction(action: action, kind: "\(action.kind)", title: action.title, value: action.value, icon: action.icon, place: nil, item: nil, seconds: nil, places: [], refused: [])
     }
     return listed + fixed
 }
@@ -73,6 +79,10 @@ func canDrop(_ step: ShownAction?, _ to: Int?) -> Bool {
     return step.places.contains(to)
 }
 
+func refusalAt(_ step: ShownAction?, _ to: Int?) -> RefusedPlace? {
+    step?.refused.first { $0.place == to }
+}
+
 func projectedPlaces(_ steps: [ShownAction], _ from: Int?, _ over: Int?) -> [Int] {
     let identity = Array(steps.indices)
     guard let from, let over, steps.indices.contains(from), canDrop(steps[from], over) else { return identity }
@@ -82,7 +92,7 @@ func projectedPlaces(_ steps: [ShownAction], _ from: Int?, _ over: Int?) -> [Int
 
 func shownAt(_ step: ShownAction, _ place: Int) -> ShownAction {
     guard step.kind == HOVER, place > 0 else { return step }
-    return ShownAction(action: step.action, kind: step.kind, title: WAIT, value: secondsText(step.seconds), icon: .pause, place: step.place, item: step.item, seconds: step.seconds, places: step.places, refusal: step.refusal)
+    return ShownAction(action: step.action, kind: step.kind, title: WAIT, value: secondsText(step.seconds), icon: .pause, place: step.place, item: step.item, seconds: step.seconds, places: step.places, refused: step.refused)
 }
 
 struct ActionMove: Equatable {
@@ -148,13 +158,15 @@ struct ActionOrderList: View {
         let projected = projectedPlaces(rows, drag?.lifted, drag?.over)
         let active = drag.flatMap { rows.indices.contains($0.lifted) ? rows[$0.lifted] : nil }
         let refused = drag.map { $0.over != nil && $0.over != $0.lifted && !canDrop(active, $0.over) } ?? false
+        let refusal = refused ? refusalAt(active, drag?.over) : nil
         VStack(alignment: .leading, spacing: ROW_GAP) {
             ForEach(Array(rows.enumerated()), id: \.offset) { at, step in
                 let lifted = drag?.lifted == at
+                let marked = !lifted && refusal?.about == at
                 let shown = shownAt(step, at < projected.count ? projected[at] : at)
-                ActionOrderRow(step: shown, grip: true, lifted: lifted, refused: lifted && refused, onEdit: drag == nil ? onEdit(step) : nil, onRemove: drag == nil ? onRemove(step) : nil)
+                ActionOrderRow(step: shown, grip: true, lifted: lifted, refused: lifted && refused, marked: marked, onEdit: drag == nil ? onEdit(step) : nil, onRemove: drag == nil ? onRemove(step) : nil)
                     .offset(y: lifted ? drag?.dy ?? 0 : shift(at, projected))
-                    .zIndex(lifted ? 1 : 0)
+                    .zIndex(marked ? 2 : lifted ? 1 : 0)
                     .animation(lifted ? nil : .snappy, value: projected)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SPACE)) } action: { frame in
                         if drag == nil { frames[at] = frame }
@@ -165,14 +177,14 @@ struct ActionOrderList: View {
                         if canDrop(step, at + 1) { Button("Move \(shown.title) later") { dropMove(waypoint, step, at + 1).map(onMove) } }
                     }
             }
-            if refused, let reason = active?.refusal {
+            if let reason = refusal?.reason {
                 Text(reason).font(.bodySmall).foregroundStyle(theme.colors.error).fixedSize(horizontal: false, vertical: true)
             }
             if drag != nil, drag?.over == nil {
                 Text("Let go to put it back.").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
             }
             ForEach(steps.filter { $0.place == nil }, id: \.kind) { step in
-                ActionOrderRow(step: step, grip: false, lifted: false, refused: false, onEdit: onEdit(step), onRemove: onRemove(step))
+                ActionOrderRow(step: step, grip: false, lifted: false, refused: false, marked: false, onEdit: onEdit(step), onRemove: onRemove(step))
             }
         }
         .coordinateSpace(.named(SPACE))
@@ -206,6 +218,7 @@ private struct ActionOrderRow: View {
     let grip: Bool
     let lifted: Bool
     let refused: Bool
+    let marked: Bool
     let onEdit: (() -> Void)?
     let onRemove: (() -> Void)?
     @Environment(\.theme) private var theme
@@ -243,7 +256,7 @@ private struct ActionOrderRow: View {
         .foregroundStyle(theme.colors.onSecondaryContainer)
         .background(lifted ? theme.colors.surfaceContainerHighest : theme.colors.secondaryContainer, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
-            if refused { RoundedRectangle(cornerRadius: 14).stroke(theme.colors.error, lineWidth: 2) }
+            if refused || marked { RoundedRectangle(cornerRadius: 14).stroke(theme.colors.error, lineWidth: 2) }
         }
         .shadow(color: .black.opacity(lifted ? 0.45 : 0), radius: lifted ? 10 : 0, y: lifted ? 6 : 0)
     }
