@@ -3,7 +3,7 @@ import { DESKTOP_QUERY } from '../src/ui/DesktopLayout';
 
 export const APP = '/';
 
-const passFirstRun = async (page: Page) => {
+export const passFirstRun = async (page: Page) => {
   const welcome = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Welcome to Aircast' }) });
   await welcome.getByRole('button', { name: 'Continue' }).click();
   await expect(welcome).toBeHidden();

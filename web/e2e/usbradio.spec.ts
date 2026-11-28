@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
-import { closeSettings, expect, openApp, openMenu, test } from './fixtures';
-import { lastAnswer, plugInR2d2Radio, setRadioChannels, setRadioStreaming } from './r2d2';
+import { closeSettings, expect, openMenu, test } from './fixtures';
+import { RADIO_FOUND, lastAnswer, openAppAndUseRadio, setRadioChannels, setRadioStreaming } from './r2d2';
 import { type Sitl, connectSitl, startSitl } from './sitl';
 
 const ROLL = 0;
@@ -26,8 +26,6 @@ const running = (): Sitl => {
 };
 
 const channel = (index: number) => () => running().heard.rc[index] ?? 0;
-
-const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it?';
 const DETECTED_RADIO = 'EdgeTX radio (webserial-0)';
 
 const openRadioSettings = async (page: Page) => {
@@ -44,11 +42,7 @@ test('a radio streaming the script is found by what it sends, offered once, and 
   test.setTimeout(300_000);
   await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
   await page.addLocatorHandler(page.getByText(/ before this vehicle can fly\.$/), () => page.getByRole('button', { name: 'Later', exact: true }).click());
-  await plugInR2d2Radio(page);
-  await openApp(page);
-
-  await expect(page.getByText(RADIO_FOUND), 'the auto-connect link that opened the radio as an ArduPilot board hears its lines instead of MAVLink').toBeVisible({ timeout: 30_000 });
-  await page.getByRole('button', { name: 'Use', exact: true }).click();
+  await openAppAndUseRadio(page, 'the auto-connect link that opened the radio as an ArduPilot board hears its lines instead of MAVLink');
 
   await connectSitl(page, running().ws);
   await openMenu(page, 'All status');

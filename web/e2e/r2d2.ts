@@ -1,5 +1,7 @@
 import type { Page } from '@playwright/test';
-import { closeSettings, expect, openAircraftSetup } from './fixtures';
+import { closeSettings, expect, openAircraftSetup, openApp, passFirstRun } from './fixtures';
+
+export const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it?';
 
 export const STM32_VCP_VENDOR = 0x0483;
 export const STM32_VCP_PRODUCT = 0x5740;
@@ -50,6 +52,14 @@ const installRadio = ({ vendor, product }: { vendor: number; product: number }) 
 };
 
 export const plugInR2d2Radio = (page: Page) => page.addInitScript(installRadio, { vendor: STM32_VCP_VENDOR, product: STM32_VCP_PRODUCT });
+
+export const openAppAndUseRadio = async (page: Page, found?: string) => {
+  await plugInR2d2Radio(page);
+  await openApp(page, { firstRun: false });
+  await expect(page.getByText(RADIO_FOUND), found).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Use', exact: true }).click();
+  await passFirstRun(page);
+};
 
 export const setRadioChannels = (page: Page, raw: Readonly<Record<number, number>>) => page.evaluate((values) => (window as RadioWindow).radioChannels?.(values), raw);
 

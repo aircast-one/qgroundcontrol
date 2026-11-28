@@ -1,16 +1,11 @@
-import { connectMock, expect, flightMode, openApp, openMenu, test } from './fixtures';
-import { plugInR2d2Radio, setRadioChannels } from './r2d2';
-
-const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it?';
+import { connectMock, expect, flightMode, openMenu, test } from './fixtures';
+import { openAppAndUseRadio, setRadioChannels } from './r2d2';
 
 test('the R2D2 camera sliders point the gimbal and the zoom knob sets the zoom', async ({ page }) => {
   test.setTimeout(180_000);
   await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
   await page.addLocatorHandler(page.getByText(/ before this vehicle can fly\.$/), () => page.getByRole('button', { name: 'Later', exact: true }).click());
-  await plugInR2d2Radio(page);
-  await openApp(page);
-  await expect(page.getByText(RADIO_FOUND)).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('button', { name: 'Use', exact: true }).click();
+  await openAppAndUseRadio(page);
 
   await connectMock(page, ['Enable camera', 'Enable gimbal']);
   await expect(page.getByRole('button', { name: /^Zoom \d+%$/ })).toBeVisible({ timeout: 30_000 });
@@ -39,10 +34,7 @@ test('the SD switch hands the left stick to the camera in a mode that holds alti
   test.setTimeout(180_000);
   await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
   await page.addLocatorHandler(page.getByText(/ before this vehicle can fly\.$/), () => page.getByRole('button', { name: 'Later', exact: true }).click());
-  await plugInR2d2Radio(page);
-  await openApp(page);
-  await expect(page.getByText(RADIO_FOUND)).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('button', { name: 'Use', exact: true }).click();
+  await openAppAndUseRadio(page);
 
   await connectMock(page, ['Enable camera', 'Enable gimbal'], 'APM ArduCopter Vehicle');
   await openMenu(page, 'All status');

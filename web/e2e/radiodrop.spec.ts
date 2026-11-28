@@ -1,8 +1,6 @@
 import type { Page } from '@playwright/test';
-import { closeSettings, connectMock, expect, openApp, openMenu, test } from './fixtures';
-import { plugInR2d2Radio, readFlightModesOn, setRadioChannels } from './r2d2';
-
-const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it?';
+import { closeSettings, connectMock, expect, openMenu, test } from './fixtures';
+import { openAppAndUseRadio, readFlightModesOn, setRadioChannels } from './r2d2';
 const SIX_POS = [-1024, -614, -205, 205, 614, 1024] as const;
 
 const flip = async (page: Page, raw: Readonly<Record<number, number>>) => {
@@ -12,10 +10,7 @@ const flip = async (page: Page, raw: Readonly<Record<number, number>>) => {
 const flyWithRadio = async (page: Page, onConnect: () => Promise<void> = async () => undefined) => {
   await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
   await page.addLocatorHandler(page.getByText(/ before this vehicle can fly\.$/), () => page.getByRole('button', { name: 'Later', exact: true }).click());
-  await plugInR2d2Radio(page);
-  await openApp(page);
-  await expect(page.getByText(RADIO_FOUND)).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('button', { name: 'Use', exact: true }).click();
+  await openAppAndUseRadio(page);
   await connectMock(page, [], 'APM ArduCopter Vehicle');
   await onConnect();
   await openMenu(page, 'All status');

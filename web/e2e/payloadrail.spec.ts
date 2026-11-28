@@ -1,8 +1,6 @@
 import type { Page } from '@playwright/test';
 import { closeSettings, connectMock, expect, openApp, openMenu, test } from './fixtures';
-import { lastAnswer, plugInR2d2Radio, readFlightModesOn, setRadioChannels } from './r2d2';
-
-const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it?';
+import { lastAnswer, openAppAndUseRadio, readFlightModesOn, setRadioChannels } from './r2d2';
 const SIX_POS = [-1024, -614, -205, 205, 614, 1024] as const;
 const R2D2_SIX_POS = [-179, -154, -127, -100, -73, -46] as const;
 const SAFE = 'The payload is safe. Arm it first.';
@@ -49,10 +47,7 @@ test("the lock and the radio's BOMARM switch both arm, the last one moved wins, 
   test.setTimeout(180_000);
   await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
   await page.addLocatorHandler(page.getByText(/ before this vehicle can fly\.$/), () => page.getByRole('button', { name: 'Later', exact: true }).click());
-  await plugInR2d2Radio(page);
-  await openApp(page);
-  await expect(page.getByText(RADIO_FOUND)).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('button', { name: 'Use', exact: true }).click();
+  await openAppAndUseRadio(page);
   await connectMock(page, [], 'APM ArduCopter Vehicle');
   await fourServoBays(page);
   await readFlightModesOn(page, 10);
@@ -84,10 +79,7 @@ test("a radio whose 6POS neither EdgeTX nor R2D2 reads picks no bay until it is 
   const ladder = [-32, -16, 0, 16, 32, 48] as const;
   await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
   await page.addLocatorHandler(page.getByText(/ before this vehicle can fly\.$/), () => page.getByRole('button', { name: 'Later', exact: true }).click());
-  await plugInR2d2Radio(page);
-  await openApp(page);
-  await expect(page.getByText(RADIO_FOUND)).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('button', { name: 'Use', exact: true }).click();
+  await openAppAndUseRadio(page);
   await connectMock(page, [], 'APM ArduCopter Vehicle');
   await fourServoBays(page);
   await readFlightModesOn(page, 10);
