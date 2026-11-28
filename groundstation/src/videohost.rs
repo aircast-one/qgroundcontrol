@@ -250,7 +250,7 @@ fn recording_refusal(host: &Host, records_itself: bool) -> Option<&'static str> 
 fn begin_recording() -> Result<(), Option<&'static str>> {
     let mut guard = synced();
     let host = guard.as_mut().ok_or(None)?;
-    if let Some(refusal) = recording_refusal(host, BROWSER) {
+    if let Some(refusal) = recording_refusal(host, BROWSER || PIPELINE_PLAYS_HLS) {
         return Err(Some(refusal));
     }
     match host.state.record_refusal() {
@@ -427,6 +427,7 @@ pub fn whep_endpoint(uri: &str) -> Option<String> {
 const BUFFERED_AFTER_FAILURES: u32 = 2;
 const BUFFERED_START_BUDGETS: u32 = 2;
 const BROWSER: bool = cfg!(target_family = "wasm");
+const PIPELINE_PLAYS_HLS: bool = cfg!(target_os = "android");
 
 pub fn falls_back_to_buffered(browser: bool, failures: u32, uri: &str) -> bool {
     browser && failures >= BUFFERED_AFTER_FAILURES && hls_twin(uri).is_some()
@@ -442,6 +443,13 @@ pub fn hls_twin(uri: &str) -> Option<String> {
             .then(|| stream.replacen(":8889/", ":8888/", 1))?,
     };
     Some(format!("{twin}/index.m3u8"))
+}
+
+fn buffered_pipeline(twin: &str) -> String {
+    format!(
+        "urisourcebin uri={} ! {TS_VIDEO} ! {RECORD_TEE} ! decodebin3 ! {NATIVE_SINK} sync=true",
+        quoted(twin)
+    )
 }
 
 pub const BROWSER_PLAYS_WHEP_ONLY: &str = "This browser can only play WebRTC (WHEP) streams. Pick a WHEP source, or use the Aircast app for this camera.";
@@ -782,18 +790,23 @@ fn object(host: &Host) -> Value {
 }
 
 fn pipeline_for(host: &Host, channel: usize) -> Option<String> {
+    pipeline_on(host, channel, PIPELINE_PLAYS_HLS)
+}
+
+fn pipeline_on(host: &Host, channel: usize, plays_hls: bool) -> Option<String> {
     let uri = host.state.desired_uri(CHANNEL_RECEIVERS.get(channel)?);
-    (host.channels[channel].wanted
-        && host.state.has_video()
-        && buffered_uri(host, channel).is_none())
-    .then(|| {
-        pipeline(
-            &oriented(&uri, host.camera_rotation),
-            setting("rtpJitterLatencyMs").as_i64().unwrap_or(150),
-            host.state.settings.low_latency,
-        )
-    })
-    .flatten()
+    match hls_for(host, channel) {
+        Some(twin) => plays_hls.then(|| buffered_pipeline(&twin)),
+        None => (host.channels[channel].wanted && host.state.has_video())
+            .then(|| {
+                pipeline(
+                    &oriented(&uri, host.camera_rotation),
+                    setting("rtpJitterLatencyMs").as_i64().unwrap_or(150),
+                    host.state.settings.low_latency,
+                )
+            })
+            .flatten(),
+    }
 }
 
 fn preview_pipeline(host: &Host, shown: &Preview) -> Option<String> {
@@ -1365,7 +1378,9 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
                     let running = given.get(0).and_then(Value::as_bool).unwrap_or(false);
                     if channel == MAIN_CHANNEL {
                         crate::videostats::sample(
-                            running && buffered_uri(host, MAIN_CHANNEL).is_none(),
+                            running
+                                && (PIPELINE_PLAYS_HLS
+                                    || buffered_uri(host, MAIN_CHANNEL).is_none()),
                             number(1),
                             number(3),
                             crate::hub::now_ms(),
@@ -2177,7 +2192,7 @@ mod tests {
         played(&mut plain, MAIN_CHANNEL, 60_500, 200_000, |_| 0);
         assert!(
             plain.channels[MAIN_CHANNEL].buffered.is_none(),
-            "Android's player has no HLS demuxer: however often WebRTC fails it keeps retrying WebRTC"
+            "a head that never said it plays buffered video keeps retrying WebRTC however often it fails"
         );
         let mut phone = buffering(hosted(WHEP_PAIR, 0, false));
         assert!(pipeline_for(&phone, MAIN_CHANNEL).is_some());
@@ -2206,6 +2221,31 @@ mod tests {
             "and the way back hands the pipeline back"
         );
         assert_eq!(recording_refusal(&phone, false), None);
+    }
+
+    #[test]
+    fn a_phone_whose_pipeline_plays_hls_runs_the_twin_through_it_records_it_and_hands_webrtc_back()
+    {
+        let mut phone = buffering(hosted(WHEP_PAIR, 0, false));
+        played(&mut phone, MAIN_CHANNEL, 500, 21_000, |_| 0);
+        assert_eq!(
+            pipeline_on(&phone, MAIN_CHANNEL, true),
+            Some(format!(
+                "urisourcebin uri=\"{FRONT_HLS}\" ! {TS_VIDEO} ! {RECORD_TEE} ! decodebin3 ! {NATIVE_SINK} sync=true"
+            )),
+            "the WebRTC pipeline is swapped for one that plays the twin, with the recording tee in it"
+        );
+        assert_eq!(
+            recording_refusal(&phone, true),
+            None,
+            "so Record goes on working while the picture is buffered"
+        );
+        try_low_latency(&mut phone, MAIN_CHANNEL, 21_500);
+        assert!(
+            pipeline_on(&phone, MAIN_CHANNEL, true)
+                .is_some_and(|text| text.starts_with("whepsrc ")),
+            "and Try low latency swaps WebRTC back in"
+        );
     }
 
     fn endpoints(host: &Host, channel: usize) -> (Value, Value) {

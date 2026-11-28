@@ -66,7 +66,7 @@
         "srtp",
         "sctp"
       ],
-      "android": ["androidmedia"],
+      "android": ["androidmedia", "adaptivedemux2", "soup"],
       "apple": ["applemedia"],
       "windows": ["d3d", "d3d11", "d3d12", "dav1d", "nvcodec"],
       "linux": ["nvcodec", "qsv", "va", "vulkan"]
