@@ -284,22 +284,18 @@ private struct VehicleStatusReadings: View {
     }
 
     private func reorder(_ keys: [String], _ key: String) -> some Gesture {
-        LongPressGesture(minimumDuration: REORDER_HOLD_SECONDS)
-            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
-            .onChanged { value in
-                guard case .second(true, let drag?) = value else { return }
-                dragging = key
-                dragX = drag.translation.width
-            }
-            .onEnded { value in
-                withAnimation(.snappy) {
-                    if case .second(true, let drag?) = value {
-                        flyScreen.layout.saveIndicatorOrder(droppedOrder(keys, centres, key, drag.translation.width))
-                    }
-                    dragging = nil
-                    dragX = 0
+        holdToReorder(holding: REORDER_HOLD_SECONDS) { moved in
+            dragging = key
+            dragX = moved.width
+        } onEnded: { moved in
+            withAnimation(.snappy) {
+                if let moved {
+                    flyScreen.layout.saveIndicatorOrder(droppedOrder(keys, centres, key, moved.width))
                 }
+                dragging = nil
+                dragX = 0
             }
+        }
     }
 
     @ViewBuilder

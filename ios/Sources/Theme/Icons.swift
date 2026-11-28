@@ -16,6 +16,7 @@ enum Icon: String {
     case checkCircle = "checkmark.circle.fill"
     case chevronRight = "chevron.right"
     case close = "xmark"
+    case dragHandle = "line.3.horizontal"
     case closeFullscreen = "arrow.down.right.and.arrow.up.left"
     case contentCopy = "doc.on.doc"
     case cloud = "cloud"

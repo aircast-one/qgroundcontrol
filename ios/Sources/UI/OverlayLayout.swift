@@ -166,6 +166,19 @@ func movedAmongShown(_ keys: [String], _ centres: [String: CGFloat], _ key: Stri
     movedKey(keys.filter { centres[$0] != nil }, key, delta).map { reorderedAmongShown(keys, $0) }
 }
 
+func holdToReorder(holding seconds: Double, onChanged: @escaping (CGSize) -> Void, onEnded: @escaping (CGSize?) -> Void) -> some Gesture {
+    LongPressGesture(minimumDuration: seconds)
+        .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
+        .onChanged { value in
+            guard case .second(true, let drag?) = value else { return }
+            onChanged(drag.translation)
+        }
+        .onEnded { value in
+            guard case .second(true, let drag?) = value else { return onEnded(nil) }
+            onEnded(drag.translation)
+        }
+}
+
 func droppedOrder(_ keys: [String], _ centres: [String: CGFloat], _ key: String, _ dx: CGFloat) -> [String] {
     let at = { (shown: String) in (centres[shown] ?? 0) + (shown == key ? dx : 0) }
     return reorderedAmongShown(keys, keys.filter { centres[$0] != nil }.sorted { at($0) < at($1) })

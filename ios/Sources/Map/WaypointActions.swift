@@ -42,6 +42,11 @@ func waypointDrop(_ view: JSON?) -> WaypointDrop? {
 let PLACE_DROP = "core.plan.placeDrop"
 let REMOVE_DROP = "core.plan.removeDrop"
 let SET_DROP_RELEASE = "core.plan.setDropRelease"
+let MOVE_ACTION = "core.plan.moveAction"
+let SET_WAIT = "core.plan.setWait"
+private let REMOVE_ITEM = "core.plan.remove"
+private let ACTION_SUBJECT = "The action"
+private let WAIT_SECONDS = 1.0...600.0
 private let OUTPUT_RANGE = 1.0...32.0
 private let PWM_RANGE = 500.0...2500.0
 private let WAIT_RANGE = 0.0...600.0
@@ -51,7 +56,7 @@ private let PLANE_DROP_NOTE = "A plane flies through its drop without stopping. 
 
 func dropText(_ drop: WaypointDrop) -> String {
     let release = drop.output.flatMap { output in drop.pwm.map { pwm in "Servo \(trimmedNumber(output)) to \(trimmedNumber(pwm))" } } ?? "Gripper"
-    return [drop.bay.map { "Bay \($0)" } ?? "", release, drop.wait > 0 ? "after \(trimmedNumber(drop.wait)) s" : ""]
+    return [drop.bay.map { "Bay \($0)" } ?? "", release]
         .filter { !$0.isEmpty }
         .joined(separator: " · ")
 }
@@ -121,19 +126,6 @@ func activeActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: Camera
     ].compactMap { $0 }
 }
 
-func actionOrder(_ view: JSON?) -> [String] {
-    (view?["actions"].array ?? []).map { $0["kind"].string }
-}
-
-func inFlightOrder(_ active: [WaypointAction], _ order: [String]) -> [WaypointAction] {
-    active.enumerated()
-        .sorted { lhs, rhs in
-            let places = [lhs, rhs].map { order.firstIndex(of: "\($0.element.kind)") ?? order.count }
-            return places[0] == places[1] ? lhs.offset < rhs.offset : places[0] < places[1]
-        }
-        .map(\.element)
-}
-
 func offeredActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: CameraChoices?, _ extras: CameraExtras?, _ drop: WaypointDrop? = nil) -> [ActionOffer] {
     let hover: [ActionOffer?] = [hold.flatMap { $0.seconds <= 0 ? ActionOffer(title: "Hover", icon: .planTimer, kind: .Hover) : nil }]
     let camera: [ActionOffer?] = choices.map { camera in
@@ -164,20 +156,22 @@ struct WaypointActions: View {
     let hold: WaypointHold?
     let yaw: WaypointYaw?
     var drop: WaypointDrop? = nil
-    var order: [String] = []
+    var steps: [ActionStep] = []
     @Environment(\.theme) private var theme
     @State private var revision = 0
     @State private var camera: JSON?
     @State private var editing: ActionKind?
+    @State private var waitEditing: ShownAction?
     @State private var refusal: String?
 
     var body: some View {
         let choices = cameraChoices(camera)
         let extras = cameraExtras(camera)
-        let active = inFlightOrder(activeActions(hold, yaw, choices, extras, drop), order)
+        let active = activeActions(hold, yaw, choices, extras, drop)
+        let ordered = orderedActions(steps, active)
         let offers = offeredActions(hold, yaw, choices, extras, drop)
         VStack(alignment: .leading, spacing: 0) {
-            if !active.isEmpty || !offers.isEmpty {
+            if !ordered.isEmpty || !offers.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
                         Text("Actions").font(.titleSmall).frame(maxWidth: .infinity, alignment: .leading)
@@ -200,7 +194,7 @@ struct WaypointActions: View {
                             }
                         }
                     }
-                    if active.isEmpty {
+                    if ordered.isEmpty {
                         Text(addActionsHint(offers))
                             .font(.bodySmall)
                             .foregroundStyle(theme.colors.onSurfaceVariant)
@@ -211,11 +205,13 @@ struct WaypointActions: View {
                             .foregroundStyle(theme.colors.error)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    PlanFlowRow(spacing: 8, lineSpacing: 8) {
-                        ForEach(active, id: \.kind) { action in
-                            ActionChip(action: action, onClick: { editing = action.kind }, onRemove: { remove(action.kind) })
-                        }
+                    if ordered.filter({ $0.place != nil }).count > 1 {
+                        Text("Done in this order after arriving. Hold an action and drag it to change the order.")
+                            .font(.bodySmall)
+                            .foregroundStyle(theme.colors.onSurfaceVariant)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                    ActionOrderList(waypoint: index, steps: ordered, onMove: move, onEdit: edit, onRemove: removing)
                 }
                 .padding(.vertical, 4)
             }
@@ -228,6 +224,18 @@ struct WaypointActions: View {
         .background {
             if let kind = editing {
                 editor(kind, active, offers, choices, extras)
+            } else if let step = waitEditing {
+                PlanDialog(title: WAIT, onDismiss: { waitEditing = nil }) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        SettingStepper(label: WAIT, value: step.seconds ?? WAIT_SECONDS.lowerBound, unit: "s", step: 1.0, onSet: { retime(step, $0) }, range: WAIT_SECONDS, slider: true)
+                        Text("The aircraft holds over the waypoint this long before the next action.")
+                            .font(.bodySmall)
+                            .foregroundStyle(theme.colors.onSurfaceVariant)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                } buttons: {
+                    Button("Done") { waitEditing = nil }
+                }
             }
         }
     }
@@ -337,6 +345,27 @@ struct WaypointActions: View {
         refusing(opens: nil) { Qgc.refusalOf(SET_DROP_RELEASE, waypoint, change, subject: DROP_SUBJECT) }
     }
 
+    private func move(_ action: ActionMove) {
+        refusing(opens: nil) { Qgc.refusalOf(MOVE_ACTION, action.waypoint, action.from, action.to, subject: ACTION_SUBJECT) }
+    }
+
+    private func retime(_ step: ShownAction, _ seconds: Double) {
+        let waypoint = index
+        let place = step.place ?? 0
+        refusing(opens: nil) { Qgc.refusalOf(SET_WAIT, waypoint, place, seconds, subject: ACTION_SUBJECT) }
+    }
+
+    private func edit(_ step: ShownAction) -> (() -> Void)? {
+        if let kind = step.action?.kind { return { editing = kind } }
+        return step.kind == WAIT && step.place != nil ? { waitEditing = step } : nil
+    }
+
+    private func removing(_ step: ShownAction) -> (() -> Void)? {
+        if let kind = step.action?.kind { return { remove(kind) } }
+        guard let item = step.item else { return nil }
+        return { refusing(opens: nil) { Qgc.refusalOf(REMOVE_ITEM, item, subject: ACTION_SUBJECT) } }
+    }
+
     private func removeDrop() {
         let waypoint = index
         refusing(opens: nil) { Qgc.refusalOf(REMOVE_DROP, waypoint, subject: DROP_SUBJECT) }
@@ -375,39 +404,5 @@ struct WaypointActions: View {
     private func choose(_ choice: Int) {
         let at = index
         write { ItemCameraBridge.chooseAction(at, choice) }
-    }
-}
-
-private struct ActionChip: View {
-    let action: WaypointAction
-    let onClick: () -> Void
-    let onRemove: () -> Void
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Button(action: onClick) {
-                HStack(spacing: Space.s2) {
-                    Image(action.icon).font(.system(size: 16)).frame(width: 20, height: 20)
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(action.title).font(.labelLarge)
-                        if !action.value.isBlank {
-                            Text(action.value).font(.labelSmall)
-                        }
-                    }
-                }
-                .padding(.leading, 12)
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            Button(action: onRemove) {
-                Image(.close).font(.system(size: 14)).frame(width: 40, height: 40).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Remove \(action.title)")
-        }
-        .foregroundStyle(theme.colors.onSecondaryContainer)
-        .background(theme.colors.secondaryContainer, in: RoundedRectangle(cornerRadius: 14))
     }
 }

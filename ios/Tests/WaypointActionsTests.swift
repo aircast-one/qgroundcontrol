@@ -79,17 +79,6 @@ final class WaypointActionsTests: XCTestCase {
         XCTAssertEqual(41.0, legs[0].0.latitude, accuracy: 1e-9)
     }
 
-    func testTheChipsStandInTheOrderTheCoreSaysTheAircraftDoesThem() {
-        let order = actionOrder(JSON.parse(#"{"actions":[{"kind":"Drop"},{"kind":"Wait"},{"kind":"Gimbal"},{"kind":"Hover"}]}"#))
-        XCTAssertEqual(order, ["Drop", "Wait", "Gimbal", "Hover"])
-        var tilted = idleCamera
-        tilted.commandsGimbal = true
-        let active = activeActions(WaypointHold(seconds: 5.0, units: "s", path: "h"), WaypointYaw(degrees: 90.0, units: "deg", path: "y"), nil, tilted, dropFact())
-        XCTAssertEqual(inFlightOrder(active, order).map(\.kind), [.Drop, .Gimbal, .Hover, .Turn])
-        XCTAssertEqual(inFlightOrder(active, []).map(\.kind), active.map(\.kind))
-        XCTAssertEqual(actionOrder(nil), [])
-    }
-
     private func dropFact(_ fields: [String: Any?] = [:]) -> WaypointDrop? {
         let base: [String: Any?] = ["index": 5, "wait": 0, "waitOffered": true, "servo": true, "output": 4, "pwm": 2000, "bay": nil]
         let merged = base.merging(fields) { _, changed in changed }.mapValues { $0 ?? NSNull() }
@@ -97,13 +86,13 @@ final class WaypointActionsTests: XCTestCase {
         return waypointDrop(JSON.parse(text))
     }
 
-    func testADropReadsItsServoItsPwmAndItsBayFromItsOwnMissionItemAndSaysHowLongTheDroneWaitsFirst() {
+    func testADropReadsItsServoItsPwmAndItsBayFromItsOwnMissionItemAndLeavesItsWaitToTheWaitRow() {
         XCTAssertEqual(dropFact(["wait": 10]), WaypointDrop(index: 5, wait: 10, waitOffered: true, servo: true, output: 4, pwm: 2000, bay: nil))
         XCTAssertEqual(
             [dropFact(["wait": 10]), dropFact(["output": 10, "pwm": 1900, "bay": 2]), dropFact(["servo": false, "output": nil, "pwm": nil])].map { $0.map(dropText) },
-            ["Servo 4 to 2000 · after 10 s", "Bay 2 · Servo 10 to 1900", "Gripper"]
+            ["Servo 4 to 2000", "Bay 2 · Servo 10 to 1900", "Gripper"]
         )
-        XCTAssertEqual(activeActions(noHold, noTurn, nil, nil, dropFact(["wait": 10])).map(\.value), ["Servo 4 to 2000 · after 10 s"])
+        XCTAssertEqual(activeActions(noHold, noTurn, nil, nil, dropFact(["wait": 10])).map(\.value), ["Servo 4 to 2000"])
     }
 
     func testAWaypointOffersADropUntilOneFollowsItThenShowsItAsAnAction() {

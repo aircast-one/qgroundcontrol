@@ -3,6 +3,11 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 private let PLAN_POLL_MS = 700
+let NO_REVISION = -1
+
+func planRevision(_ view: JSON?) -> Int { view.flatMap { $0.has("revision") ? $0["revision"].int(NO_REVISION) : nil } ?? NO_REVISION }
+
+func rowsAreStale(_ planRevision: Int, _ rowsRevision: Int) -> Bool { planRevision > rowsRevision }
 private let FIELD_ZOOM = 16.0
 private let FAILURE_MESSAGE_MS = 2500
 private let PANEL_MAX_FRACTION: CGFloat = 0.5
@@ -69,6 +74,7 @@ private struct PlanRead: Sendable {
     let stats: [Int: SurveyStats]
     let drawn: Bool
     let note: PlanNote
+    let revision: Int
 
     static func read() -> PlanRead {
         let plan = PlanBridge.rawItems()
@@ -97,7 +103,8 @@ private struct PlanRead: Sendable {
             landings: landingPatterns(all),
             stats: surveyStatsFor(all),
             drawn: planIsDrawn(items, surveys, fences, circles, rally),
-            note: planNote(plan)
+            note: planNote(plan),
+            revision: planRevision(plan)
         )
     }
 }
@@ -144,6 +151,7 @@ struct PlanMapContent: View {
     @State private var panelOpen = true
     @State private var readsStarted = 0
     @State private var noteSeen: Int?
+    @State private var rowsRevision = NO_REVISION
     @State private var planReads = 0
     @State private var patternWait: (wanted: Int, since: Int)?
     @State private var layer = PlanLayer.Mission
@@ -298,6 +306,9 @@ struct PlanMapContent: View {
                 }
             }
             .onChange(of: mapStyle, initial: true) { shownStyle = mapStyle }
+            .onChange(of: planRevision(planStatus)) {
+                if rowsAreStale(planRevision(planStatus), rowsRevision) { Task { await refresh() } }
+            }
             .onReceive(PlanFocus.requests.receive(on: DispatchQueue.main)) { index in
                 guard let index else { return }
                 selected = .Waypoint(index: index)
@@ -447,7 +458,9 @@ struct PlanMapContent: View {
                 let surveys = surveyList, points = rally, polygons = fences, listed = allItems, rings = circles
                 onBridge { writeDragStep(generation, hit, lat, lon, surveys, points, polygons, listed, rings) }
             },
-            onWaypointSelected: { hit in mapSelected(hit) },
+            onWaypointSelected: { hit in
+                if hit == nil || !rowsAreStale(planRevision(planStatus), rowsRevision) { mapSelected(hit) }
+            },
             onMoved: { hit, lat, lon in
                 let surveys = surveyList, points = rally, polygons = fences, listed = allItems, rings = circles
                 onBridge(done: movedText(hit, allItems)) { writeMove(hit, lat, lon, surveys, points, polygons, listed, rings) }
@@ -688,7 +701,7 @@ struct PlanMapContent: View {
                         altitudes: Dictionary(allItems.map { ($0.index, $0.altitudeText) }, uniquingKeysWith: { _, last in last }),
                         conflicts: conflicts,
                         selected: chosenItem?.index,
-                        onPick: focusItem,
+                        onPick: freshPick,
                         onList: sidePanel ? nil : { listOpen = true },
                         profileShown: profileShown(layer, profile) ? missionStatusShown : nil,
                         onProfile: {
@@ -1234,13 +1247,22 @@ struct PlanMapContent: View {
         }
     }
 
-    private func pickRow(_ row: ItemRow) { focusItem(row.index) }
+    private func freshPick(_ index: Int) {
+        if !rowsAreStale(planRevision(planStatus), rowsRevision) { focusItem(index) }
+    }
+
+    private func pickRow(_ row: ItemRow) { freshPick(row.index) }
 
     private func refresh() async {
         let readAt = edits
         let readNumber = readsStarted + 1
         readsStarted = readNumber
         let next = await offMain { PlanRead.read() }
+        guard next.revision >= rowsRevision else {
+            planReads = max(planReads, readNumber)
+            return
+        }
+        rowsRevision = next.revision
         if let note = newNote(next.note, noteSeen) { say(note) }
         noteSeen = next.note.id
         if fitsPlanOnEntry(firstRead, next.planRead, next.drawn) {
