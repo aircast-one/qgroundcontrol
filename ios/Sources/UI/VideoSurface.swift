@@ -1,3 +1,4 @@
+import AVFoundation
 import QGCCore
 import SwiftUI
 import UIKit
@@ -178,7 +179,7 @@ struct VideoSurface: View {
             let shown = videoContentSize(geometry.size.width, geometry.size.height, aspect, fitMode.int ?? VIDEO_FIT_HEIGHT)
             ZStack {
                 ZStack {
-                    VideoChannelSurface(channel: MAIN_VIDEO_CHANNEL)
+                    PlayedChannelSurface(channel: MAIN_VIDEO_CHANNEL)
                     if decoding {
                         if showGrid && !fullScreen { VideoGrid() }
                         if expanded { VideoArOverlay() }
@@ -192,6 +193,7 @@ struct VideoSurface: View {
                         HoldRing(at: holds ? pressing : nil)
                         if let spot = groundSpot { PictureMark(spot: spot) }
                     }
+                    if expanded { BufferedVideoNote(channel: MAIN_VIDEO_CHANNEL, playing: decoding, text: BUFFERED_VIDEO_NOTE) }
                 }
                 .frame(width: shown.0, height: shown.1)
                 .contentShape(Rectangle())
@@ -241,7 +243,7 @@ private struct SecondPane: View {
             if camera.source == SYNTHETIC_SOURCE {
                 SyntheticView()
             } else {
-                VideoChannelSurface(channel: PIP_VIDEO_CHANNEL)
+                PlayedChannelSurface(channel: PIP_VIDEO_CHANNEL)
             }
             if camera.status != .Live {
                 theme.aircast.outdoorBackground
@@ -262,7 +264,85 @@ private struct SecondPane: View {
         .accessibilityLabel("Second camera, \(camera.title)")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(named: "Make \(camera.title) the main view") { showCamera(camera.slot) }
+        .overlay {
+            if camera.source != SYNTHETIC_SOURCE {
+                BufferedVideoNote(channel: PIP_VIDEO_CHANNEL, playing: camera.status == .Live, text: BUFFERED_VIDEO_SHORT)
+            }
+        }
     }
+}
+
+func bufferedNoteShown(_ view: JSON?, _ channel: Int, playing: Bool) -> Bool {
+    playing && hlsEndpoint(view, channel) != nil
+}
+
+struct BufferedVideoNote: View {
+    let channel: Int
+    let playing: Bool
+    let text: String
+    @QgcPath(VIDEO_VIEW) private var videoJson
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Color.clear.allowsHitTesting(false)
+            if bufferedNoteShown(videoJson, channel, playing: playing) {
+                HStack(spacing: Space.s2) {
+                    Text(text).font(.labelMedium).foregroundStyle(Color.white)
+                    Button(TRY_LOW_LATENCY) {
+                        let asked = channel
+                        offMainInOrder { VideoCommands.tryLowLatency(asked) }
+                    }
+                    .font(.labelLarge)
+                    .foregroundStyle(Color.white)
+                    .underline()
+                    .frame(minHeight: BUFFERED_NOTE_TOUCH)
+                }
+                .padding(.horizontal, 12)
+                .background(Color.black.opacity(BUFFERED_NOTE_SCRIM), in: RoundedRectangle(cornerRadius: Corner.small))
+                .padding(Space.s2)
+            }
+        }
+    }
+}
+
+private let BUFFERED_NOTE_SCRIM = 0.55
+private let BUFFERED_NOTE_TOUCH: CGFloat = 44
+
+struct PlayedChannelSurface: View {
+    let channel: Int
+    @QgcPath(VIDEO_VIEW) private var videoJson
+
+    var body: some View {
+        ZStack {
+            VideoChannelSurface(channel: channel)
+            if hlsEndpoint(videoJson, channel) != nil {
+                BufferedChannelSurface(channel: channel)
+            }
+        }
+    }
+}
+
+final class BufferedChannelLayerView: PlatformView {
+    override class var layerClass: AnyClass { AVPlayerLayer.self }
+
+    init(channel: Int) {
+        super.init(frame: .zero)
+        backgroundColor = .black
+        isUserInteractionEnabled = false
+        let played = layer as? AVPlayerLayer
+        played?.videoGravity = .resizeAspect
+        played?.player = BufferedPlayers.shared.player(Int32(channel))
+    }
+
+    required init?(coder: NSCoder) { nil }
+}
+
+struct BufferedChannelSurface: PlatformViewRepresentable {
+    typealias Coordinator = Void
+
+    let channel: Int
+
+    func makePlatformView(context: Context) -> BufferedChannelLayerView { BufferedChannelLayerView(channel: channel) }
 }
 
 private let PANE_DIVIDER: CGFloat = 2

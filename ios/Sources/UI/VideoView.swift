@@ -51,6 +51,16 @@ func videoReading(_ view: JSON?) -> VideoReading? {
     )
 }
 
+func hlsEndpoint(_ view: JSON?, _ channel: Int) -> String? {
+    view?["hlsEndpoints"][channel].stringOrNil.flatMap { $0.isEmpty ? nil : $0 }
+}
+
+let BUFFERED_VIDEO_NOTE = "Low-latency video can't get through this link, so this is buffered video, a few seconds behind."
+
+let BUFFERED_VIDEO_SHORT = "Buffered video, a few seconds behind."
+
+let TRY_LOW_LATENCY = "Try low latency"
+
 struct PaintedRect: Equatable {
     let left: Double
     let top: Double

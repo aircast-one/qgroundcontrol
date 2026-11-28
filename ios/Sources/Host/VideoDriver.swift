@@ -20,7 +20,7 @@ enum VideoDriver {
     private static var recordingReported = false
 
     private struct Channel {
-        var driven: String?
+        var driven: Playback?
         var restarted = false
         var error = ""
         var streamed = ""
@@ -32,6 +32,7 @@ enum VideoDriver {
             guard timer == nil, qgc_video_available() else { return }
             VideoCommands.setNativeRendering(true)
             VideoCommands.initNative()
+            VideoCommands.setBufferedPlayback(true)
             let made = DispatchSource.makeTimerSource(queue: queue)
             made.schedule(deadline: .now() + interval, repeating: interval)
             made.setEventHandler(handler: step)
@@ -46,6 +47,7 @@ enum VideoDriver {
             running.cancel()
             timer = nil
             channels.forEach(qgc_video_stop)
+            channels.forEach(BufferedPlayers.shared.stop)
         }
     }
 
@@ -61,7 +63,7 @@ enum VideoDriver {
     private static func step() {
         let view = Qgc.get(VIDEO_VIEW)
         let previews = Qgc.get(VIDEO_PREVIEWS)["value"]
-        let wanted: [Int32: String?] = Dictionary(uniqueKeysWithValues: channels.map { ($0, pipeline($0, view, previews)) })
+        let wanted: [Int32: Playback?] = Dictionary(uniqueKeysWithValues: channels.map { ($0, wantedPlayback(pipeline: pipeline($0, view, previews), buffered: hlsEndpoint(view, Int($0)))) })
         channels.forEach { stopChanged($0, wanted[$0] ?? nil) }
         channels.forEach { startWanted($0, wanted[$0] ?? nil) }
         record(view["nativeRecording"])
@@ -76,24 +78,34 @@ enum VideoDriver {
         }
     }
 
-    private static func stopChanged(_ channel: Int32, _ wanted: String?) {
+    private static func stopChanged(_ channel: Int32, _ wanted: Playback?) {
         let restart = qgc_core_video_take_restart(channel)
         guard let driven = played[channel]?.driven, restart || wanted != driven else { return }
-        qgc_video_stop(channel)
+        switch driven {
+        case .pipeline: qgc_video_stop(channel)
+        case .buffered: BufferedPlayers.shared.stop(channel)
+        }
         log.info("Video channel \(channel) stopped")
         played[channel]?.driven = nil
     }
 
-    private static func startWanted(_ channel: Int32, _ wanted: String?) {
-        guard let pipeline = wanted, pipeline != played[channel]?.driven else { return }
-        let started = qgc_video_start(channel, pipeline)
-        let error = started ? "" : String(cString: qgc_video_last_error(channel))
-        if started {
-            log.info("Video channel \(channel) started")
-        } else {
-            log.warning("Video pipeline on channel \(channel) did not start: \(error, privacy: .public)")
+    private static func startWanted(_ channel: Int32, _ wanted: Playback?) {
+        guard let wanted, wanted != played[channel]?.driven else { return }
+        switch wanted {
+        case .pipeline(let pipeline):
+            let started = qgc_video_start(channel, pipeline)
+            let error = started ? "" : String(cString: qgc_video_last_error(channel))
+            if started {
+                log.info("Video channel \(channel) started")
+            } else {
+                log.warning("Video pipeline on channel \(channel) did not start: \(error, privacy: .public)")
+            }
+            played[channel] = Channel(driven: wanted, restarted: true, error: error)
+        case .buffered(let address):
+            BufferedPlayers.shared.play(channel, address)
+            log.info("Video channel \(channel) plays buffered video")
+            played[channel] = Channel(driven: wanted, restarted: true)
         }
-        played[channel] = Channel(driven: pipeline, restarted: true, error: error)
     }
 
     private static func record(_ wanted: JSON) {
@@ -117,7 +129,8 @@ enum VideoDriver {
     }
 
     private static func report(_ channel: Int32) {
-        guard let state = played[channel], state.driven != nil else { return }
+        guard let state = played[channel], let driven = state.driven else { return }
+        if case .buffered = driven { return reportBuffered(channel, state) }
         let running = qgc_video_running(channel)
         let frames = qgc_video_frames(channel)
         let width = qgc_video_width(channel)
@@ -132,6 +145,19 @@ enum VideoDriver {
         }
         played[channel] = Channel(driven: state.driven, restarted: false, error: state.error, streamed: streamed, decoding: state.decoding || frames > 0)
         VideoCommands.reportNative(running, frames, width, height, state.error.ifEmpty(streamed), source, state.restarted, channel)
+    }
+
+    private static func reportBuffered(_ channel: Int32, _ state: Channel) {
+        let reading = BufferedPlayers.shared.reading(channel)
+        BufferedPlayers.shared.refresh(channel)
+        if reading.frames > 0 && !state.decoding {
+            log.info("Video channel \(channel) decoding buffered \(reading.width)x\(reading.height)")
+        }
+        if reading.error != state.streamed && !reading.error.isEmpty {
+            log.warning("Buffered video error on channel \(channel): \(reading.error, privacy: .public)")
+        }
+        played[channel] = Channel(driven: state.driven, restarted: false, streamed: reading.error, decoding: state.decoding || reading.frames > 0)
+        VideoCommands.reportNative(reading.running, reading.frames, reading.width, reading.height, reading.error, reading.frames, state.restarted, channel)
     }
 }
 

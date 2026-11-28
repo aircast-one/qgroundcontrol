@@ -96,6 +96,8 @@ enum PlanCommands {
 enum VideoCommands {
     @discardableResult static func setNativeRendering(_ native: Bool) -> Bool { Qgc.invoke(videoNativeRendering, native) }
     @discardableResult static func initNative() -> Bool { Qgc.invoke(videoInitNative) }
+    @discardableResult static func setBufferedPlayback(_ plays: Bool) -> Bool { Qgc.invoke("video.setBufferedPlayback", plays) }
+    @discardableResult static func tryLowLatency(_ channel: Int) -> Bool { Qgc.invoke("video.tryLowLatency", channel) }
     @discardableResult static func setActiveSource(_ slot: Int) -> Bool { Qgc.invoke(videoActiveSource, slot) }
     @discardableResult static func setRecording(_ recording: Bool) -> Bool { Qgc.invoke(recording ? videoStartRecording : videoStopRecording) }
     @discardableResult static func restart() -> Bool { Qgc.invoke(videoRestart) }

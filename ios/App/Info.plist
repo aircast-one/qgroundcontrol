@@ -116,6 +116,11 @@
 	<string>Aircast connects to Bluetooth telemetry radios.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Aircast can stream this device's camera as a video source.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Aircast talks MAVLink and receives video from vehicles on your local network.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
