@@ -182,7 +182,7 @@ mod tests {
         let section = crate::plandoc::camera_section(&[]);
         assert_eq!(
             crate::read::user_slider(fact(&section, "gimbalPitch").unwrap()),
-            json!({ "from": -90.0, "to": 0.0, "decimals": 0 })
+            json!({ "from": -90.0, "to": 90.0, "decimals": 0 })
         );
         assert_eq!(
             crate::read::user_slider(fact(&section, "gimbalYaw").unwrap()),

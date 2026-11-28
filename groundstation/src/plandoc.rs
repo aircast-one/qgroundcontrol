@@ -2489,7 +2489,7 @@ pub fn camera_section(sections: &[Simple]) -> Value {
     })
 }
 
-const GIMBAL_PITCH_USER_RANGE: (f64, f64) = (-90.0, 0.0);
+const GIMBAL_PITCH_USER_RANGE: (f64, f64) = (-90.0, 90.0);
 const GIMBAL_YAW_USER_RANGE: (f64, f64) = (-180.0, 180.0);
 const DEFAULT_INTERVAL_TIME: f64 = 10.0;
 const DEFAULT_INTERVAL_DISTANCE: f64 = 1.0;
@@ -2621,7 +2621,10 @@ pub fn edited_camera(state: &CameraState, property: &str, value: &Value) -> Opti
             ..state.clone()
         },
         "gimbalPitch" => CameraState {
-            gimbal: Some((number?.clamp(-90.0, 0.0), state.gimbal.map_or(0.0, |g| g.1))),
+            gimbal: Some((
+                number?.clamp(GIMBAL_PITCH_USER_RANGE.0, GIMBAL_PITCH_USER_RANGE.1),
+                state.gimbal.map_or(0.0, |g| g.1),
+            )),
             ..state.clone()
         },
         "gimbalYaw" => CameraState {
@@ -5249,6 +5252,62 @@ mod tests {
         assert!(
             checked.len() >= 5,
             "the fixtures were found and checked: {checked:?}"
+        );
+    }
+
+    #[test]
+    fn a_camera_aimed_above_the_horizon_keeps_its_angle_from_the_editor_to_the_map_and_back_from_a_file()
+     {
+        let servos = [bay(4, 1500.0)];
+        let raised = set_camera(
+            &olegs_first_waypoint(&servos),
+            2,
+            "gimbalPitch",
+            &json!(20.0),
+        )
+        .unwrap();
+        let pitch_fact = |doc: &Document| {
+            camera_section(&run_commands(doc, 1))["facts"]
+                .as_array()
+                .and_then(|facts| {
+                    facts
+                        .iter()
+                        .find(|fact| fact["property"] == "gimbalPitch")
+                        .cloned()
+                })
+                .unwrap_or(Value::Null)
+        };
+        assert_eq!(
+            (
+                pitch_fact(&raised)["value"].clone(),
+                pitch_fact(&raised)["userMax"].clone()
+            ),
+            (json!(20.0), json!(90.0)),
+            "the editor keeps 20 degrees up and offers up to straight up"
+        );
+        assert!(
+            sent_after(&raised, 1).contains(&(CMD_DO_MOUNT_CONTROL, Some(20.0), Some(0.0))),
+            "the mission item sent to the aircraft aims 20 degrees up"
+        );
+        assert_eq!(
+            crate::missionitems::document_reads(&raised, -1).unwrap()[2]["specifiedGimbalPitch"],
+            20.0,
+            "the map reads the same angle"
+        );
+        let reloaded = load(&save(&raised).to_string(), 2).unwrap();
+        assert_eq!(
+            camera_state(&run_commands(&reloaded, 1)).gimbal,
+            Some((20.0, 60.0)),
+            "read back from a file, the camera still looks 20 degrees up"
+        );
+        assert_eq!(
+            camera_state(&run_commands(
+                &set_camera(&raised, 2, "gimbalPitch", &json!(120.0)).unwrap(),
+                1
+            ))
+            .gimbal,
+            Some((90.0, 60.0)),
+            "past straight up, it stops at straight up"
         );
     }
 

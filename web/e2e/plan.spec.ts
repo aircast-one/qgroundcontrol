@@ -3,6 +3,8 @@ import { actionOrder, connectMock, expect, itemCount, mouseDragAction, openApp, 
 
 test.describe.configure({ timeout: 120_000 });
 
+const PROOF = process.env.DRAG_PROOF;
+
 const planMenu = async (page: Page, item: string) => {
   await page.getByRole('button', { name: 'Plan menu' }).click();
   await page.getByRole('menuitem', { name: item }).click();
@@ -464,6 +466,34 @@ test('a waypoint that tilts the camera tells the map how far down it looks, so i
   await app.getByRole('button', { name: 'Set', exact: true }).click();
   await editor.getByRole('button', { name: 'Done' }).click();
   await expect.poll(async () => (await planRows(app)).map((it) => it.gimbalPitch ?? null).filter((it) => it !== null), { timeout: 30_000 }).toContain(-60);
+});
+
+test('a camera aimed above the horizon keeps its angle in the editor, the list and the map, and after an upload read back from the aircraft', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openPlanAtVehicle(app);
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.getByRole('button', { name: 'Done' }).click();
+  await app.getByRole('button', { name: 'Waypoint 1' }).first().click();
+  await app.getByRole('button', { name: 'Add action', exact: true }).click();
+  await app.getByRole('menuitem', { name: 'Tilt camera' }).click();
+  const editor = app.getByRole('dialog').filter({ hasText: 'Pitch' });
+  await editor.getByRole('button', { name: /^Pitch: / }).click();
+  await app.getByRole('textbox', { name: /^Pitch/ }).fill('20');
+  await app.getByRole('button', { name: 'Set', exact: true }).click();
+  await expect(editor.getByRole('button', { name: /^Pitch: 20\b/ }), 'the editor keeps 20 degrees up').toBeVisible();
+  await editor.getByRole('button', { name: 'Done' }).click();
+  const order = actionOrder(app);
+  await expect(order.first(), 'the list reads 20 degrees up').toHaveText(/^Gimbal20° \/ 0°/, { timeout: 15_000 });
+  await expect.poll(async () => (await planRows(app)).map((it) => it.gimbalPitch ?? null).filter((it) => it !== null), { message: 'the map wedge is told 20 up', timeout: 30_000 }).toContain(20);
+  await app.getByRole('button', { name: 'Upload', exact: true }).click();
+  await expect(app.getByRole('button', { name: 'Upload', exact: true })).toBeHidden({ timeout: 30_000 });
+  await planMenu(app, 'Download from vehicle');
+  await expect(app.getByText('Plan downloaded from the vehicle.')).toBeVisible({ timeout: 30_000 });
+  await app.getByRole('button', { name: 'Waypoint 1' }).first().click();
+  await expect(order.first(), 'read back from the aircraft, the camera still looks 20 degrees up').toHaveText(/^Gimbal20° \/ 0°/, { timeout: 15_000 });
+  await expect.poll(async () => (await planRows(app)).map((it) => it.gimbalPitch ?? null).filter((it) => it !== null), { timeout: 30_000 }).toContain(20);
+  if (PROOF) await app.screenshot({ path: `${PROOF}/fix-pitch.png` });
 });
 
 test('a right-click on the plan map asks before it adds, and adds the waypoint at the end of the route', async ({ app }) => {
