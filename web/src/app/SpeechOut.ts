@@ -83,7 +83,7 @@ export const SpeechOut = {
   start(): void {
     if (speech.started) return;
     speech.started = true;
-    speech.ready = typeof speechSynthesis !== 'undefined';
+    speech.ready = typeof speechSynthesis !== 'undefined' && !navigator.webdriver;
     speech.poller = setTimeout(() => void poll(), POLL_MS);
   },
 
