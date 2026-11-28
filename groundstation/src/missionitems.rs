@@ -1142,12 +1142,13 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                 "sequenceNumber": seq,
                 "lastSequenceNumber": seq + s.sections.len(),
                 "abbreviation": abbreviation(s.command),
-                "commandName": match (crate::plandoc::servo_drop_bay(item, &servos), crate::plandoc::is_drop(item, &servos)) {
-                    (Some(bay), _) => format!("Drop bay {bay}"),
-                    (None, true) => DROP_PAYLOAD.to_string(),
-                    (None, false) => info.map(|c| c.friendly_name.clone()).unwrap_or_default(),
+                "commandName": match (crate::plandoc::is_drop_at(doc, i, &servos), crate::plandoc::servo_drop_bay(item, &servos)) {
+                    (true, Some(bay)) => format!("Drop bay {bay}"),
+                    (true, None) => DROP_PAYLOAD.to_string(),
+                    (false, _) if s.command == i64::from(crate::payloadcheck::CMD_DO_SET_SERVO) => crate::payloadcheck::servo_title(s.params[0], s.params[1]),
+                    (false, _) => info.map(|c| c.friendly_name.clone()).unwrap_or_default(),
                 },
-                "dropsPayload": crate::plandoc::is_drop(item, &servos),
+                "dropsPayload": crate::plandoc::is_drop_at(doc, i, &servos),
                 "commandDescription": info.map(|c| c.description.clone()).unwrap_or_default(),
                 "category": info.map(|c| c.category.clone()).unwrap_or_default(),
                 "command": s.command,

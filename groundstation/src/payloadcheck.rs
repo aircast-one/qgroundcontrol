@@ -113,12 +113,14 @@ pub fn servo_drop_bay(command: i64, output: f64, pwm: f64, servos: &[Servo]) -> 
         .map(|at| at as i64 + 1)
 }
 
-pub fn waypoint_drop(command: i64, first: f64, second: f64, servos: &[Servo]) -> bool {
-    let closes_a_bay = servos
-        .iter()
-        .any(|servo| servo.output as f64 == first && servo.hold == second);
-    (command == i64::from(CMD_DO_GRIPPER) && second == GRIPPER_RELEASE)
-        || (command == i64::from(CMD_DO_SET_SERVO) && !servos.is_empty() && !closes_a_bay)
+pub fn servo_title(output: Option<f64>, pwm: Option<f64>) -> String {
+    match output
+        .zip(pwm)
+        .filter(|(o, p)| o.is_finite() && p.is_finite())
+    {
+        Some((output, pwm)) => format!("Set servo {output} to {pwm}"),
+        None => "Set servo".to_string(),
+    }
 }
 
 pub const SERVO_OUTPUT_RANGE: RangeInclusive<f64> = 1.0..=SERVO_OUTPUTS as f64;

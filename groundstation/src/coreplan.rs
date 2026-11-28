@@ -713,17 +713,15 @@ fn set_drop_release(backend: &dyn Backend, args: &str) -> Value {
             true => plandoc::set_drop_servo(&document, waypoint, output, pwm, &servos),
             false => Ok(document.clone()),
         }?;
-        let release_at = |doc: &Document, servos: &[crate::payloadcheck::Servo]| {
-            plandoc::drop_after(doc, waypoint, servos)
-                .flatten()
-                .and_then(|drop| plandoc::drop_release(doc, drop, servos))
-        };
-        let bay = release_at(&document, &servos)
+        let drop = plandoc::drop_after(&document, waypoint, &servos).flatten();
+        let release_in =
+            |doc: &Document| drop.and_then(|drop| plandoc::drop_release(doc, drop, &servos));
+        let bay = release_in(&document)
             .and_then(|release| release.bay)
             .or_else(|| (servos.len() == 1).then_some(1));
         *kept.borrow_mut() = crate::payloadcheck::remembered(
             servo,
-            release_at(&edited, &servos)
+            release_in(&edited)
                 .zip(bay)
                 .map(|(release, bay)| (bay, release.output, release.pwm)),
         );
@@ -5504,13 +5502,13 @@ mod tests {
         let at_waypoint = row_of_sequence(&vehicle, 3).unwrap();
         assert_eq!(
             (at_waypoint.place.as_str(), at_waypoint.arrived),
-            ("waypoint 1 of 2 · set servo", true)
+            ("waypoint 1 of 2 · set servo 0 to 0", true)
         );
         let at_loiter = row_of_sequence(&vehicle, 5).unwrap();
         assert!(
             at_loiter.arrived
                 && at_loiter.place.starts_with("loiter")
-                && at_loiter.place.ends_with(" · set servo"),
+                && at_loiter.place.ends_with(" · set servo 0 to 0"),
             "the servo after the loiter fires at the loiter, not back at waypoint 1: {}",
             at_loiter.place
         );
@@ -5531,7 +5529,7 @@ mod tests {
             [Some(&at_waypoint), Some(&flying), None]
                 .map(|row| crate::missionprogress::progress_line(row, &progress)),
             [
-                "At waypoint 1 of 2 · set servo",
+                "At waypoint 1 of 2 · set servo 0 to 0",
                 "To waypoint 2 of 2",
                 "Mission item 3 of 6"
             ]
@@ -6790,13 +6788,22 @@ fn actions_fact(document: &Document, waypoint: usize) -> Value {
                     .map(|(step, (to, refused))| {
                         let title = match step.kind {
                             plandoc::StepKind::Wait => "Wait".to_string(),
-                            plandoc::StepKind::Command => step
-                                .commands
-                                .first()
-                                .and_then(|command| commands.get(&command.command))
-                                .map_or_else(String::new, |info| {
-                                    crate::label::sentence(&info.friendly_name)
-                                }),
+                            plandoc::StepKind::Command => {
+                                step.commands.first().map_or_else(String::new, |command| {
+                                    match command.command
+                                        == i64::from(crate::payloadcheck::CMD_DO_SET_SERVO)
+                                    {
+                                        true => crate::payloadcheck::servo_title(
+                                            command.params[0],
+                                            command.params[1],
+                                        ),
+                                        false => commands.get(&command.command).map_or_else(
+                                            String::new,
+                                            |info| crate::label::sentence(&info.friendly_name),
+                                        ),
+                                    }
+                                })
+                            }
                             kind => step_name(kind).to_string(),
                         };
                         json!({

@@ -154,6 +154,16 @@ const typedInto = async (page: Page, editor: Locator, label: string, value: stri
   await page.getByRole('button', { name: 'Set', exact: true }).click();
 };
 
+const setServo = async (page: Page, field: string, value: string) => {
+  const entry = page.getByRole('textbox', { name: field, exact: true });
+  const folded = page.getByRole('button', { name: /Show advanced settings$/ });
+  await expect(entry.or(folded).first()).toBeVisible({ timeout: 15_000 });
+  if (await folded.isVisible()) await folded.click();
+  await entry.fill(value);
+  await entry.press('Enter');
+  await expect(page.getByRole('button', { name: new RegExp(field === 'Servo' ? `^Set servo ${value} to ` : `^Set servo \\d+ to ${value}$`) }).last()).toBeVisible({ timeout: 15_000 });
+};
+
 const addAction = async (page: Page, action: string): Promise<Locator> => {
   await page.getByRole('button', { name: 'Add action', exact: true }).click();
   await page.getByRole('menuitem', { name: action }).click();
@@ -214,20 +224,21 @@ test('the pilot drags the actions into his order: aim, photo, hold 10 s, drop at
   const picker = vehicle.getByRole('dialog').filter({ hasText: 'Select mission command' });
   await picker.getByText('Advanced', { exact: true }).click();
   await picker.getByText('Set servo', { exact: true }).click();
-  await expect(vehicle.getByRole('button', { name: /^Set servo\b/ })).toBeVisible({ timeout: 15_000 });
+  const plain = vehicle.getByRole('button', { name: 'Set servo 1 to 1500', exact: true }).last();
+  await expect(plain, 'a servo picked from the command list is a plain servo, named by its output and PWM').toBeVisible({ timeout: 15_000 });
+  await plain.click();
+  await setServo(vehicle, 'Servo', '4');
+  await setServo(vehicle, 'PWM', '2000');
   await vehicle.getByRole('button', { name: /^2 Waypoint\b/ }).click();
-  await expect(order).toHaveText([/^Gimbal/, /^Drop payload/], { timeout: 15_000 });
-  await order.nth(1).getByRole('button', { name: /^Drop payload/ }).click();
-  const servo = vehicle.getByRole('dialog').filter({ hasText: 'Servo output' });
-  await typedInto(vehicle, servo, 'Servo output', '4');
-  await typedInto(vehicle, servo, 'Release PWM', '2000');
-  await servo.getByRole('button', { name: 'Done' }).click();
-  await mouseDragAction(vehicle, 'Drop payload', order.nth(0));
-  await expect(order, 'servo to 2000, then camera yaw 90, 20 down').toHaveText([/^Drop payloadServo 4 to 2000/, /^Gimbal-20° \/ 90°/], { timeout: 15_000 });
+  await expect(order, 'servo 4 to 2000 opens the bay the first waypoint already dropped from, so it is a plain servo, not a second drop').toHaveText([/^Gimbal/, /^Set servo 4 to 2000/], { timeout: 15_000 });
+  await expect(order.getByText('Drop payload'), 'and waypoint 2 has no drop').toHaveCount(0);
+  if (PROOF) await vehicle.screenshot({ path: `${PROOF}/fix-servo.png` });
+  await mouseDragAction(vehicle, 'Set servo 4 to 2000', order.nth(0));
+  await expect(order, 'servo to 2000, then camera yaw 90, 20 down').toHaveText([/^Set servo 4 to 2000/, /^Gimbal-20° \/ 90°/], { timeout: 15_000 });
   await expect.poll(async () => afterWaypoint(await savedMission(vehicle), 2)).toEqual([SERVO, MOUNT]);
 
-  await vehicle.getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(order, 'one undo puts back the order from before the drag').toHaveText([/^Gimbal/, /^Drop payload/], { timeout: 15_000 });
+  await vehicle.getByRole('button', { name: 'Undo', exact: true }).first().click();
+  await expect(order, 'one undo puts back the order from before the drag').toHaveText([/^Gimbal/, /^Set servo 4 to 2000/], { timeout: 15_000 });
   await expect.poll(async () => afterWaypoint(await savedMission(vehicle), 2)).toEqual([MOUNT, SERVO]);
   await vehicle.getByRole('button', { name: /^1 Waypoint\b/ }).click();
   await expect(order, 'waypoint 1 kept its own order').toHaveText([/^Gimbal/, /^Take photo/, /^Wait/, /^Drop payload/], { timeout: 15_000 });

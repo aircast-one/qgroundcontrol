@@ -637,7 +637,9 @@ test('the plan Oleg drew in his recording: a waypoint after the takeoff, a secon
   const picker = app.getByRole('dialog').filter({ hasText: 'Select mission command' });
   await picker.getByText('Advanced', { exact: true }).click();
   await picker.getByText('Set servo', { exact: true }).click();
-  await expect(app.getByText('Set servo added at Waypoint 1'), 'a servo picked on a waypoint is added at it').toBeVisible({ timeout: 15_000 });
+  await expect(app.getByText('Set servo 1 to 1500 added at Waypoint 1'), 'a servo picked on a waypoint is added at it, named by its output and PWM').toBeVisible({ timeout: 15_000 });
+  await expect(order.last(), 'at the waypoint it is a plain servo after the drop').toHaveText(/^Set servo 1 to 1500/, { timeout: 15_000 });
+  await expect(order.filter({ hasText: /^Drop payload/ }), 'and not a second drop').toHaveCount(1);
   await expect(app.getByRole('button', { name: /^1 Waypoint 30(\.0)? m/ }), 'and the waypoint stays where it was, with its height').toBeVisible();
   await expect(app.getByText('That change was not accepted.')).toHaveCount(0);
   const listed = await names();

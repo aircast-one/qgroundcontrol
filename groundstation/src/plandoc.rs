@@ -1596,8 +1596,15 @@ pub fn servo_drop_bay(item: &Item, servos: &[crate::payloadcheck::Servo]) -> Opt
     }
 }
 
-pub fn is_drop(item: &Item, servos: &[crate::payloadcheck::Servo]) -> bool {
-    matches!(item, Item::Simple(s) if crate::payloadcheck::drops(s.command, s.params[0].unwrap_or(f64::NAN), s.params[1].unwrap_or(f64::NAN), servos))
+pub fn is_drop_at(doc: &Document, at: usize, servos: &[crate::payloadcheck::Servo]) -> bool {
+    doc.items
+        .get(at)
+        .is_some_and(|item| match servo_drop_bay(item, servos) {
+            Some(bay) => !doc.items[..at]
+                .iter()
+                .any(|before| servo_drop_bay(before, servos) == Some(bay)),
+            None => matches!(item, Item::Simple(s) if crate::payloadcheck::drops(s.command, s.params[0].unwrap_or(f64::NAN), s.params[1].unwrap_or(f64::NAN), servos)),
+        })
 }
 
 pub fn free_bay(doc: &Document, servos: &[crate::payloadcheck::Servo]) -> Option<i64> {
@@ -1635,10 +1642,6 @@ pub fn riders_after(doc: &Document, at: usize) -> usize {
         .count()
 }
 
-fn is_waypoint_drop(item: &Item, servos: &[crate::payloadcheck::Servo]) -> bool {
-    matches!(item, Item::Simple(s) if crate::payloadcheck::waypoint_drop(s.command, s.params[0].unwrap_or(f64::NAN), s.params[1].unwrap_or(f64::NAN), servos))
-}
-
 pub fn drop_after(
     doc: &Document,
     visual_index: usize,
@@ -1647,10 +1650,9 @@ pub fn drop_after(
     let at = visual_index.checked_sub(1)?;
     matches!(doc.items.get(at)?, Item::Simple(s) if s.command == CMD_NAV_WAYPOINT).then_some(())?;
     Some(
-        doc.items[at + 1..at + 1 + riders_after(doc, at)]
-            .iter()
-            .position(|item| is_waypoint_drop(item, servos))
-            .map(|offset| visual_index + 1 + offset),
+        (at + 1..at + 1 + riders_after(doc, at))
+            .find(|rider| is_drop_at(doc, *rider, servos))
+            .map(|rider| rider + 1),
     )
 }
 
@@ -2861,7 +2863,9 @@ pub fn steps(
                 });
             let kind = camera_kind(command.command).unwrap_or(match command.command {
                 CMD_NAV_DELAY => StepKind::Wait,
-                _ if is_waypoint_drop(&Item::Simple(command.clone()), servos) => StepKind::Drop,
+                _ if item.is_some_and(|visual| is_drop_at(doc, visual - 1, servos)) => {
+                    StepKind::Drop
+                }
                 _ => StepKind::Command,
             });
             match closes_photos {
@@ -4309,7 +4313,8 @@ mod tests {
     }
 
     #[test]
-    fn a_drop_is_read_from_its_own_item_so_changing_the_servo_for_one_leaves_the_others_drops() {
+    fn a_servo_is_the_drop_where_it_first_opens_a_payload_bay_and_any_other_servo_is_a_plain_set_servo()
+     {
         let nine = [bay(9, 1900.0)];
         let first = place_drop(&route(2, ""), 2, Some(5.0), &QT_DEFAULTS, &nine).unwrap();
         let four = [bay(4, 1500.0)];
@@ -4322,34 +4327,35 @@ mod tests {
                 .collect::<Vec<_>>(),
             [(Some(9.0), Some(1900.0)), (Some(4.0), Some(1500.0))]
         );
-        let earlier = drop_after(&both, 2, &four).flatten();
         assert_eq!(
-            earlier,
-            Some(4),
-            "with the bay now on servo 4, the waypoint that opens servo 9 still has its drop"
+            (drop_after(&both, 2, &four), drop_after(&both, 5, &four)),
+            (Some(None), Some(Some(6))),
+            "with the bay on servo 4, servo 9 opens no bay: it is a plain servo, and the drop is the one on servo 4"
         );
         assert_eq!(
-            drop_release(&both, 4, &four),
-            Some(DropRelease {
-                output: 9.0,
-                pwm: 1900.0,
-                bay: None
-            }),
-            "its chip reads the item, and servo 9 is no bay any more"
+            crate::missionitems::document_reads(&both, -1).unwrap()[4]["commandName"],
+            "Set servo 9 to 1900",
+            "a servo that drops nothing reads by its output and PWM"
+        );
+        let again = set_param(&both, 4, 1, 4.0).unwrap();
+        assert_eq!(
+            (drop_after(&again, 2, &four), drop_after(&again, 5, &four)),
+            (Some(Some(4)), Some(None)),
+            "moved onto servo 4 at the first waypoint, it opens the bay first and is the drop; the later one opens an empty bay, so it is a plain servo"
         );
         assert_eq!(
-            drop_release(&both, 6, &four).and_then(|release| release.bay),
-            Some(1)
+            crate::missionitems::document_reads(&again, -1).unwrap()[6]["commandName"],
+            "Set servo 4 to 1500"
         );
         assert_eq!(drop_wait(&both, 2, 4), 5.0);
-        let moved = set_drop_servo(&both, 5, Some(7.0), Some(1200.0), &four).unwrap();
+        let moved = set_drop_servo(&both, 5, None, Some(1200.0), &four).unwrap();
         assert_eq!(
             (
                 drop_release(&moved, 6, &four).map(|it| (it.output, it.pwm)),
                 drop_release(&moved, 4, &four).map(|it| (it.output, it.pwm))
             ),
-            (Some((7.0, 1200.0)), Some((9.0, 1900.0))),
-            "editing one waypoint's servo writes that item and no other"
+            (Some((4.0, 1200.0)), Some((9.0, 1900.0))),
+            "editing one waypoint's drop writes that item and no other"
         );
         assert_eq!(
             set_drop_servo(&both, 5, Some(40.0), None, &four).unwrap_err(),
@@ -4376,6 +4382,14 @@ mod tests {
                 .collect::<Vec<_>>(),
             [1, 2],
             "with a servo per bay each drop names the bay its own output belongs to"
+        );
+        assert_eq!(
+            (
+                drop_after(&both, 2, &two_bays),
+                drop_after(&both, 5, &two_bays)
+            ),
+            (Some(Some(4)), Some(Some(6))),
+            "and each is its waypoint's drop"
         );
         let gripper = place_drop(&route(2, ""), 2, None, &QT_DEFAULTS, &[]).unwrap();
         assert_eq!(drop_release(&gripper, 3, &[]), None);
@@ -5005,13 +5019,13 @@ mod tests {
         let shot = set_camera(&tilted, 6, "cameraAction", &json!(6)).unwrap();
         assert_eq!(
             kinds(&shot, 6, &servos),
-            [StepKind::Camera, StepKind::Drop, StepKind::Gimbal],
-            "a new camera action starts on arrival, and can then be moved"
+            [StepKind::Camera, StepKind::Command, StepKind::Gimbal],
+            "a new camera action starts on arrival, and can then be moved; the servo at the second waypoint opens the bay the first one already emptied, so it is a plain servo, not a drop"
         );
         let untilted = set_camera(&shot, 6, "specifyGimbal", &json!(false)).unwrap();
         assert_eq!(
             kinds(&untilted, 6, &servos),
-            [StepKind::Camera, StepKind::Drop]
+            [StepKind::Camera, StepKind::Command]
         );
         assert_eq!(
             move_action(&servo_first, 6, 1, 1, &servos).unwrap_err(),

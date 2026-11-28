@@ -169,13 +169,23 @@ fn a_waypoints_drop_is_placed_edited_and_removed_by_naming_the_waypoint_and_keep
         true
     );
     assert_eq!(
+        drop_of(&core, 2)["output"],
+        json!(9.0),
+        "the drop moved to servo 9, and the bay with it"
+    );
+    let on_servo_nine = groundstation::coreplan::current_document();
+    assert_eq!(
         groundstation::coreplan::apply(|_| Ok(on_servo_four))["ok"],
         true
     );
     assert_eq!(
-        (flown()[3], drop_of(&core, 2)["output"].clone()),
-        ((SET_SERVO, Some(4.0), Some(1500.0)), json!(4.0)),
-        "undone, the drop is servo 4 again and still this waypoint's drop, though the next drop would start from servo 9"
+        (flown()[3], drop_of(&core, 2)["index"].clone()),
+        ((SET_SERVO, Some(4.0), Some(1500.0)), Value::Null),
+        "undone, the item is servo 4 again, but the bay stays on servo 9, so servo 4 opens no bay and is a plain servo"
+    );
+    assert_eq!(
+        groundstation::coreplan::apply(|_| Ok(on_servo_nine))["ok"],
+        true
     );
     assert_eq!(
         invoked(
