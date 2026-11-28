@@ -156,6 +156,9 @@ import { firstWhere, useRemembered } from './Remembered';
 import { WaypointSettings } from './WaypointPanel';
 
 const PLAN_POLL_MS = 700;
+const NO_REVISION = -1;
+
+export const rowsAreStale = (planRevision: number, rowsRevision: number): boolean => planRevision > rowsRevision;
 const FIELD_ZOOM = 16;
 const PANEL_MAX_FRACTION = 0.5;
 const SIDE_PANEL_WIDTH = 380;
@@ -304,6 +307,7 @@ export const PlanMapContent = ({
   const panelOpen = useRemembered(true);
   const readsStarted = useRemembered(0);
   const planReads = useRemembered(0);
+  const rowsRevision = useRemembered(NO_REVISION);
   const layer = useRemembered<PlanLayer>(PlanLayer.Mission);
   const mapMenu = useRemembered<MapMenuAt | null>(null);
   const selectedKey = hitKey(selected.value);
@@ -422,7 +426,7 @@ export const PlanMapContent = ({
     centreRequest.value += 1;
     follow.value = false;
   };
-  const pickRow = (row: ItemRow): void => focusItem(row.index);
+  const pickRow = (row: ItemRow): void => freshPick(row.index);
   const addRallyAt = (lat: number, lon: number): void => {
     void onBridge(() => FenceBridge.addRallyPoint(lat, lon), {
       label: 'Adding rally',
@@ -496,6 +500,11 @@ export const PlanMapContent = ({
     readsStarted.value = readNumber;
     const plan = await PlanBridge.rawItems();
     if (plan !== null) MapBridge.markReachable();
+    const readRevision = optInt(plan, 'revision', NO_REVISION);
+    if (readRevision < rowsRevision.value) {
+      planReads.value = Math.max(planReads.value, readNumber);
+      return;
+    }
     const nextAll = allMissionItems(plan);
     const noteId = optInt(plan, 'noteId');
     const note = optText(plan, 'note');
@@ -537,7 +546,16 @@ export const PlanMapContent = ({
     surveyList.value = nextSurveys;
     landingList.value = nextLandings;
     surveyStatsMap.value = nextStats;
+    rowsRevision.value = Math.max(rowsRevision.value, readRevision);
     planReads.value = readNumber;
+  };
+
+  const planRevision = optInt(planStatus, 'revision', NO_REVISION);
+  useEffect(() => {
+    if (rowsAreStale(planRevision, rowsRevision.value)) void refresh();
+  }, [planRevision]);
+  const freshPick = (index: number): void => {
+    if (!rowsAreStale(planRevision, rowsRevision.value)) focusItem(index);
   };
 
   const started = useDocumentStarted();
@@ -698,6 +716,7 @@ export const PlanMapContent = ({
           onBridge(() => writeDragStep(generation, hit, lat, lon, surveyList.value, rally.value, fences.value, allItems.value, circles.value));
         }}
         onWaypointSelected={(hit) => {
+          if (hit !== null && rowsAreStale(planRevision, rowsRevision.value)) return;
           if (hit !== null && actsOnTap(hit) && !dragAllowed(hit, selected.value, layer.value)) return;
           switch (hit?.kind) {
             case 'Midpoint':
@@ -1056,7 +1075,7 @@ export const PlanMapContent = ({
                 altitudes={altitudes}
                 conflicts={conflicts}
                 selected={chosenItem?.index ?? null}
-                onPick={focusItem}
+                onPick={freshPick}
                 onList={
                   sidePanel
                     ? null
@@ -1114,6 +1133,7 @@ export const PlanMapContent = ({
                   notice={elevationNotice}
                   selectedSequence={selectedSequence}
                   onSelect={(sequence) => {
+                    if (rowsAreStale(planRevision, rowsRevision.value)) return;
                     const item = allItems.value.find((it) => it.sequence === sequence);
                     if (item !== undefined) selected.value = { kind: 'Waypoint', index: item.index };
                   }}

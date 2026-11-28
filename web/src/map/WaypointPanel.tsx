@@ -12,7 +12,8 @@ import { type MissionItem, PlanBridge } from './PlanBridge';
 import type { ItemRow } from './PlanItems';
 import { sentenceCase } from './SentenceCase';
 import { type ClosedRange, SettingStepper } from './SettingStepper';
-import { actionSteps, waypointDrop, waypointYaw, WaypointActions } from './WaypointActions';
+import { actionSteps } from './ActionOrderModel';
+import { waypointDrop, waypointYaw, WaypointActions } from './WaypointActions';
 import { waypointHold, waypointSpeed } from './WaypointSpeed';
 
 const CHIP_SIZE = 40;

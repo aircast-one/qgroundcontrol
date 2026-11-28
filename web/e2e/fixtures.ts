@@ -216,6 +216,76 @@ export const openPlanAtVehicle = async (page: Page) => {
   await expect(page.locator('span.text-label-small').getByText(/^\d+ (m|km)$/)).toHaveText(/^\d+ m$/, { timeout: 60_000 });
 };
 
+export const actionOrder = (page: Page): Locator => page.getByRole('list', { name: 'Actions in order' }).getByRole('listitem');
+
+export const actionGrip = (page: Page, title: string): Locator => page.getByRole('button', { name: `Reorder ${title}`, exact: true });
+
+const centreOf = async (target: Locator): Promise<{ x: number; y: number }> => {
+  const box = await target.boundingBox();
+  if (box === null) throw new Error('the row is not on screen');
+  return { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) };
+};
+
+const pathBetween = (from: { x: number; y: number }, to: { x: number; y: number }, steps: number): readonly { x: number; y: number }[] =>
+  [...Array(steps).keys()].map((at) => ({ x: Math.round(from.x + ((to.x - from.x) * (at + 1)) / steps), y: Math.round(from.y + ((to.y - from.y) * (at + 1)) / steps) }));
+
+export const mouseDragAction = async (page: Page, title: string, onto: Locator, { whileHeld = async () => undefined }: { whileHeld?: () => Promise<void> } = {}): Promise<void> => {
+  const from = await centreOf(actionGrip(page, title));
+  const to = await centreOf(onto);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await expect(actionGrip(page, title), 'the row lifts as soon as the grip is pressed and moved').toHaveAttribute('aria-pressed', 'true');
+  await pathBetween(from, { x: from.x, y: to.y }, 12).reduce((done, at) => done.then(() => page.mouse.move(at.x, at.y)), Promise.resolve());
+  await whileHeld();
+  await page.mouse.up();
+};
+
+export const touchDragAction = async (page: Page, title: string, row: Locator, onto: Locator): Promise<void> => {
+  const finger = await page.context().newCDPSession(page);
+  await finger.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+  const from = await centreOf(row);
+  const to = await centreOf(onto);
+  const touch = async (type: 'touchStart' | 'touchMove' | 'touchEnd', points: readonly { x: number; y: number }[]): Promise<void> => {
+    await finger.send('Input.dispatchTouchEvent', { type, touchPoints: [...points] });
+  };
+  await touch('touchStart', [from]);
+  await expect(actionGrip(page, title), 'a held finger lifts the whole row').toHaveAttribute('aria-pressed', 'true');
+  await pathBetween(from, { x: from.x, y: to.y }, 12).reduce((done, at) => done.then(() => touch('touchMove', [at])), Promise.resolve());
+  await touch('touchEnd', []);
+};
+
+export const keyboardMoveAction = async (page: Page, title: string, presses: readonly ('ArrowUp' | 'ArrowDown')[], finish: 'Space' | 'Escape' = 'Space'): Promise<void> => {
+  const grip = actionGrip(page, title);
+  await grip.focus();
+  await page.keyboard.press('Space');
+  await expect(grip).toHaveAttribute('aria-pressed', 'true');
+  const live = page.locator('[id^="DndLiveRegion"]');
+  await expect(live, 'the lifted row has been measured and says where it would land').toHaveText(/would be action/);
+  await presses.reduce(
+    (done, key) =>
+      done.then(async () => {
+        const before = await live.innerText();
+        await page.keyboard.press(key);
+        await expect(live, `${key} moves ${title} one place and says where it would land`).not.toHaveText(before);
+      }),
+    Promise.resolve(),
+  );
+  await page.keyboard.press(finish);
+};
+
+export const savedMission = (page: Page): Promise<readonly number[]> =>
+  page.evaluate(
+    async ([bridge, files, path]) => {
+      const { Qgc } = (await import(bridge)) as { Qgc: { invokeResult: (path: string, ...args: unknown[]) => Promise<unknown> } };
+      const { stagedFile } = (await import(files)) as { stagedFile: (path: string) => Promise<File | null> };
+      await Qgc.invokeResult('plan.saveToFile', path);
+      const text = (await (await stagedFile(path))?.text()) ?? '{}';
+      const plan = JSON.parse(text) as { mission?: { items?: { command?: number; TransectStyleComplexItem?: unknown }[] } };
+      return (plan.mission?.items ?? []).map((item) => item.command ?? -1);
+    },
+    ['/src/bridge/Qgc.ts', '/src/core/files.ts', '/e2e-order.plan'] as const,
+  );
+
 export const test = base.extend<{ app: Page; vehicle: Page }>({
   app: async ({ page }, use) => {
     const errors: string[] = [];

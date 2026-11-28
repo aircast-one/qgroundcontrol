@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { type Json, isNull, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
+import { type Json, isNull, optBoolean, optDouble, optInt, optJSONObject, optText } from '@/bridge/Json';
 import { useKeyedState } from '@/kotlin/Compose';
-import { AlertDialog, DropdownMenu, DropdownMenuItem, FilledTonalButton, FilterChip, IconButton, RadioButton, Text, TextButton } from '@/m3';
-import { Drawable, MaterialIcon } from '@/res/Icon';
+import { AlertDialog, DropdownMenu, DropdownMenuItem, FilledTonalButton, FilterChip, RadioButton, Text, TextButton } from '@/m3';
+import { Drawable } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
 import { md } from '@/theme/Colors';
 import { invokeRefusal, setOk, settingJson } from './BridgeCalls';
@@ -11,6 +11,8 @@ import { type CameraChoices, type CameraExtras, ItemCameraBridge, cameraChoices,
 import { useMapPath } from './MapBridge';
 import { sentenceCase } from './SentenceCase';
 import { type ClosedRange, SettingStepper } from './SettingStepper';
+import { ActionOrderList } from './ActionOrder';
+import { type ActionStep, type ShownAction, WAIT, orderedActions, orderedCount } from './ActionOrderModel';
 import type { WaypointHold } from './WaypointSpeed';
 
 export type WaypointYaw = { degrees: number | null; units: string; path: string };
@@ -60,11 +62,7 @@ const WAIT_RANGE: ClosedRange = { start: 0.0, endInclusive: 600.0 };
 const PWM_STEP = 50.0;
 
 export const dropText = (drop: WaypointDrop): string =>
-  [
-    drop.bay === null ? '' : `Bay ${trimmedNumber(drop.bay)}`,
-    drop.output === null || drop.pwm === null ? 'Gripper' : `Servo ${trimmedNumber(drop.output)} to ${trimmedNumber(drop.pwm)}`,
-    drop.wait > 0.0 ? `after ${trimmedNumber(drop.wait)} s` : '',
-  ]
+  [drop.bay === null ? '' : `Bay ${trimmedNumber(drop.bay)}`, drop.output === null || drop.pwm === null ? 'Gripper' : `Servo ${trimmedNumber(drop.output)} to ${trimmedNumber(drop.pwm)}`]
     .filter((it) => it !== '')
     .join(' · ');
 
@@ -275,41 +273,9 @@ const ActionEditor = ({ kind, index, hold, yaw, drop, choices, extras, writes, o
   }
 };
 
-export type ActionStep = { readonly kind: string; readonly title: string; readonly seconds: number | null; readonly item: number | null; readonly earlier: boolean; readonly later: boolean };
-
-export const actionSteps = (view: Json | null): readonly ActionStep[] =>
-  jsonObjects(optJSONArray(view, 'actions')).map((step) => ({
-    kind: optText(step, 'kind'),
-    title: optText(step, 'title'),
-    seconds: numberOrNull(step, 'seconds'),
-    item: isNull(step, 'item') ? null : optInt(step, 'item'),
-    earlier: optBoolean(step, 'earlier'),
-    later: optBoolean(step, 'later'),
-  }));
-
-export type OrderedAction = { readonly action: WaypointAction | null; readonly title: string; readonly value: string; readonly icon: DrawableName; readonly place: number | null; readonly item: number | null; readonly earlier: boolean; readonly later: boolean };
-
-const STEP_ICONS: Readonly<Record<string, DrawableName>> = { Wait: 'plan_timer' };
-
-export const orderedActions = (steps: readonly ActionStep[], active: readonly WaypointAction[]): readonly OrderedAction[] => {
-  const listed = steps.map((step, place): OrderedAction => {
-    const action = active.find((it) => it.kind.name === step.kind) ?? null;
-    return {
-      action,
-      title: action?.title ?? step.title,
-      value: action?.value ?? (step.seconds === null ? '' : `${trimmedNumber(step.seconds)} s`),
-      icon: action?.icon ?? STEP_ICONS[step.kind] ?? 'plan_tune',
-      place,
-      item: step.item,
-      earlier: step.earlier,
-      later: step.later,
-    };
-  });
-  const unordered = active.filter((it) => !steps.some((step) => step.kind === it.kind.name)).map((action): OrderedAction => ({ action, title: action.title, value: action.value, icon: action.icon, place: null, item: null, earlier: false, later: false }));
-  return [...listed, ...unordered];
-};
-
 export const MOVE_ACTION = 'core.plan.moveAction';
+export const SET_WAIT = 'core.plan.setWait';
+const WAIT_STEPPER: ClosedRange = { start: 1.0, endInclusive: 600.0 };
 const REMOVE_ITEM = 'core.plan.remove';
 const ACTION_NOT_CHANGED = 'The action was not changed.';
 
@@ -321,13 +287,27 @@ export const WaypointActions = ({ index, hold, yaw, drop, steps, onRefusal }: { 
   const offers = offeredActions(hold, yaw, choices, extras, drop);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useKeyedState<ActionKind | null>([index], () => null);
+  const [waitEditing, setWaitEditing] = useKeyedState<ShownAction<WaypointAction> | null>([index], () => null);
   if (active.length === 0 && offers.length === 0 && steps.length === 0) return null;
   const writes = actionWrites(index, hold, yaw, onRefusal);
   const add = (offer: ActionOffer) => ADDITIONS[offer.kind.name](writes, offer, () => setEditing(offer.kind));
   const ordered = orderedActions(steps, active);
-  const remove = (step: OrderedAction) =>
-    step.action !== null ? REMOVALS[step.action.kind.name](writes) : step.item === null ? undefined : onRefusal('Removing the action', () => invokeRefusal(REMOVE_ITEM, `[${step.item}]`, ACTION_NOT_CHANGED));
-  const move = (step: OrderedAction, later: boolean) => (step.place === null ? undefined : onRefusal('Moving the action', () => invokeRefusal(MOVE_ACTION, `[${index}, ${step.place}, ${later}]`, ACTION_NOT_CHANGED)));
+  const remove = (step: ShownAction<WaypointAction>) =>
+    step.action !== null
+      ? () => REMOVALS[step.action?.kind.name ?? 'Hover'](writes)
+      : step.item === null
+        ? null
+        : () => onRefusal('Removing the action', () => invokeRefusal(REMOVE_ITEM, `[${step.item}]`, ACTION_NOT_CHANGED));
+  const edit = (step: ShownAction<WaypointAction>) =>
+    step.action !== null ? () => setEditing(step.action?.kind ?? null) : step.kind === WAIT && step.place !== null ? () => setWaitEditing(step) : null;
+  const move = (args: string, undo: () => void) =>
+    onRefusal('Moving the action', async () => {
+      const refusal = await invokeRefusal(MOVE_ACTION, args, ACTION_NOT_CHANGED);
+      if (refusal !== null) undo();
+      return refusal;
+    });
+  const retime = (step: ShownAction<WaypointAction>, seconds: number) =>
+    onRefusal('Changing the wait', () => invokeRefusal(SET_WAIT, `[${index}, ${step.place}, ${seconds}]`, ACTION_NOT_CHANGED));
   return (
     <>
       <div className="flex w-full flex-col py-1">
@@ -362,19 +342,28 @@ export const WaypointActions = ({ index, hold, yaw, drop, steps, onRefusal }: { 
             {addActionsHint(offers)}
           </Text>
         ) : null}
-        {ordered.some((it) => it.earlier || it.later) ? (
+        {orderedCount(ordered) > 1 ? (
           <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-            Done in this order after arriving.
+            Done in this order after arriving. Drag an action by its grip to change the order.
           </Text>
         ) : null}
-        <ol className="flex flex-col gap-2" aria-label="Actions in order">
-          {ordered.map((step, at) => (
-            <li key={`${step.title}-${at}`}>
-              <ActionChip step={step} onClick={step.action === null ? null : () => setEditing(step.action?.kind ?? null)} onRemove={() => remove(step)} onMove={(later) => move(step, later)} />
-            </li>
-          ))}
-        </ol>
+        <ActionOrderList waypoint={index} steps={ordered} onMove={move} onEdit={edit} onRemove={remove} />
       </div>
+      {waitEditing !== null ? (
+        <AlertDialog
+          onDismissRequest={() => setWaitEditing(null)}
+          title="Wait"
+          text={
+            <div className="flex flex-col">
+              <SettingStepper label="Wait" value={waitEditing.seconds ?? WAIT_STEPPER.start} unit="s" step={1.0} onSet={(it) => retime(waitEditing, it)} range={WAIT_STEPPER} slider />
+              <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+                The aircraft holds over the waypoint this long before the next action.
+              </Text>
+            </div>
+          }
+          confirmButton={<TextButton onClick={() => setWaitEditing(null)}>Done</TextButton>}
+        />
+      ) : null}
       {editing !== null ? (
         <AlertDialog
           onDismissRequest={() => setEditing(null)}
@@ -425,27 +414,3 @@ const DropEditor = ({ index, drop, onRefusal }: { index: number; drop: WaypointD
   );
 };
 
-const ActionChip = ({ step, onClick, onRemove, onMove }: { step: OrderedAction; onClick: (() => void) | null; onRemove: () => void; onMove: (later: boolean) => void }) => (
-  <div className="flex items-center bg-secondary-container text-on-secondary-container" style={{ borderRadius: 14 }}>
-    <button type="button" className="flex min-w-0 flex-1 items-center pl-3 text-left" onClick={onClick ?? undefined} disabled={onClick === null}>
-      <Drawable name={step.icon} size={20} />
-      <span className="flex flex-col pt-1.5 pb-1.5 pl-2">
-        <Text typography="labelLarge">{step.title}</Text>
-        {step.value.trim() !== '' ? <Text typography="labelSmall">{step.value}</Text> : null}
-      </span>
-    </button>
-    {step.earlier ? (
-      <IconButton onClick={() => onMove(false)} label={`Move ${step.title} earlier`} contentColor={md('onSecondaryContainer')}>
-        <MaterialIcon name="arrow_upward" filled size={18} />
-      </IconButton>
-    ) : null}
-    {step.later ? (
-      <IconButton onClick={() => onMove(true)} label={`Move ${step.title} later`} contentColor={md('onSecondaryContainer')}>
-        <MaterialIcon name="arrow_downward" filled size={18} />
-      </IconButton>
-    ) : null}
-    <IconButton onClick={onRemove} label={`Remove ${step.title}`} contentColor={md('onSecondaryContainer')}>
-      <MaterialIcon name="close" filled size={18} />
-    </IconButton>
-  </div>
-);

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { CameraExtras } from './ItemCamera';
 import { legLabels } from './MissionLayers';
 import { MissionItem } from './PlanBridge';
-import { actionSteps, activeActions, addActionsHint, cameraIcon, dropText, offeredActions, orderedActions, startingChoice, waypointDrop, waypointYaw } from './WaypointActions';
+import { actionSteps, canDrop, dropMove, movedOrder, orderedActions, orderedCount, projectedPlaces, shownAt } from './ActionOrderModel';
+import { activeActions, addActionsHint, cameraIcon, dropText, offeredActions, startingChoice, waypointDrop, waypointYaw } from './WaypointActions';
 
 describe('WaypointActionsTest', () => {
   const labels = ['No change', 'Take photo', 'Take photos (time)', 'Take photos (distance)', 'Stop taking photos', 'Start recording video', 'Stop recording video'];
@@ -71,14 +72,14 @@ describe('WaypointActionsTest', () => {
 
   const dropFact = (fields: object) => waypointDrop({ drop: { index: 5, wait: 0, waitOffered: true, servo: true, output: 4, pwm: 2000, bay: null, ...fields } });
 
-  it('a drop reads its servo, its PWM and its bay from its own mission item, and says how long the drone waits first', () => {
+  it('a drop reads its servo, its PWM and its bay from its own mission item, and leaves its wait to the wait row before it', () => {
     expect(dropFact({ wait: 10 })).toEqual({ index: 5, wait: 10, waitOffered: true, servo: true, output: 4, pwm: 2000, bay: null });
     expect([dropFact({ wait: 10 }), dropFact({ output: 10, pwm: 1900, bay: 2 }), dropFact({ servo: false, output: null, pwm: null })].map((it) => (it === null ? '' : dropText(it)))).toEqual([
-      'Servo 4 to 2000 · after 10 s',
+      'Servo 4 to 2000',
       'Bay 2 · Servo 10 to 1900',
       'Gripper',
     ]);
-    expect(activeActions(noHold, noTurn, null, null, dropFact({ wait: 10 })).map((it) => `${it.title} ${it.value}`)).toEqual(['Drop payload Servo 4 to 2000 · after 10 s']);
+    expect(activeActions(noHold, noTurn, null, null, dropFact({ wait: 10 })).map((it) => `${it.title} ${it.value}`)).toEqual(['Drop payload Servo 4 to 2000']);
   });
 
   it('a waypoint offers a drop until one follows it, then shows it as an action', () => {
@@ -93,30 +94,54 @@ describe('WaypointActionsTest', () => {
     expect(offeredActions(noHold, noTurn, null, null, null).map((it) => it.title)).not.toContain('Drop payload');
   });
 
-  it('the actions are listed in the order the core says they are flown, with waits and other commands in their places', () => {
-    const steps = actionSteps({
+  const coreSteps = (places: readonly (readonly number[])[], refusal: string | null = null) =>
+    actionSteps({
       actions: [
-        { kind: 'Gimbal', title: 'Gimbal', seconds: null, item: null, earlier: false, later: true },
-        { kind: 'Camera', title: 'Camera', seconds: null, item: null, earlier: true, later: true },
-        { kind: 'Wait', title: 'Wait', seconds: 10, item: 4, earlier: true, later: true },
-        { kind: 'Command', title: 'Set servo', seconds: null, item: 5, earlier: true, later: true },
-        { kind: 'Drop', title: 'Drop', seconds: null, item: 6, earlier: true, later: false },
+        { kind: 'Hover', title: 'Hover', seconds: 10, item: null, places: places[0], refusal },
+        { kind: 'Gimbal', title: 'Gimbal', seconds: null, item: null, places: places[1], refusal: null },
+        { kind: 'Camera', title: 'Camera', seconds: null, item: null, places: places[2], refusal: null },
+        { kind: 'Command', title: 'Set servo', seconds: null, item: 5, places: places[3], refusal: null },
+        { kind: 'Drop', title: 'Drop', seconds: null, item: 6, places: places[4], refusal: null },
       ],
     });
-    const active = activeActions(noHold, { degrees: 90.0, units: 'deg', path: 'y' }, { labels, chosen: 1 }, { ...idleCamera, commandsGimbal: true, yaw: 60.0 }, dropFact({ index: 6, wait: 10 }));
-    const ordered = orderedActions(steps, active);
-    expect(ordered.map((it) => `${it.title} ${it.value}`.trim())).toEqual(['Gimbal 0° / 60°', 'Take photo', 'Wait 10 s', 'Set servo', 'Drop payload Servo 4 to 2000 · after 10 s', 'Turn aircraft 90°']);
-    expect(ordered.map((it) => [it.place, it.earlier, it.later]), 'only what the core can move has a place, and the ends cannot leave the list').toEqual([
-      [0, false, true],
-      [1, true, true],
-      [2, true, true],
-      [3, true, true],
-      [4, true, false],
-      [null, false, false],
-    ]);
-    expect(ordered.map((it) => it.action?.kind.name ?? null), 'a wait and a plain command have no editor of their own').toEqual(['Gimbal', 'Camera', null, null, 'Drop', 'Turn']);
-    expect(ordered[2]?.item).toBe(4);
-    expect(orderedActions([], active).map((it) => it.title), 'with no order from the core the actions still show').toEqual(active.map((it) => it.title));
+  const anywhere = [0, 1, 2, 3, 4];
+  const active = () => activeActions({ seconds: 10.0, units: 's', path: 'h' }, { degrees: 90.0, units: 'deg', path: 'y' }, { labels, chosen: 1 }, { ...idleCamera, commandsGimbal: true, yaw: 60.0 }, dropFact({ index: 6, wait: 10 }));
+
+  it('the actions are listed in the order the core says they are flown, and turning the aircraft stays last with no place to drag to', () => {
+    const ordered = orderedActions(coreSteps([anywhere, anywhere, anywhere, anywhere, anywhere]), active());
+    expect(ordered.map((it) => `${it.title} ${it.value}`.trim())).toEqual(['Hover 10 s', 'Gimbal 0° / 60°', 'Take photo', 'Set servo', 'Drop payload Servo 4 to 2000', 'Turn aircraft 90°']);
+    expect(ordered.map((it) => it.place)).toEqual([0, 1, 2, 3, 4, null]);
+    expect(canDrop(ordered[5], 0), 'turning the aircraft is set at the waypoint and is never a drag').toBe(false);
+    expect(orderedCount(ordered)).toBe(5);
+    expect(ordered.map((it) => it.action?.kind.name ?? null), 'a plain command has no editor of its own').toEqual(['Hover', 'Gimbal', 'Camera', null, 'Drop', 'Turn']);
+    expect(orderedActions([], active()).map((it) => it.title), 'with no order from the core the actions still show').toEqual(active().map((it) => it.title));
     expect(actionSteps(null)).toEqual([]);
+  });
+
+  it('a slot the aircraft cannot fly opens nothing, and a drop there sends no move', () => {
+    const ordered = orderedActions(coreSteps([[0], [1, 2, 3, 4], [1, 2, 3, 4], [1, 2, 3, 4], [1, 2, 3, 4]], 'stays first'), active()).filter((it) => it.place !== null);
+    expect(projectedPlaces(ordered, 4, 0), 'the drop held over the first place: the hold may not move, so nothing makes room').toEqual([0, 1, 2, 3, 4]);
+    expect(dropMove(2, ordered[4], 0), 'and letting go there sends nothing').toBeNull();
+    expect(projectedPlaces(ordered, 4, 1)).toEqual([0, 2, 3, 4, 1]);
+    expect(dropMove(2, ordered[4], 1), 'a place it may take is one move, from where it was to where it lands').toBe('[2,4,1]');
+    expect(dropMove(2, ordered[4], 4), 'let go where it started, nothing is sent').toBeNull();
+    expect(dropMove(2, ordered[4], null), 'let go outside the list, nothing is sent').toBeNull();
+    expect(projectedPlaces(ordered, 0, 3)).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it('the hold reads as a wait the moment it would leave first place, and again as a hold when it comes back', () => {
+    const ordered = orderedActions(coreSteps([anywhere, anywhere, anywhere, anywhere, anywhere]), active()).filter((it) => it.place !== null);
+    const hold = ordered[0]!;
+    expect([0, 1, 3].map((place) => shownAt(hold, place)).map((it) => [it.title, it.icon, it.value])).toEqual([
+      ['Hover', 'plan_timer', '10 s'],
+      ['Wait', 'ic_pause', '10 s'],
+      ['Wait', 'ic_pause', '10 s'],
+    ]);
+    const projected = projectedPlaces(ordered, 2, 0);
+    expect(projected, 'the photo dragged to the top pushes the hold to second').toEqual([1, 2, 0, 3, 4]);
+    expect(shownAt(hold, projected[0]!).title, 'so the hold already reads as a wait while the photo is still held').toBe('Wait');
+    expect(shownAt(ordered[1]!, 3).title, 'only the hold changes its name').toBe('Gimbal');
+    expect(movedOrder(['a', 'b', 'c', 'd'], 3, 0)).toEqual(['d', 'a', 'b', 'c']);
+    expect(movedOrder(['a', 'b', 'c', 'd'], 0, 2)).toEqual(['b', 'c', 'a', 'd']);
   });
 });

@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { connectMock, expect, itemCount, openApp, openMenu, openPlanAtVehicle, tapPlanMission, test } from './fixtures';
+import { actionOrder, connectMock, expect, itemCount, mouseDragAction, openApp, openMenu, openPlanAtVehicle, tapPlanMission, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -585,14 +585,12 @@ test('the plan Oleg drew in his recording: a waypoint after the takeoff, a secon
   await expect(app.getByRole('button', { name: /^2 Waypoint 30(\.0)? m.* · holds 10 s/ }), 'waypoint 2 flies at 30 m and hovers 10 s').toBeVisible({ timeout: 15_000 });
   await expect(app.getByText('0° / 60°'), 'the camera looks level, 60° to the side').toBeVisible();
   await expect(app.getByRole('button', { name: 'Take photo', exact: true })).toBeVisible();
-  await expect(app.getByText('Servo 4 to 1500 · after 10 s'), 'servo 4 opens at 1500 after a 10 s wait').toBeVisible({ timeout: 15_000 });
+  await expect(app.getByText('Servo 4 to 1500', { exact: true }), 'servo 4 opens at 1500').toBeVisible({ timeout: 15_000 });
   await onlyTheLaunchBeforeTheTakeoff('with every action on waypoint 2');
-  const order = app.getByRole('list', { name: 'Actions in order' }).getByRole('listitem');
-  await expect(order).toHaveText([/^Hover/, /^Gimbal/, /^Take photo/, /^Wait/, /^Drop payload/]);
-  await app.getByRole('button', { name: 'Move Hover later' }).click();
-  await expect(order.nth(1)).toHaveText(/^Wait/, { timeout: 15_000 });
-  await order.nth(1).getByRole('button', { name: 'Move Wait later' }).click();
-  await expect(order, 'the order he asked for: camera, photo, hold on this position 10 s, then the drop after its own wait').toHaveText([/^Gimbal0° \/ 60°/, /^Take photo/, /^Wait10 s/, /^Wait10 s/, /^Drop payloadServo 4 to 1500/], { timeout: 15_000 });
+  const order = actionOrder(app);
+  await expect(order, 'the 10 s wait he gave the drop is a row of its own before it').toHaveText([/^Hover/, /^Gimbal/, /^Take photo/, /^Wait10 s/, /^Drop payload/]);
+  await mouseDragAction(app, 'Hover', order.nth(2));
+  await expect(order, 'dragged into the order he asked for: camera, photo, hold on this position 10 s, then the drop after its own wait').toHaveText([/^Gimbal0° \/ 60°/, /^Take photo/, /^Wait10 s/, /^Wait10 s/, /^Drop payloadServo 4 to 1500/], { timeout: 15_000 });
   await expect(app.getByRole('button', { name: /^Delay/i }).first(), 'the hold is a row of its own once it is not the first thing done').toBeVisible({ timeout: 15_000 });
 
   await app.getByRole('button', { name: 'Waypoint 1' }).first().click();
