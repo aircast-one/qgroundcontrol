@@ -91,7 +91,7 @@ test('the raw view of a waypoint reads in plain words and its command list chang
   await app.getByRole('menuitem', { name: 'Delay', exact: true }).click();
   await expect(app.getByText('That change was not accepted.'), 'picking a command from the list was refused for every command').toHaveCount(0);
   await expect(app.getByText('Delay added at Waypoint 3'), 'a command with no position is added at the waypoint, which stays').toBeVisible({ timeout: 15_000 });
-  await expect(app.getByRole('button', { name: /^Delay\b/i }), 'the delay sits under its waypoint without a number of its own').toBeVisible();
+  await expect(app.getByRole('button', { name: /^Delay holds/i }), 'the delay sits under its waypoint without a number of its own').toBeVisible();
   await expect(app.getByRole('button', { name: /^3 Waypoint\b/ })).toBeVisible();
 });
 
