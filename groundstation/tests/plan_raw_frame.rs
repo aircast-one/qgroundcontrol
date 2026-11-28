@@ -40,7 +40,7 @@ fn written(core: &Core<Owner<Facade<NoHost>>>, item: usize, property: &str, valu
     .unwrap_or(Value::Null)
 }
 
-fn waypoint() -> (i64, i64, Option<f64>, f64) {
+fn waypoint() -> (i64, i64, Option<f64>, Option<f64>) {
     let document = groundstation::coreplan::current_document();
     let sent = plandoc::mission(&document)["mission"]["items"][1].clone();
     let read = groundstation::missionitems::document_reads(&document, -1).unwrap()[2].clone();
@@ -48,7 +48,9 @@ fn waypoint() -> (i64, i64, Option<f64>, f64) {
         sent["frame"].as_i64().unwrap(),
         read["altitudeFrame"].as_i64().unwrap(),
         sent["params"][6].as_f64(),
-        read["amslEntryAlt"].as_f64().unwrap() - document.home.map_or(0.0, |home| home[2]),
+        read["amslEntryAlt"]
+            .as_f64()
+            .map(|amsl| amsl - document.home.map_or(0.0, |home| home[2])),
     )
 }
 
@@ -73,7 +75,12 @@ fn a_frame_picked_in_the_raw_view_is_the_frame_sent_and_the_altitude_mode_every_
     assert_eq!(groundstation::coreplan::apply(|_| Ok(loaded))["ok"], true);
     assert_eq!(
         waypoint(),
-        (3, groundstation::altitudemodes::RELATIVE, Some(50.0), 50.0),
+        (
+            3,
+            groundstation::altitudemodes::RELATIVE,
+            Some(50.0),
+            Some(50.0)
+        ),
         "50 m over the launch"
     );
     assert_eq!(written(&core, 2, "rawEdit", json!(true))["ok"], true);
@@ -94,7 +101,7 @@ fn a_frame_picked_in_the_raw_view_is_the_frame_sent_and_the_altitude_mode_every_
             0,
             groundstation::altitudemodes::ABSOLUTE,
             Some(50.0),
-            50.0 - launch
+            Some(50.0 - launch)
         ),
         "the raw value stays 50 and is now read as 50 m above sea level, far under the launch, by the list, the chart and the terrain check, as the aircraft will fly it"
     );
@@ -109,7 +116,12 @@ fn a_frame_picked_in_the_raw_view_is_the_frame_sent_and_the_altitude_mode_every_
     );
     assert_eq!(
         waypoint(),
-        (6, groundstation::altitudemodes::RELATIVE, Some(50.0), 50.0),
+        (
+            6,
+            groundstation::altitudemodes::RELATIVE,
+            Some(50.0),
+            Some(50.0)
+        ),
         "a whole-number frame is the same datum"
     );
     assert_eq!(
