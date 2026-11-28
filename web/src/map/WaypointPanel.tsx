@@ -12,7 +12,7 @@ import { type MissionItem, PlanBridge } from './PlanBridge';
 import type { ItemRow } from './PlanItems';
 import { sentenceCase } from './SentenceCase';
 import { type ClosedRange, SettingStepper } from './SettingStepper';
-import { waypointDrop, waypointYaw, WaypointActions } from './WaypointActions';
+import { actionSteps, waypointDrop, waypointYaw, WaypointActions } from './WaypointActions';
 import { waypointHold, waypointSpeed } from './WaypointSpeed';
 
 const CHIP_SIZE = 40;
@@ -166,7 +166,7 @@ export const WaypointSettings = ({
           />
         </div>
       ) : null}
-      {item.index !== HOME_ITEM ? <WaypointActions index={item.index} hold={waypointHold(json)} yaw={waypointYaw(json)} drop={waypointDrop(json)} onRefusal={onRefusal} /> : null}
+      {item.index !== HOME_ITEM ? <WaypointActions index={item.index} hold={waypointHold(json)} yaw={waypointYaw(json)} drop={waypointDrop(json)} steps={actionSteps(json)} onRefusal={onRefusal} /> : null}
     </div>
   );
 };

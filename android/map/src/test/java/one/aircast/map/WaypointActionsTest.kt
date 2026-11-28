@@ -84,6 +84,16 @@ class WaypointActionsTest {
         assertEquals(44.001, legLabels(listOf(first, roi, next)).single().first.longitude, 1e-9)
     }
 
+    @Test
+    fun `the chips stand in the order the core says the aircraft does them`() {
+        val order = actionOrder(JSONObject("""{"actions":[{"kind":"Drop"},{"kind":"Wait"},{"kind":"Gimbal"},{"kind":"Hover"}]}"""))
+        assertEquals(listOf("Drop", "Wait", "Gimbal", "Hover"), order)
+        val active = activeActions(WaypointHold(5.0, "s", "h"), WaypointYaw(90.0, "deg", "y"), null, idleCamera.copy(commandsGimbal = true), dropFact())
+        assertEquals(listOf(ActionKind.Drop, ActionKind.Gimbal, ActionKind.Hover, ActionKind.Turn), inFlightOrder(active, order).map { it.kind })
+        assertEquals(active, inFlightOrder(active, emptyList()))
+        assertEquals(emptyList<String>(), actionOrder(null))
+    }
+
     private fun dropFact(fields: String = "") =
         waypointDrop(JSONObject("""{"drop":{"index":5,"wait":0,"waitOffered":true,"servo":true,"output":4,"pwm":2000,"bay":null}}""").apply {
             JSONObject("{$fields}").let { changed -> changed.keys().forEach { getJSONObject("drop").put(it, changed.get(it)) } }

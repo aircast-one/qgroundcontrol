@@ -160,16 +160,22 @@ internal fun addActionsHint(offers: List<ActionOffer>): String {
     }
 }
 
+internal fun actionOrder(view: JSONObject?): List<String> =
+    view?.optJSONArray("actions")?.let { steps -> (0 until steps.length()).mapNotNull { steps.optJSONObject(it)?.optString("kind") } }.orEmpty()
+
+internal fun inFlightOrder(active: List<WaypointAction>, order: List<String>): List<WaypointAction> =
+    active.sortedBy { action -> order.indexOf(action.kind.name).takeIf { it >= 0 } ?: order.size }
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?, drop: WaypointDrop?) {
+internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?, drop: WaypointDrop?, order: List<String> = emptyList()) {
     var revision by remember(index) { mutableIntStateOf(0) }
     val camera by produceState<JSONObject?>(null, index, revision) {
         value = withContext(Dispatchers.Default) { ItemCameraBridge.read(index) }
     }
     val choices = cameraChoices(camera)
     val extras = cameraExtras(camera)
-    val active = activeActions(hold, yaw, choices, extras, drop)
+    val active = inFlightOrder(activeActions(hold, yaw, choices, extras, drop), order)
     val offers = offeredActions(hold, yaw, choices, extras, drop)
     if (active.isEmpty() && offers.isEmpty()) return
     val scope = rememberCoroutineScope()

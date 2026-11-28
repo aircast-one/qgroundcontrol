@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { armPayload, closeSettings, connectMock, dropFromStrip, expect, flightMode, itemCount, openMenu, openPlanAtVehicle, showMapFull, slideAcross, takeOff, tapPlanMission, test, vehicleStatus } from './fixtures';
 
 test.describe.configure({ timeout: 180_000 });
@@ -130,6 +130,87 @@ test('deleting a waypoint takes its wait and its drop with it, so the waypoint b
   await expect.poll(() => itemCount(vehicle), { message: 'the waypoint, its wait and its drop', timeout: 30_000 }).toBe(before - 1);
   await vehicle.getByRole('button', { name: 'Waypoint 2' }).first().click();
   await expect(vehicle.getByRole('button', { name: 'Remove Drop payload' }), 'waypoint 2 did not inherit the drop').toHaveCount(0);
+});
+
+const planNames = (page: Page): Promise<readonly string[]> =>
+  page.evaluate(async (module) => {
+    const view = (await ((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.missionItems(geometry)')) as { items?: { name?: string }[] } | null;
+    return (view?.items ?? []).map((it) => it.name ?? '');
+  }, '/src/bridge/Qgc.ts');
+
+const afterWaypoint = (names: readonly string[], nth: number): readonly string[] => {
+  const starts = names.flatMap((name, at) => (name === 'Waypoint' ? [at] : []));
+  const from = starts[nth - 1] ?? names.length;
+  return names.slice(from + 1, starts[nth] ?? names.length);
+};
+
+test('the pilot sets the order of a waypoint\'s actions: aim, photo, hold, drop at one, and servo before camera at the next', async ({ app: vehicle }) => {
+  test.setTimeout(240_000);
+  await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
+  await openPlanAtVehicle(vehicle);
+  await tapPlanMission(vehicle);
+  await expect.poll(() => itemCount(vehicle)).toBeGreaterThanOrEqual(5);
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  await vehicle.evaluate(async (module) => ((await import(module)) as { Qgc: { call: (path: string, ...args: unknown[]) => Promise<unknown> } }).Qgc.call('advancedUi.set', true), '/src/bridge/Qgc.ts');
+  const typed = async (editor: Locator, label: string, value: string) => {
+    await editor.getByRole('button', { name: new RegExp(`^${label}: `) }).click();
+    await vehicle.getByRole('textbox', { name: new RegExp(`^${label}`) }).fill(value);
+    await vehicle.getByRole('button', { name: 'Set', exact: true }).click();
+  };
+  const add = async (action: string) => {
+    await vehicle.getByRole('button', { name: 'Add action', exact: true }).click();
+    await vehicle.getByRole('menuitem', { name: action }).click();
+    return vehicle.getByRole('dialog');
+  };
+  const order = vehicle.getByRole('list', { name: 'Actions in order' }).getByRole('listitem');
+
+  await vehicle.getByRole('button', { name: 'Waypoint 1' }).first().click();
+  const hover = await add('Hover');
+  await typed(hover, 'Hover', '10');
+  await hover.getByRole('button', { name: 'Done' }).click();
+  const tilt = await add('Tilt camera');
+  await typed(tilt, 'Yaw', '60');
+  await tilt.getByRole('button', { name: 'Done' }).click();
+  await (await add('Photo')).getByRole('button', { name: 'Done' }).click();
+  const drop = await add('Drop payload');
+  await drop.getByRole('button', { name: 'Servo', exact: true }).click();
+  await typed(drop, 'Servo output', '4');
+  await typed(drop, 'Release PWM', '1500');
+  await drop.getByRole('button', { name: 'Done' }).click();
+  await expect(order).toHaveText([/^Hover/, /^Gimbal/, /^Take photo/, /^Drop payload/]);
+  await vehicle.getByRole('button', { name: 'Move Hover later' }).click();
+  await expect(order).toHaveText([/^Gimbal/, /^Wait/, /^Take photo/, /^Drop payload/], { timeout: 15_000 });
+  await vehicle.getByRole('button', { name: 'Move Wait later' }).click();
+  await expect(order, 'camera yaw 60, photo, hold 10 s, then servo 4 to 1500').toHaveText([/^Gimbal0° \/ 60°/, /^Take photo/, /^Wait10 s/, /^Drop payloadServo 4 to 1500/], { timeout: 15_000 });
+  await vehicle.screenshot({ path: process.env.ORDER_SHOT ?? 'test-results/order-first-waypoint.png' });
+  await expect.poll(async () => afterWaypoint(await planNames(vehicle), 1).map((name) => (/delay/i.test(name) ? 'delay' : /servo|drop/i.test(name) ? 'servo' : name)), { message: 'the mission holds the delay and then the servo after waypoint 1, with the camera folded ahead of them', timeout: 15_000 }).toEqual(['delay', 'servo']);
+
+  await expect(vehicle.getByRole('button', { name: /^Delay/i }), 'the hold now has a row of its own in the list').toBeVisible({ timeout: 15_000 });
+  await vehicle.getByRole('button', { name: /^2 Waypoint\b/ }).click();
+  const aim = await add('Tilt camera');
+  await typed(aim, 'Pitch', '-20');
+  await typed(aim, 'Yaw', '90');
+  await aim.getByRole('button', { name: 'Done' }).click();
+  await vehicle.getByRole('button', { name: 'Show advanced settings' }).click();
+  await vehicle.getByRole('button', { name: 'Change command' }).click();
+  const picker = vehicle.getByRole('dialog').filter({ hasText: 'Select mission command' });
+  await picker.getByText('Advanced', { exact: true }).click();
+  await picker.getByText('Set servo', { exact: true }).click();
+  await expect(vehicle.getByRole('button', { name: /^Set servo\b/ })).toBeVisible({ timeout: 15_000 });
+  await vehicle.getByRole('button', { name: /^2 Waypoint\b/ }).click();
+  await expect(order).toHaveText([/^Gimbal/, /^Drop payload/], { timeout: 15_000 });
+  await order.nth(1).getByRole('button').first().click();
+  const servo = vehicle.getByRole('dialog').filter({ hasText: 'Servo output' });
+  await typed(servo, 'Servo output', '4');
+  await typed(servo, 'Release PWM', '2000');
+  await servo.getByRole('button', { name: 'Done' }).click();
+  await vehicle.getByRole('button', { name: 'Move Drop payload earlier' }).click();
+  await expect(order, 'servo to 2000, then camera yaw 90, 20 down').toHaveText([/^Drop payloadServo 4 to 2000/, /^Gimbal-20° \/ 90°/], { timeout: 15_000 });
+  await expect.poll(async () => afterWaypoint(await planNames(vehicle), 2).map((name) => (/servo|drop/i.test(name) ? 'servo' : /mount|gimbal/i.test(name) ? 'camera' : name)), { message: 'after waypoint 2 the mission holds the servo and then the camera', timeout: 15_000 }).toEqual(['servo', 'camera']);
+  await vehicle.screenshot({ path: process.env.ORDER_SHOT_2 ?? 'test-results/order-second-waypoint.png' });
+
+  await vehicle.getByRole('button', { name: /^1 Waypoint\b/ }).click();
+  await expect(order, 'waypoint 1 kept its own order').toHaveText([/^Gimbal/, /^Take photo/, /^Wait/, /^Drop payload/], { timeout: 15_000 });
 });
 
 test('a pilot flying by hand drops from the payload strip, and a drop that cannot fall says why', async ({ app: vehicle }) => {

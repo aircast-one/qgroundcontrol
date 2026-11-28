@@ -79,6 +79,17 @@ final class WaypointActionsTests: XCTestCase {
         XCTAssertEqual(41.0, legs[0].0.latitude, accuracy: 1e-9)
     }
 
+    func testTheChipsStandInTheOrderTheCoreSaysTheAircraftDoesThem() {
+        let order = actionOrder(JSON.parse(#"{"actions":[{"kind":"Drop"},{"kind":"Wait"},{"kind":"Gimbal"},{"kind":"Hover"}]}"#))
+        XCTAssertEqual(order, ["Drop", "Wait", "Gimbal", "Hover"])
+        var tilted = idleCamera
+        tilted.commandsGimbal = true
+        let active = activeActions(WaypointHold(seconds: 5.0, units: "s", path: "h"), WaypointYaw(degrees: 90.0, units: "deg", path: "y"), nil, tilted, dropFact())
+        XCTAssertEqual(inFlightOrder(active, order).map(\.kind), [.Drop, .Gimbal, .Hover, .Turn])
+        XCTAssertEqual(inFlightOrder(active, []).map(\.kind), active.map(\.kind))
+        XCTAssertEqual(actionOrder(nil), [])
+    }
+
     private func dropFact(_ fields: [String: Any?] = [:]) -> WaypointDrop? {
         let base: [String: Any?] = ["index": 5, "wait": 0, "waitOffered": true, "servo": true, "output": 4, "pwm": 2000, "bay": nil]
         let merged = base.merging(fields) { _, changed in changed }.mapValues { $0 ?? NSNull() }

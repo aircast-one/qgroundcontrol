@@ -587,6 +587,13 @@ test('the plan Oleg drew in his recording: a waypoint after the takeoff, a secon
   await expect(app.getByRole('button', { name: 'Take photo', exact: true })).toBeVisible();
   await expect(app.getByText('Servo 4 to 1500 · after 10 s'), 'servo 4 opens at 1500 after a 10 s wait').toBeVisible({ timeout: 15_000 });
   await onlyTheLaunchBeforeTheTakeoff('with every action on waypoint 2');
+  const order = app.getByRole('list', { name: 'Actions in order' }).getByRole('listitem');
+  await expect(order).toHaveText([/^Hover/, /^Gimbal/, /^Take photo/, /^Wait/, /^Drop payload/]);
+  await app.getByRole('button', { name: 'Move Hover later' }).click();
+  await expect(order.nth(1)).toHaveText(/^Wait/, { timeout: 15_000 });
+  await order.nth(1).getByRole('button', { name: 'Move Wait later' }).click();
+  await expect(order, 'the order he asked for: camera, photo, hold on this position 10 s, then the drop after its own wait').toHaveText([/^Gimbal0° \/ 60°/, /^Take photo/, /^Wait10 s/, /^Wait10 s/, /^Drop payloadServo 4 to 1500/], { timeout: 15_000 });
+  await expect(app.getByRole('button', { name: /^Delay/i }).first(), 'the hold is a row of its own once it is not the first thing done').toBeVisible({ timeout: 15_000 });
 
   await app.getByRole('button', { name: 'Waypoint 1' }).first().click();
   await app.getByRole('button', { name: 'Show advanced settings' }).click();

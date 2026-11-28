@@ -121,6 +121,19 @@ func activeActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: Camera
     ].compactMap { $0 }
 }
 
+func actionOrder(_ view: JSON?) -> [String] {
+    (view?["actions"].array ?? []).map { $0["kind"].string }
+}
+
+func inFlightOrder(_ active: [WaypointAction], _ order: [String]) -> [WaypointAction] {
+    active.enumerated()
+        .sorted { lhs, rhs in
+            let places = [lhs, rhs].map { order.firstIndex(of: "\($0.element.kind)") ?? order.count }
+            return places[0] == places[1] ? lhs.offset < rhs.offset : places[0] < places[1]
+        }
+        .map(\.element)
+}
+
 func offeredActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: CameraChoices?, _ extras: CameraExtras?, _ drop: WaypointDrop? = nil) -> [ActionOffer] {
     let hover: [ActionOffer?] = [hold.flatMap { $0.seconds <= 0 ? ActionOffer(title: "Hover", icon: .planTimer, kind: .Hover) : nil }]
     let camera: [ActionOffer?] = choices.map { camera in
@@ -151,6 +164,7 @@ struct WaypointActions: View {
     let hold: WaypointHold?
     let yaw: WaypointYaw?
     var drop: WaypointDrop? = nil
+    var order: [String] = []
     @Environment(\.theme) private var theme
     @State private var revision = 0
     @State private var camera: JSON?
@@ -160,7 +174,7 @@ struct WaypointActions: View {
     var body: some View {
         let choices = cameraChoices(camera)
         let extras = cameraExtras(camera)
-        let active = activeActions(hold, yaw, choices, extras, drop)
+        let active = inFlightOrder(activeActions(hold, yaw, choices, extras, drop), order)
         let offers = offeredActions(hold, yaw, choices, extras, drop)
         VStack(alignment: .leading, spacing: 0) {
             if !active.isEmpty || !offers.isEmpty {

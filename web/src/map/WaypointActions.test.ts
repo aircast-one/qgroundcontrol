@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CameraExtras } from './ItemCamera';
 import { legLabels } from './MissionLayers';
 import { MissionItem } from './PlanBridge';
-import { activeActions, addActionsHint, cameraIcon, dropText, offeredActions, startingChoice, waypointDrop, waypointYaw } from './WaypointActions';
+import { actionSteps, activeActions, addActionsHint, cameraIcon, dropText, offeredActions, orderedActions, startingChoice, waypointDrop, waypointYaw } from './WaypointActions';
 
 describe('WaypointActionsTest', () => {
   const labels = ['No change', 'Take photo', 'Take photos (time)', 'Take photos (distance)', 'Stop taking photos', 'Start recording video', 'Stop recording video'];
@@ -91,5 +91,32 @@ describe('WaypointActionsTest', () => {
     expect(offeredActions(noHold, noTurn, null, null, taken).map((it) => it.title)).not.toContain('Drop payload');
     expect(activeActions(noHold, noTurn, null, null, taken).map((it) => it.title)).toEqual(['Drop payload']);
     expect(offeredActions(noHold, noTurn, null, null, null).map((it) => it.title)).not.toContain('Drop payload');
+  });
+
+  it('the actions are listed in the order the core says they are flown, with waits and other commands in their places', () => {
+    const steps = actionSteps({
+      actions: [
+        { kind: 'Gimbal', title: 'Gimbal', seconds: null, item: null, earlier: false, later: true },
+        { kind: 'Camera', title: 'Camera', seconds: null, item: null, earlier: true, later: true },
+        { kind: 'Wait', title: 'Wait', seconds: 10, item: 4, earlier: true, later: true },
+        { kind: 'Command', title: 'Set servo', seconds: null, item: 5, earlier: true, later: true },
+        { kind: 'Drop', title: 'Drop', seconds: null, item: 6, earlier: true, later: false },
+      ],
+    });
+    const active = activeActions(noHold, { degrees: 90.0, units: 'deg', path: 'y' }, { labels, chosen: 1 }, { ...idleCamera, commandsGimbal: true, yaw: 60.0 }, dropFact({ index: 6, wait: 10 }));
+    const ordered = orderedActions(steps, active);
+    expect(ordered.map((it) => `${it.title} ${it.value}`.trim())).toEqual(['Gimbal 0° / 60°', 'Take photo', 'Wait 10 s', 'Set servo', 'Drop payload Servo 4 to 2000 · after 10 s', 'Turn aircraft 90°']);
+    expect(ordered.map((it) => [it.place, it.earlier, it.later]), 'only what the core can move has a place, and the ends cannot leave the list').toEqual([
+      [0, false, true],
+      [1, true, true],
+      [2, true, true],
+      [3, true, true],
+      [4, true, false],
+      [null, false, false],
+    ]);
+    expect(ordered.map((it) => it.action?.kind.name ?? null), 'a wait and a plain command have no editor of their own').toEqual(['Gimbal', 'Camera', null, null, 'Drop', 'Turn']);
+    expect(ordered[2]?.item).toBe(4);
+    expect(orderedActions([], active).map((it) => it.title), 'with no order from the core the actions still show').toEqual(active.map((it) => it.title));
+    expect(actionSteps(null)).toEqual([]);
   });
 });

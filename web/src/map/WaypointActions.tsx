@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { type Json, isNull, optBoolean, optDouble, optInt, optJSONObject, optText } from '@/bridge/Json';
+import { type Json, isNull, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { useKeyedState } from '@/kotlin/Compose';
 import { AlertDialog, DropdownMenu, DropdownMenuItem, FilledTonalButton, FilterChip, IconButton, RadioButton, Text, TextButton } from '@/m3';
 import { Drawable, MaterialIcon } from '@/res/Icon';
@@ -275,7 +275,45 @@ const ActionEditor = ({ kind, index, hold, yaw, drop, choices, extras, writes, o
   }
 };
 
-export const WaypointActions = ({ index, hold, yaw, drop, onRefusal }: { index: number; hold: WaypointHold | null; yaw: WaypointYaw | null; drop: WaypointDrop | null; onRefusal: Refusing }) => {
+export type ActionStep = { readonly kind: string; readonly title: string; readonly seconds: number | null; readonly item: number | null; readonly earlier: boolean; readonly later: boolean };
+
+export const actionSteps = (view: Json | null): readonly ActionStep[] =>
+  jsonObjects(optJSONArray(view, 'actions')).map((step) => ({
+    kind: optText(step, 'kind'),
+    title: optText(step, 'title'),
+    seconds: numberOrNull(step, 'seconds'),
+    item: isNull(step, 'item') ? null : optInt(step, 'item'),
+    earlier: optBoolean(step, 'earlier'),
+    later: optBoolean(step, 'later'),
+  }));
+
+export type OrderedAction = { readonly action: WaypointAction | null; readonly title: string; readonly value: string; readonly icon: DrawableName; readonly place: number | null; readonly item: number | null; readonly earlier: boolean; readonly later: boolean };
+
+const STEP_ICONS: Readonly<Record<string, DrawableName>> = { Wait: 'plan_timer' };
+
+export const orderedActions = (steps: readonly ActionStep[], active: readonly WaypointAction[]): readonly OrderedAction[] => {
+  const listed = steps.map((step, place): OrderedAction => {
+    const action = active.find((it) => it.kind.name === step.kind) ?? null;
+    return {
+      action,
+      title: action?.title ?? step.title,
+      value: action?.value ?? (step.seconds === null ? '' : `${trimmedNumber(step.seconds)} s`),
+      icon: action?.icon ?? STEP_ICONS[step.kind] ?? 'plan_tune',
+      place,
+      item: step.item,
+      earlier: step.earlier,
+      later: step.later,
+    };
+  });
+  const unordered = active.filter((it) => !steps.some((step) => step.kind === it.kind.name)).map((action): OrderedAction => ({ action, title: action.title, value: action.value, icon: action.icon, place: null, item: null, earlier: false, later: false }));
+  return [...listed, ...unordered];
+};
+
+export const MOVE_ACTION = 'core.plan.moveAction';
+const REMOVE_ITEM = 'core.plan.remove';
+const ACTION_NOT_CHANGED = 'The action was not changed.';
+
+export const WaypointActions = ({ index, hold, yaw, drop, steps, onRefusal }: { index: number; hold: WaypointHold | null; yaw: WaypointYaw | null; drop: WaypointDrop | null; steps: readonly ActionStep[]; onRefusal: Refusing }) => {
   const camera = useMapPath(itemCameraPath(index));
   const choices = cameraChoices(camera);
   const extras = cameraExtras(camera);
@@ -283,10 +321,13 @@ export const WaypointActions = ({ index, hold, yaw, drop, onRefusal }: { index: 
   const offers = offeredActions(hold, yaw, choices, extras, drop);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useKeyedState<ActionKind | null>([index], () => null);
-  if (active.length === 0 && offers.length === 0) return null;
+  if (active.length === 0 && offers.length === 0 && steps.length === 0) return null;
   const writes = actionWrites(index, hold, yaw, onRefusal);
   const add = (offer: ActionOffer) => ADDITIONS[offer.kind.name](writes, offer, () => setEditing(offer.kind));
-  const remove = (kind: ActionKind) => REMOVALS[kind.name](writes);
+  const ordered = orderedActions(steps, active);
+  const remove = (step: OrderedAction) =>
+    step.action !== null ? REMOVALS[step.action.kind.name](writes) : step.item === null ? undefined : onRefusal('Removing the action', () => invokeRefusal(REMOVE_ITEM, `[${step.item}]`, ACTION_NOT_CHANGED));
+  const move = (step: OrderedAction, later: boolean) => (step.place === null ? undefined : onRefusal('Moving the action', () => invokeRefusal(MOVE_ACTION, `[${index}, ${step.place}, ${later}]`, ACTION_NOT_CHANGED)));
   return (
     <>
       <div className="flex w-full flex-col py-1">
@@ -316,16 +357,23 @@ export const WaypointActions = ({ index, hold, yaw, drop, onRefusal }: { index: 
             </div>
           ) : null}
         </div>
-        {active.length === 0 ? (
+        {ordered.length === 0 ? (
           <Text typography="bodySmall" color={md('onSurfaceVariant')}>
             {addActionsHint(offers)}
           </Text>
         ) : null}
-        <div className="flex flex-wrap gap-2">
-          {active.map((action) => (
-            <ActionChip key={action.kind.name} action={action} onClick={() => setEditing(action.kind)} onRemove={() => remove(action.kind)} />
+        {ordered.some((it) => it.earlier || it.later) ? (
+          <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+            Done in this order after arriving.
+          </Text>
+        ) : null}
+        <ol className="flex flex-col gap-2" aria-label="Actions in order">
+          {ordered.map((step, at) => (
+            <li key={`${step.title}-${at}`}>
+              <ActionChip step={step} onClick={step.action === null ? null : () => setEditing(step.action?.kind ?? null)} onRemove={() => remove(step)} onMove={(later) => move(step, later)} />
+            </li>
           ))}
-        </div>
+        </ol>
       </div>
       {editing !== null ? (
         <AlertDialog
@@ -377,16 +425,26 @@ const DropEditor = ({ index, drop, onRefusal }: { index: number; drop: WaypointD
   );
 };
 
-const ActionChip = ({ action, onClick, onRemove }: { action: WaypointAction; onClick: () => void; onRemove: () => void }) => (
+const ActionChip = ({ step, onClick, onRemove, onMove }: { step: OrderedAction; onClick: (() => void) | null; onRemove: () => void; onMove: (later: boolean) => void }) => (
   <div className="flex items-center bg-secondary-container text-on-secondary-container" style={{ borderRadius: 14 }}>
-    <button type="button" className="flex items-center pl-3 text-left" onClick={onClick}>
-      <Drawable name={action.icon} size={20} />
+    <button type="button" className="flex min-w-0 flex-1 items-center pl-3 text-left" onClick={onClick ?? undefined} disabled={onClick === null}>
+      <Drawable name={step.icon} size={20} />
       <span className="flex flex-col pt-1.5 pb-1.5 pl-2">
-        <Text typography="labelLarge">{action.title}</Text>
-        {action.value.trim() !== '' ? <Text typography="labelSmall">{action.value}</Text> : null}
+        <Text typography="labelLarge">{step.title}</Text>
+        {step.value.trim() !== '' ? <Text typography="labelSmall">{step.value}</Text> : null}
       </span>
     </button>
-    <IconButton onClick={onRemove} label={`Remove ${action.title}`} contentColor={md('onSecondaryContainer')}>
+    {step.earlier ? (
+      <IconButton onClick={() => onMove(false)} label={`Move ${step.title} earlier`} contentColor={md('onSecondaryContainer')}>
+        <MaterialIcon name="arrow_upward" filled size={18} />
+      </IconButton>
+    ) : null}
+    {step.later ? (
+      <IconButton onClick={() => onMove(true)} label={`Move ${step.title} later`} contentColor={md('onSecondaryContainer')}>
+        <MaterialIcon name="arrow_downward" filled size={18} />
+      </IconButton>
+    ) : null}
+    <IconButton onClick={onRemove} label={`Remove ${step.title}`} contentColor={md('onSecondaryContainer')}>
       <MaterialIcon name="close" filled size={18} />
     </IconButton>
   </div>
