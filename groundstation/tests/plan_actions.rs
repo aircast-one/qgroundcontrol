@@ -33,7 +33,7 @@ fn invoked(core: &Plan, path: &str, args: Value) -> Value {
     serde_json::from_str(&core.invoke(path, &args.to_string())).unwrap_or(Value::Null)
 }
 
-fn actions(core: &Plan, waypoint: usize) -> Vec<(String, bool, bool)> {
+fn actions(core: &Plan, waypoint: usize) -> Vec<(String, usize)> {
     serde_json::from_str::<Value>(&core.get(&format!("view.itemFacts({waypoint})"))).unwrap()["actions"]
         .as_array()
         .cloned()
@@ -42,8 +42,7 @@ fn actions(core: &Plan, waypoint: usize) -> Vec<(String, bool, bool)> {
         .map(|step| {
             (
                 step["kind"].as_str().unwrap_or_default().to_string(),
-                step["earlier"] == true,
-                step["later"] == true,
+                step["places"].as_array().map_or(0, Vec::len),
             )
         })
         .collect()
@@ -88,13 +87,10 @@ fn the_core_lists_a_waypoints_actions_in_flight_order_and_moves_one_when_asked()
         invoked(&core, "core.plan.placeDrop", json!([2]))["ok"],
         true
     );
-    let listed = |kinds: [&str; 4]| -> Vec<(String, bool, bool)> {
-        kinds
-            .iter()
-            .enumerate()
-            .map(|(at, kind)| (kind.to_string(), at > 0, at < 3))
-            .collect()
+    let listed = |kinds: [&str; 4]| -> Vec<(String, usize)> {
+        kinds.iter().map(|kind| (kind.to_string(), 4)).collect()
     };
+    let revision = || groundstation::coreplan::revision();
     assert_eq!(
         actions(&core, 2),
         listed(["Hover", "Gimbal", "Camera", "Drop"])
@@ -105,14 +101,28 @@ fn the_core_lists_a_waypoints_actions_in_flight_order_and_moves_one_when_asked()
         "the takeoff has no actions to order"
     );
     assert_eq!(sent(), [16, 22, 16, 205, 2000, 211, 16]);
+    groundstation::coreplan::note_undo_tracking(true);
+    let before = revision();
     assert_eq!(
-        invoked(&core, "core.plan.moveAction", json!([2, 0, true]))["ok"],
-        true
+        invoked(&core, "core.plan.moveAction", json!([2, 0, 2]))["ok"],
+        true,
+        "the hold dragged two places down in one move"
+    );
+    assert!(
+        revision() > before,
+        "a move raises the revision, so a head knows its rows are older than the plan"
     );
     assert_eq!(
-        invoked(&core, "core.plan.moveAction", json!([2, 1, true]))["ok"],
-        true
+        actions(&core, 2),
+        listed(["Gimbal", "Camera", "Wait", "Drop"])
     );
+    assert_eq!(invoked(&core, "plan.undo", json!([]))["ok"], true);
+    assert_eq!(
+        actions(&core, 2),
+        listed(["Hover", "Gimbal", "Camera", "Drop"]),
+        "one undo puts back the order from before the drag, however quickly the edits before it came"
+    );
+    assert_eq!(invoked(&core, "plan.redo", json!([]))["ok"], true);
     assert_eq!(
         actions(&core, 2),
         listed(["Gimbal", "Camera", "Wait", "Drop"])
@@ -123,15 +133,24 @@ fn the_core_lists_a_waypoints_actions_in_flight_order_and_moves_one_when_asked()
         "aim, photo, a ten second delay, then the drop: the order the pilot set is the order uploaded"
     );
     assert_eq!(
-        invoked(&core, "core.plan.moveAction", json!([2, 3, false]))["ok"],
+        invoked(&core, "core.plan.setWait", json!([2, 2, 20]))["ok"],
         true
     );
     assert_eq!(
-        invoked(&core, "core.plan.moveAction", json!([2, 2, false]))["ok"],
-        true
+        invoked(&core, "core.plan.setWait", json!([2, 2, 0.5]))["reason"],
+        plandoc::WAIT_SECONDS_RANGE
     );
     assert_eq!(
-        invoked(&core, "core.plan.moveAction", json!([2, 1, false]))["ok"],
+        invoked(&core, "core.plan.setWait", json!([2, 0, 5]))["reason"],
+        plandoc::NOT_A_WAIT
+    );
+    let waited = || match groundstation::coreplan::current_document().items.get(2) {
+        Some(plandoc::Item::Simple(delay)) => delay.params[0],
+        _ => None,
+    };
+    assert_eq!(waited(), Some(20.0), "the wait is retimed where it stands");
+    assert_eq!(
+        invoked(&core, "core.plan.moveAction", json!([2, 3, 0]))["ok"],
         true
     );
     assert_eq!(
@@ -140,20 +159,20 @@ fn the_core_lists_a_waypoints_actions_in_flight_order_and_moves_one_when_asked()
     );
     assert_eq!(sent(), [16, 22, 16, 211, 205, 2000, 93, 16]);
     assert_eq!(
-        invoked(&core, "core.plan.moveAction", json!([2, 0, false]))["reason"],
+        invoked(&core, "core.plan.moveAction", json!([2, 0, 0]))["reason"],
         plandoc::ACTION_AT_THE_END
     );
     assert_eq!(
-        invoked(&core, "core.plan.moveAction", json!([2, 9, true]))["reason"],
+        invoked(&core, "core.plan.moveAction", json!([2, 0, 9]))["reason"],
         plandoc::NO_SUCH_ACTION
     );
     assert_eq!(
-        invoked(&core, "core.plan.moveAction", json!([1, 0, true]))["reason"],
+        invoked(&core, "core.plan.moveAction", json!([1, 0, 1]))["reason"],
         plandoc::NOT_A_WAYPOINT
     );
     assert_eq!(
         invoked(&core, "core.plan.moveAction", json!([2]))["reason"],
-        "Moving an action needs the waypoint, the action's place and a direction."
+        "Moving an action needs the waypoint, the action's place and its new place."
     );
     assert_eq!(
         invoked(&core, "core.plan.removeDrop", json!([2]))["ok"],

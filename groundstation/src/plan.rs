@@ -275,6 +275,7 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     json!({
         "kind": "object",
         "class": "PlanStatus",
+        "revision": crate::coreplan::revision(),
         "planningFor": planning_for(backend),
         "available": mission.get("kind").and_then(Value::as_str) == Some("object"),
         "patterns": patterns(&mission),

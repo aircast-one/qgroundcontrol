@@ -26,6 +26,7 @@ pub const PLACE_DROP: &str = "core.plan.placeDrop";
 pub const REMOVE_DROP: &str = "core.plan.removeDrop";
 pub const SET_DROP_RELEASE: &str = "core.plan.setDropRelease";
 pub const MOVE_ACTION: &str = "core.plan.moveAction";
+pub const SET_WAIT: &str = "core.plan.setWait";
 pub const DRAFT_DEPS: &[&str] = &[CHANGED];
 pub const RESTORE_DRAFT: &str = "core.plan.restoreDraft";
 const ACTIONS: &[&str] = &[
@@ -36,6 +37,7 @@ const ACTIONS: &[&str] = &[
     REMOVE_DROP,
     SET_DROP_RELEASE,
     MOVE_ACTION,
+    SET_WAIT,
     OPEN,
     SAVE,
     SEND,
@@ -132,6 +134,14 @@ const UNDO_COALESCE_MS: u64 = 500;
 fn remember(state: &mut Held, before: Option<Document>, now: u64) {
     let burst =
         now.saturating_sub(state.last_change_ms) < UNDO_COALESCE_MS && !state.undo.is_empty();
+    remember_as(state, before, now, burst);
+}
+
+fn remember_step(state: &mut Held, before: Option<Document>) {
+    remember_as(state, before, 0, false);
+}
+
+fn remember_as(state: &mut Held, before: Option<Document>, now: u64, burst: bool) {
     state.last_change_ms = now;
     if burst || before.is_none() || before == state.document {
         return;
@@ -195,6 +205,26 @@ pub fn note_undo_tracking(on: bool) {
 
 pub fn offline() -> bool {
     crate::hub::lock().active_id().is_none()
+}
+
+static REVISION: Mutex<(u64, u64)> = Mutex::new((0, 0));
+
+fn revision_of(document: &Document) -> u64 {
+    let fingerprint = {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        std::hash::Hash::hash(&plandoc::save(document).to_string(), &mut hasher);
+        std::hash::Hasher::finish(&hasher)
+    };
+    let mut held = REVISION.lock().unwrap_or_else(PoisonError::into_inner);
+    if held.0 != fingerprint {
+        *held = (fingerprint, held.1 + 1);
+    }
+    held.1
+}
+
+pub fn revision() -> u64 {
+    let document = held().document.clone().unwrap_or_else(empty_document);
+    revision_of(&document)
 }
 
 fn changed() {
@@ -277,6 +307,7 @@ pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
         REMOVE_DROP => remove_drop(args),
         SET_DROP_RELEASE => set_drop_release(backend, args),
         MOVE_ACTION => move_action(args),
+        SET_WAIT => set_wait(args),
         RESTORE_DRAFT => first_text(args).map_or_else(
             || refused("Restoring needs the plan that was kept."),
             |text| restore_draft(&text),
@@ -336,6 +367,7 @@ fn edit_selecting(
             selected,
             note: None,
             plain: None,
+            own_step: false,
         })
     })
 }
@@ -345,6 +377,7 @@ struct Edited {
     selected: Option<i64>,
     note: Option<String>,
     plain: Option<usize>,
+    own_step: bool,
 }
 
 fn edit_with(change: impl FnOnce(&Document) -> Result<Edited, String>) -> Value {
@@ -374,7 +407,10 @@ fn edit_with(change: impl FnOnce(&Document) -> Result<Edited, String>) -> Value 
                     raw_edits().remove(&index);
                 }
                 let previous = state.document.replace(tracked(changed, types));
-                remember(&mut state, previous, crate::hub::now_ms());
+                match edited.own_step {
+                    true => remember_step(&mut state, previous),
+                    false => remember(&mut state, previous, crate::hub::now_ms()),
+                }
                 state.dirty = true;
                 state.dirty_for_save = true;
                 state.selected = edited.selected.unwrap_or(state.selected);
@@ -888,6 +924,7 @@ fn item_edit(backend: &dyn Backend, args: &str, command: bool) -> Value {
             note: added.and_then(|at| added_note(&document, index, at)),
             selected: added.map(|at| at as i64),
             plain: Some(index).filter(|_| command && added.is_none()),
+            own_step: false,
             document,
         })
     })
@@ -1139,6 +1176,7 @@ fn move_item(args: &str) -> Value {
                 selected: Some(moved as i64),
                 note: None,
                 plain: None,
+                own_step: false,
             }
         })
     }) {
@@ -2330,18 +2368,20 @@ pub fn view(backend: &dyn Backend) -> Value {
             json!({ "note": state.note, "noteId": state.note_id }),
         )
     };
+    let revision = revision_of(&document);
     let rover = crate::read::flag(
         &backend.value_fields("plan.controllerVehicle", "rover"),
         "rover",
     );
     crate::missionitems::document_view(&document, selected, &crate::read::Unit::vertical(backend), &crate::read::Unit::horizontal(backend), &crate::read::Unit::speed(backend), rover)
-        .map(|view| with_note(marked_edited(view, &document, clean.as_ref()), note))
+        .map(|view| with_note(marked_edited(view, &document, clean.as_ref()), note, revision))
         .unwrap_or_else(|reason| json!({ "kind": "object", "class": "MissionItems", "available": false, "items": [], "selected": -1, "reason": reason }))
 }
 
-fn with_note(mut view: Value, note: Value) -> Value {
+fn with_note(mut view: Value, note: Value, revision: u64) -> Value {
     view["note"] = note["note"].clone();
     view["noteId"] = note["noteId"].clone();
+    view["revision"] = json!(revision);
     view
 }
 
@@ -6739,36 +6779,38 @@ fn step_name(kind: plandoc::StepKind) -> &'static str {
 
 fn actions_fact(document: &Document, waypoint: usize) -> Value {
     let commands = plandoc::commands_at(document, waypoint.saturating_sub(1));
-    plandoc::steps(document, waypoint, &plan_servos(document)).map_or(Value::Null, |steps| {
-        let last = steps.len().saturating_sub(1);
-        json!(
-            steps
-                .iter()
-                .enumerate()
-                .map(|(at, step)| {
-                    let title = match step.kind {
-                        plandoc::StepKind::Wait => "Wait".to_string(),
-                        plandoc::StepKind::Command => step
-                            .commands
-                            .first()
-                            .and_then(|command| commands.get(&command.command))
-                            .map_or_else(String::new, |info| {
-                                crate::label::sentence(&info.friendly_name)
-                            }),
-                        kind => step_name(kind).to_string(),
-                    };
-                    json!({
-                        "kind": step_name(step.kind),
-                        "title": title,
-                        "seconds": step.seconds,
-                        "item": step.item,
-                        "earlier": at > 0,
-                        "later": at < last,
+    let servos = plan_servos(document);
+    plandoc::steps(document, waypoint, &servos)
+        .zip(plandoc::action_places(document, waypoint, &servos))
+        .map_or(Value::Null, |(steps, places)| {
+            json!(
+                steps
+                    .iter()
+                    .zip(places)
+                    .map(|(step, (to, refusal))| {
+                        let title = match step.kind {
+                            plandoc::StepKind::Wait => "Wait".to_string(),
+                            plandoc::StepKind::Command => step
+                                .commands
+                                .first()
+                                .and_then(|command| commands.get(&command.command))
+                                .map_or_else(String::new, |info| {
+                                    crate::label::sentence(&info.friendly_name)
+                                }),
+                            kind => step_name(kind).to_string(),
+                        };
+                        json!({
+                            "kind": step_name(step.kind),
+                            "title": title,
+                            "seconds": step.seconds,
+                            "item": step.item,
+                            "places": to,
+                            "refusal": refusal,
+                        })
                     })
-                })
-                .collect::<Vec<_>>()
-        )
-    })
+                    .collect::<Vec<_>>()
+            )
+        })
 }
 
 fn move_action(args: &str) -> Value {
@@ -6779,11 +6821,42 @@ fn move_action(args: &str) -> Value {
             .and_then(Value::as_u64)
             .and_then(|v| usize::try_from(v).ok())
     };
-    match (place(0), place(1), given.get(2).and_then(Value::as_bool)) {
-        (Some(waypoint), Some(from), Some(later)) => {
-            edit(|doc| plandoc::move_action(doc, waypoint, from, later, &plan_servos(doc)))
+    match (place(0), place(1), place(2)) {
+        (Some(waypoint), Some(from), Some(to)) => edit_with(|doc| {
+            plandoc::move_action(doc, waypoint, from, to, &plan_servos(doc)).map(|document| {
+                Edited {
+                    document,
+                    selected: None,
+                    note: None,
+                    plain: None,
+                    own_step: true,
+                }
+            })
+        }),
+        _ => refused("Moving an action needs the waypoint, the action's place and its new place."),
+    }
+}
+
+fn set_wait(args: &str) -> Value {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let place = |i: usize| {
+        given
+            .get(i)
+            .and_then(Value::as_u64)
+            .and_then(|v| usize::try_from(v).ok())
+    };
+    match (
+        place(0),
+        place(1),
+        given
+            .get(2)
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite()),
+    ) {
+        (Some(waypoint), Some(at), Some(seconds)) => {
+            edit(|doc| plandoc::set_wait(doc, waypoint, at, seconds, &plan_servos(doc)))
         }
-        _ => refused("Moving an action needs the waypoint, the action's place and a direction."),
+        _ => refused(plandoc::WAIT_SECONDS_RANGE),
     }
 }
 
