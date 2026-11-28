@@ -1,6 +1,6 @@
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { type Browser, chromium, expect, type Page, test } from '@playwright/test';
-import { openMenu } from '../e2e/fixtures';
+import { actionOrder, mouseDragAction, openMenu } from '../e2e/fixtures';
 
 const CDP = process.env.DESKTOP_CDP ?? 'http://127.0.0.1:9222';
 const DEBUG_API = process.env.DESKTOP_DEBUG_API ?? 'http://127.0.0.1:28777';
@@ -71,6 +71,39 @@ test('the menu keys work while the page has focus: Ctrl+2 opens Plan and Ctrl+, 
   await app().addLocatorHandler(app().getByRole('dialog').filter({ hasText: 'Aircraft connected' }), (prompt) => prompt.getByRole('button', { name: 'Keep my route' }).click());
   await app().keyboard.press('Control+Digit2');
   await expect(app().getByText('Click the map to add a waypoint')).toBeVisible();
+  await app().keyboard.press('Control+Comma');
+  await expect(app().getByRole('tablist').getByRole('tab', { name: 'General' })).toBeVisible();
+});
+
+const PHOTO = 2000;
+const MOUNT = 205;
+
+test('an action on a waypoint is dragged into place with the mouse in the webview, and the mission follows', async ({}, testInfo) => {
+  await app().keyboard.press('Control+Digit2');
+  await expect(app().getByText('Click the map to add a waypoint')).toBeVisible();
+  const map = (await app().getByRole('region', { name: 'Map' }).boundingBox())!;
+  await app().mouse.click(map.x + map.width * 0.6, map.y + map.height * 0.5);
+  await expect(app().getByRole('button', { name: 'Delete waypoint 1' })).toBeVisible({ timeout: 30_000 });
+  await ['Tilt camera', 'Photo'].reduce(
+    (done, action) =>
+      done.then(async () => {
+        await app().getByRole('button', { name: 'Add action', exact: true }).click();
+        await app().getByRole('menuitem', { name: action }).click();
+        await app().getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+      }),
+    Promise.resolve(),
+  );
+  const order = actionOrder(app());
+  await expect(order).toHaveText([/^Gimbal/, /^Take photo/]);
+  await mouseDragAction(app(), 'Take photo', order.nth(0));
+  await expect(order, 'the photo now comes before the camera aim').toHaveText([/^Take photo/, /^Gimbal/], { timeout: 15_000 });
+  const file = testInfo.outputPath('dragged.plan');
+  await fetch(`${DEBUG_API}/bridge/invoke?path=core.plan.save&args=${encodeURIComponent(JSON.stringify([file]))}`);
+  const saved = async (): Promise<readonly number[]> => {
+    const plan = JSON.parse(await readFile(file, 'utf8').catch(() => '{}')) as { mission?: { items?: { command?: number }[] } };
+    return (plan.mission?.items ?? []).map((item) => item.command ?? -1).filter((command) => command === PHOTO || command === MOUNT);
+  };
+  await expect.poll(saved, { message: 'the saved mission takes the photo before it aims the camera' }).toEqual([PHOTO, MOUNT]);
   await app().keyboard.press('Control+Comma');
   await expect(app().getByRole('tablist').getByRole('tab', { name: 'General' })).toBeVisible();
 });
