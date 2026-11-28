@@ -5,8 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,19 +12,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -77,6 +70,11 @@ fun waypointDrop(view: JSONObject?): WaypointDrop? =
 internal const val PLACE_DROP = "core.plan.placeDrop"
 internal const val REMOVE_DROP = "core.plan.removeDrop"
 internal const val SET_DROP_RELEASE = "core.plan.setDropRelease"
+internal const val MOVE_ACTION = "core.plan.moveAction"
+internal const val SET_WAIT = "core.plan.setWait"
+private const val REMOVE_ITEM = "core.plan.remove"
+private const val ACTION_NOT_CHANGED = "The action was not changed."
+private val WAIT_RANGE_SECONDS = 1.0..600.0
 private const val DROP_NOT_CHANGED = "The drop was not changed."
 private val OUTPUT_RANGE = 1.0..32.0
 private val PWM_RANGE = 500.0..2500.0
@@ -86,7 +84,6 @@ private const val PWM_STEP = 50.0
 internal fun dropText(drop: WaypointDrop): String = listOfNotNull(
     drop.bay?.let { "Bay $it" },
     if (drop.output != null && drop.pwm != null) "Servo ${trimmedNumber(drop.output)} to ${trimmedNumber(drop.pwm)}" else "Gripper",
-    "after ${trimmedNumber(drop.wait)} s".takeIf { drop.wait > 0.0 },
 ).joinToString(" \u00b7 ")
 
 internal enum class ActionKind { Hover, Camera, Gimbal, Mode, Turn, Drop }
@@ -160,27 +157,21 @@ internal fun addActionsHint(offers: List<ActionOffer>): String {
     }
 }
 
-internal fun actionOrder(view: JSONObject?): List<String> =
-    view?.optJSONArray("actions")?.let { steps -> (0 until steps.length()).mapNotNull { steps.optJSONObject(it)?.optString("kind") } }.orEmpty()
-
-internal fun inFlightOrder(active: List<WaypointAction>, order: List<String>): List<WaypointAction> =
-    active.sortedBy { action -> order.indexOf(action.kind.name).takeIf { it >= 0 } ?: order.size }
-
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?, drop: WaypointDrop?, order: List<String> = emptyList()) {
+internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?, drop: WaypointDrop?, steps: List<ActionStep> = emptyList()) {
     var revision by remember(index) { mutableIntStateOf(0) }
     val camera by produceState<JSONObject?>(null, index, revision) {
         value = withContext(Dispatchers.Default) { ItemCameraBridge.read(index) }
     }
     val choices = cameraChoices(camera)
     val extras = cameraExtras(camera)
-    val active = inFlightOrder(activeActions(hold, yaw, choices, extras, drop), order)
+    val active = activeActions(hold, yaw, choices, extras, drop)
     val offers = offeredActions(hold, yaw, choices, extras, drop)
-    if (active.isEmpty() && offers.isEmpty()) return
+    if (active.isEmpty() && offers.isEmpty() && steps.isEmpty()) return
     val scope = rememberCoroutineScope()
     var adding by remember { mutableStateOf(false) }
     var editing by remember(index) { mutableStateOf<ActionKind?>(null) }
+    var waitEditing by remember(index) { mutableStateOf<ShownAction?>(null) }
     val write: (() -> Boolean) -> Unit = { work ->
         scope.launch {
             withContext(Dispatchers.Default) { work() }
@@ -240,13 +231,47 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?,
                 }
             }
         }
-        if (active.isEmpty()) {
+        val ordered = orderedActions(steps, active)
+        if (ordered.isEmpty()) {
             Text(addActionsHint(offers), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            active.forEach { action -> ActionChip(action, onClick = { editing = action.kind }, onRemove = { remove(action.kind) }) }
+        if (ordered.count { it.place != null } > 1) {
+            Text("Done in this order after arriving. Hold an action and drag it to change the order.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        ActionOrderList(
+            waypoint = index,
+            steps = ordered,
+            onMove = { args -> refusing(null) { invokeRefusal(MOVE_ACTION, args, ACTION_NOT_CHANGED) } },
+            onEdit = { step ->
+                when {
+                    step.action != null -> ({ editing = step.action.kind })
+                    step.kind == WAIT && step.place != null -> ({ waitEditing = step })
+                    else -> null
+                }
+            },
+            onRemove = { step ->
+                when {
+                    step.action != null -> ({ remove(step.action.kind) })
+                    step.item != null -> ({ refusing(null) { invokeRefusal(REMOVE_ITEM, "[${step.item}]", ACTION_NOT_CHANGED) } })
+                    else -> null
+                }
+            },
+        )
         refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    }
+
+    waitEditing?.let { step ->
+        AlertDialog(
+            onDismissRequest = { waitEditing = null },
+            title = { Text(WAIT) },
+            text = {
+                Column {
+                    SettingStepper(WAIT, step.seconds ?: WAIT_RANGE_SECONDS.start, "s", 1.0, onSet = { seconds -> refusing(null) { invokeRefusal(SET_WAIT, "[$index, ${step.place}, $seconds]", ACTION_NOT_CHANGED) } }, range = WAIT_RANGE_SECONDS, slider = true)
+                    Text("The aircraft holds over the waypoint this long before the next action.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = { TextButton(onClick = { waitEditing = null }) { Text("Done") } },
+        )
     }
 
     editing?.let { kind ->
@@ -312,25 +337,4 @@ private fun DropEditor(index: Int, drop: WaypointDrop, refusing: (() -> String?)
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-}
-
-@Composable
-private fun ActionChip(action: WaypointAction, onClick: () -> Unit, onRemove: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-    ) {
-        Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(painterResource(action.icon), contentDescription = null, modifier = Modifier.size(20.dp))
-            Column(Modifier.padding(start = 8.dp, top = 6.dp, bottom = 6.dp)) {
-                Text(action.title, style = MaterialTheme.typography.labelLarge)
-                if (action.value.isNotBlank()) Text(action.value, style = MaterialTheme.typography.labelSmall)
-            }
-            IconButton(onClick = onRemove, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.Close, contentDescription = "Remove ${action.title}", modifier = Modifier.size(18.dp))
-            }
-        }
-    }
 }

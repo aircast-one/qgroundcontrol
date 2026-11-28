@@ -61,6 +61,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -91,6 +92,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.withContext
 
 private const val PLAN_POLL_MS = 700L
+internal const val NO_REVISION = -1L
+
+internal fun planRevision(view: JSONObject?): Long = view?.takeIf { it.has("revision") }?.optLong("revision", NO_REVISION) ?: NO_REVISION
+
+internal fun rowsAreStale(planRevision: Long, rowsRevision: Long): Boolean = planRevision > rowsRevision
 private const val FIELD_ZOOM = 16.0
 private const val FAILURE_MESSAGE_MS = 2500L
 private const val PANEL_MAX_FRACTION = 0.5f
@@ -195,6 +201,7 @@ internal fun PlanMapContent(
     var panelOpen by remember { mutableStateOf(true) }
     var readsStarted by remember { mutableIntStateOf(0) }
     var noteSeen by remember { mutableStateOf<Int?>(null) }
+    var rowsRevision by remember { mutableLongStateOf(NO_REVISION) }
     var planReads by remember { mutableIntStateOf(0) }
     var layer by remember { mutableStateOf(PlanLayer.Mission) }
     var mapMenu by remember { mutableStateOf<MapMenuAt?>(null) }
@@ -368,7 +375,10 @@ internal fun PlanMapContent(
             follow = false
         }
     }
-    fun pickRow(row: ItemRow) = focusItem(row.index)
+    fun freshPick(index: Int) {
+        if (!rowsAreStale(planRevision(planStatus), rowsRevision)) focusItem(index)
+    }
+    fun pickRow(row: ItemRow) = freshPick(row.index)
     fun addRallyAt(latitude: Double, longitude: Double) {
         val next = rally.size
         onBridge("Adding rally", then = { selected = MapHit.Rally(next) }) { FenceBridge.addRallyPoint(latitude, longitude) }
@@ -441,7 +451,13 @@ internal fun PlanMapContent(
             val nextStats = surveyStatsFor(nextAll)
             val drawn = planIsDrawn(nextItems, nextSurveys, nextFences, nextCircles, nextRally)
             val nextNote = planNote(plan)
+            val readRevision = planRevision(plan)
             withContext(Dispatchers.Main) {
+                if (readRevision < rowsRevision) {
+                    planReads = maxOf(planReads, readNumber)
+                    return@withContext
+                }
+                rowsRevision = readRevision
                 newNote(nextNote, noteSeen)?.let { say(it) }
                 noteSeen = nextNote.id
                 if (fitsPlanOnEntry(firstRead, plan != null, drawn)) {
@@ -474,6 +490,10 @@ internal fun PlanMapContent(
                 planReads = readNumber
             }
         }
+    }
+
+    LaunchedEffect(planRevision(planStatus)) {
+        if (rowsAreStale(planRevision(planStatus), rowsRevision)) refresh()
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -593,7 +613,8 @@ internal fun PlanMapContent(
                 onBridge { writeDragStep(generation, hit, lat, lon, surveyList, rally, fences, allItems, circles) }
             },
             onWaypointSelected = { hit ->
-                if (hit != null && actsOnTap(hit) && !dragAllowed(hit, selected, layer)) Unit
+                if (hit != null && rowsAreStale(planRevision(planStatus), rowsRevision)) Unit
+                else if (hit != null && actsOnTap(hit) && !dragAllowed(hit, selected, layer)) Unit
                 else when (hit) {
                     is MapHit.Midpoint -> if (hit.path == MISSION_SPLIT_PATH) {
                         addMissionItem(KIND_WAYPOINT, "Adding a waypoint", legSplit(allItems.filter { it.placed }, hit.segment), hit.segment)
@@ -943,7 +964,7 @@ internal fun PlanMapContent(
                         altitudes = allItems.associate { it.index to it.altitudeText },
                         conflicts = collidingSimple + collidingPatterns,
                         selected = chosenItem?.index,
-                        onPick = ::focusItem,
+                        onPick = ::freshPick,
                         onList = { listOpen = true }.takeIf { !sidePanel },
                         profileShown = missionStatusShown.takeIf { profileShown(layer, profile) },
                         onProfile = { onBridge { setOk(SHOW_MISSION_ITEM_STATUS, settingJson((!missionStatusShown).toString())) } },

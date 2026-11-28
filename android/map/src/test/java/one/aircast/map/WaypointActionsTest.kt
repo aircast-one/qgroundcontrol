@@ -84,16 +84,6 @@ class WaypointActionsTest {
         assertEquals(44.001, legLabels(listOf(first, roi, next)).single().first.longitude, 1e-9)
     }
 
-    @Test
-    fun `the chips stand in the order the core says the aircraft does them`() {
-        val order = actionOrder(JSONObject("""{"actions":[{"kind":"Drop"},{"kind":"Wait"},{"kind":"Gimbal"},{"kind":"Hover"}]}"""))
-        assertEquals(listOf("Drop", "Wait", "Gimbal", "Hover"), order)
-        val active = activeActions(WaypointHold(5.0, "s", "h"), WaypointYaw(90.0, "deg", "y"), null, idleCamera.copy(commandsGimbal = true), dropFact())
-        assertEquals(listOf(ActionKind.Drop, ActionKind.Gimbal, ActionKind.Hover, ActionKind.Turn), inFlightOrder(active, order).map { it.kind })
-        assertEquals(active, inFlightOrder(active, emptyList()))
-        assertEquals(emptyList<String>(), actionOrder(null))
-    }
-
     private fun dropFact(fields: String = "") =
         waypointDrop(JSONObject("""{"drop":{"index":5,"wait":0,"waitOffered":true,"servo":true,"output":4,"pwm":2000,"bay":null}}""").apply {
             JSONObject("{$fields}").let { changed -> changed.keys().forEach { getJSONObject("drop").put(it, changed.get(it)) } }
@@ -115,9 +105,9 @@ class WaypointActionsTest {
     fun `a drop reads its servo, its PWM and its bay from its own mission item, and says how long the drone waits first`() {
         assertEquals(WaypointDrop(5, 10.0, true, true, 4.0, 2000.0, null), dropFact(""""wait":10"""))
         assertEquals(
-            listOf("Servo 4 to 2000 \u00b7 after 10 s", "Bay 2 \u00b7 Servo 10 to 1900", "Gripper"),
+            listOf("Servo 4 to 2000", "Bay 2 \u00b7 Servo 10 to 1900", "Gripper"),
             listOf(dropFact(""""wait":10"""), dropFact(""""output":10,"pwm":1900,"bay":2"""), dropFact(""""servo":false,"output":null,"pwm":null""")).map { dropText(it!!) },
         )
-        assertEquals(listOf("Servo 4 to 2000 \u00b7 after 10 s"), activeActions(noHold, noTurn, null, null, dropFact(""""wait":10""")).map { it.value })
+        assertEquals(listOf("Servo 4 to 2000"), activeActions(noHold, noTurn, null, null, dropFact(""""wait":10""")).map { it.value })
     }
 }

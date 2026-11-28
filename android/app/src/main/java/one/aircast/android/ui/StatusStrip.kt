@@ -7,11 +7,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
-import androidx.compose.foundation.gestures.drag
+import one.aircast.map.holdToReorder
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.foundation.background
@@ -184,22 +180,6 @@ internal fun shownStatusCells(narrow: Boolean): Int = if (narrow) NARROW_STATUS_
 
 private const val REORDER_HOLD_MILLIS = 150L
 
-private fun Modifier.holdToReorder(keys: List<String>, onDrag: (Float) -> Unit, onEnd: () -> Unit): Modifier = pointerInput(keys) {
-    awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false)
-        val released = withTimeoutOrNull(REORDER_HOLD_MILLIS) {
-            waitForUpOrCancellation()
-            true
-        }
-        if (released == null) {
-            drag(down.id) { change ->
-                onDrag(change.positionChange().x)
-                change.consume()
-            }
-            onEnd()
-        }
-    }
-}
 
 private fun Modifier.leadingGap(gap: Dp): Modifier = layout { measurable, constraints ->
     val placeable = measurable.measure(constraints.offset(horizontal = -gap.roundToPx()))
@@ -321,7 +301,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
                             if (dragging != key) centres = if (placed.size.width > 0) centres + (key to placed.boundsInRoot().center.x) else centres - key
                         }
                         .then(
-                            if (layout.editing) Modifier.holdToReorder(keys, onDrag = { dx -> dragging = key; dragX += dx }) {
+                            if (layout.editing) Modifier.holdToReorder(keys, holdMillis = REORDER_HOLD_MILLIS, onDrag = { moved -> dragging = key; dragX += moved.x }) { _ ->
                                 layout.saveIndicatorOrder(droppedOrder(keys, centres, key, dragX))
                                 dragging = null
                                 dragX = 0f
