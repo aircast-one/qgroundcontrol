@@ -49,6 +49,26 @@ const editLayout = async (page: Page) => {
   await expect(editBar(page)).toBeVisible();
 };
 
+const vehicleLoaded = (page: Page) =>
+  expect
+    .poll(() => page.evaluate(async (module) => (((await import(module)) as { Qgc: { get: (path: string) => Promise<{ value?: unknown }> } }).Qgc.get('vehicle.initialConnectComplete')).then((it) => it.value), '/src/bridge/Qgc.ts'), {
+      message: 'the vehicle has loaded, so the bar holds every indicator it brings',
+      timeout: 60_000,
+    })
+    .toBe(true);
+
+const barSettled = async (page: Page) => {
+  await vehicleLoaded(page);
+  const flightTime = page.locator('[data-indicator=flightTime]');
+  await expect
+    .poll(async () => {
+      const first = await centre(flightTime);
+      await page.waitForTimeout(1000);
+      return (await centre(flightTime))[0] - first[0];
+    }, { message: 'the bar has settled' })
+    .toBe(0);
+};
+
 const aloft = (target: Locator) =>
   target.evaluate((node) => {
     const chain = (at: Element | null): Element[] => (at === null ? [] : [at, ...chain(at.parentElement)]);
@@ -444,6 +464,7 @@ test('a hide badge takes a tap that lands next to it, not only on its small dot'
 test('in portrait, editing puts the whole status strip on its own line, every indicator on screen and none under Done', async ({ vehicle }) => {
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
   await vehicle.setViewportSize({ width: 412, height: 860 });
+  await vehicleLoaded(vehicle);
   await editLayout(vehicle);
   const done = await vehicle.getByRole('button', { name: 'Done' }).boundingBox();
   const badges = await vehicle.locator('[data-status-row] [aria-label=Hide], [data-status-row] [aria-label=Show]').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().toJSON() as DOMRect));
@@ -702,13 +723,7 @@ test('a reading dropped on the top bar joins its items, and pulled down from the
   const strip = vehicle.locator('[data-status-row]');
   const docked = vehicle.locator('[data-indicator="reading:vehicle/distanceToHome"]');
   const flightTime = vehicle.locator('[data-indicator=flightTime]');
-  await expect
-    .poll(async () => {
-      const first = await centre(flightTime);
-      await vehicle.waitForTimeout(1000);
-      return (await centre(flightTime))[0] - first[0];
-    }, { message: 'the bar has settled' })
-    .toBe(0);
+  await barSettled(vehicle);
   await pressOn(vehicle, distance);
   const [timeX, timeY] = await centre(flightTime);
   await vehicle.mouse.move(timeX - 30, timeY, { steps: 12 });
@@ -731,6 +746,7 @@ test('a reading dropped on the top bar joins its items, and pulled down from the
   await connectMock(vehicle);
   await expect(docked.getByText('D', { exact: true }), 'kept in the bar after a reload').toHaveCount(1, { timeout: 30_000 });
   await editLayout(vehicle);
+  await barSettled(vehicle);
   await pullFromBar(vehicle, docked, -200, 260);
   await expect(docked).toHaveCount(0);
   const back = (await distance.boundingBox())!;
