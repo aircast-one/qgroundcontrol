@@ -51,6 +51,7 @@ struct Host {
     recording_file: Option<String>,
     vehicle: Option<u8>,
     camera_rotation: u32,
+    plays_buffered: bool,
 }
 
 fn channel_of(receiver: &str) -> Option<usize> {
@@ -67,6 +68,8 @@ const NO_SAVE_PATH_MESSAGE: &str =
     "Unabled to record video. Video save path must be specified in Settings.";
 pub const SET_DEVICE_CAMERA_ROTATION: &str = "video.setDeviceCameraRotation";
 pub const SET_PIP_SHOWN: &str = "video.setPipShown";
+const BUFFERED_RECORDING_MESSAGE: &str =
+    "Buffered video can't be recorded here. Try low latency, then record.";
 const DEVICE_CAMERA_RECORDING_MESSAGE: &str =
     "Recording is not available for this device's own camera.";
 
@@ -235,11 +238,20 @@ pub fn start_recording() -> Result<(), Option<&'static str>> {
     started
 }
 
+fn recording_refusal(host: &Host, records_itself: bool) -> Option<&'static str> {
+    crate::videostate::device_camera(&host.state.desired_uri(MAIN_RECEIVER))
+        .map(|_| DEVICE_CAMERA_RECORDING_MESSAGE)
+        .or_else(|| {
+            (!records_itself && buffered_uri(host, MAIN_CHANNEL).is_some())
+                .then_some(BUFFERED_RECORDING_MESSAGE)
+        })
+}
+
 fn begin_recording() -> Result<(), Option<&'static str>> {
     let mut guard = synced();
     let host = guard.as_mut().ok_or(None)?;
-    if crate::videostate::device_camera(&host.state.desired_uri(MAIN_RECEIVER)).is_some() {
-        return Err(Some(DEVICE_CAMERA_RECORDING_MESSAGE));
+    if let Some(refusal) = recording_refusal(host, BROWSER) {
+        return Err(Some(refusal));
     }
     match host.state.record_refusal() {
         Some(crate::videostate::REFUSED_BAD_FORMAT) => return Err(Some(BAD_FORMAT_MESSAGE)),
@@ -414,7 +426,7 @@ pub fn whep_endpoint(uri: &str) -> Option<String> {
 
 const BUFFERED_AFTER_FAILURES: u32 = 2;
 const BUFFERED_START_BUDGETS: u32 = 2;
-const PLAYS_HLS: bool = cfg!(any(target_family = "wasm", test));
+const BROWSER: bool = cfg!(target_family = "wasm");
 
 pub fn falls_back_to_buffered(browser: bool, failures: u32, uri: &str) -> bool {
     browser && failures >= BUFFERED_AFTER_FAILURES && hls_twin(uri).is_some()
@@ -771,15 +783,17 @@ fn object(host: &Host) -> Value {
 
 fn pipeline_for(host: &Host, channel: usize) -> Option<String> {
     let uri = host.state.desired_uri(CHANNEL_RECEIVERS.get(channel)?);
-    (host.channels[channel].wanted && host.state.has_video())
-        .then(|| {
-            pipeline(
-                &oriented(&uri, host.camera_rotation),
-                setting("rtpJitterLatencyMs").as_i64().unwrap_or(150),
-                host.state.settings.low_latency,
-            )
-        })
-        .flatten()
+    (host.channels[channel].wanted
+        && host.state.has_video()
+        && buffered_uri(host, channel).is_none())
+    .then(|| {
+        pipeline(
+            &oriented(&uri, host.camera_rotation),
+            setting("rtpJitterLatencyMs").as_i64().unwrap_or(150),
+            host.state.settings.low_latency,
+        )
+    })
+    .flatten()
 }
 
 fn preview_pipeline(host: &Host, shown: &Preview) -> Option<String> {
@@ -1108,9 +1122,11 @@ fn report(
         .collect();
         let falls_back = match buffered {
             true => frames > 0,
-            false => {
-                falls_back_to_buffered(PLAYS_HLS, host.state.reconnect_attempts(receiver), &uri)
-            }
+            false => falls_back_to_buffered(
+                BROWSER || host.plays_buffered,
+                host.state.reconnect_attempts(receiver),
+                &uri,
+            ),
         };
         log::warn!(
             "Video channel {channel}: {} for {uri}",
@@ -1276,6 +1292,10 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             Some(json!({ "ok": true }))
         }
         "video.setNativeRendering" | "video.initNative" => Some(json!({ "ok": true })),
+        "video.setBufferedPlayback" => {
+            host.plays_buffered = given.get(0).and_then(Value::as_bool).unwrap_or(false);
+            Some(json!({ "ok": true }))
+        }
         SET_PIP_SHOWN => {
             show_pip(
                 host,
@@ -1345,7 +1365,7 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
                     let running = given.get(0).and_then(Value::as_bool).unwrap_or(false);
                     if channel == MAIN_CHANNEL {
                         crate::videostats::sample(
-                            running,
+                            running && buffered_uri(host, MAIN_CHANNEL).is_none(),
                             number(1),
                             number(3),
                             crate::hub::now_ms(),
@@ -2142,6 +2162,52 @@ mod tests {
         });
     }
 
+    fn buffering(host: Host) -> Host {
+        Host {
+            plays_buffered: true,
+            ..host
+        }
+    }
+
+    #[test]
+    fn a_head_that_cannot_play_buffered_video_is_never_told_to_and_one_that_can_gets_the_twin_in_place_of_its_pipeline()
+     {
+        let mut plain = hosted(WHEP_PAIR, 0, false);
+        played(&mut plain, MAIN_CHANNEL, 500, 60_000, |_| 0);
+        played(&mut plain, MAIN_CHANNEL, 60_500, 200_000, |_| 0);
+        assert!(
+            plain.channels[MAIN_CHANNEL].buffered.is_none(),
+            "Android's player has no HLS demuxer: however often WebRTC fails it keeps retrying WebRTC"
+        );
+        let mut phone = buffering(hosted(WHEP_PAIR, 0, false));
+        assert!(pipeline_for(&phone, MAIN_CHANNEL).is_some());
+        played(&mut phone, MAIN_CHANNEL, 500, 21_000, |_| 0);
+        assert_eq!(
+            (
+                pipeline_for(&phone, MAIN_CHANNEL),
+                object(&phone)["hlsEndpoints"][MAIN_CHANNEL].clone()
+            ),
+            (None, json!(FRONT_HLS)),
+            "a phone that said it plays buffered video is handed the twin and no WebRTC pipeline to run beside it"
+        );
+        assert_eq!(
+            recording_refusal(&phone, false),
+            Some(BUFFERED_RECORDING_MESSAGE),
+            "the phone records through the pipeline it no longer has, so Record says why instead of doing nothing"
+        );
+        assert_eq!(
+            recording_refusal(&phone, true),
+            None,
+            "the browser records the buffered picture itself"
+        );
+        try_low_latency(&mut phone, MAIN_CHANNEL, 21_500);
+        assert!(
+            pipeline_for(&phone, MAIN_CHANNEL).is_some(),
+            "and the way back hands the pipeline back"
+        );
+        assert_eq!(recording_refusal(&phone, false), None);
+    }
+
     fn endpoints(host: &Host, channel: usize) -> (Value, Value) {
         let view = object(host);
         (
@@ -2152,7 +2218,7 @@ mod tests {
 
     #[test]
     fn a_picture_that_froze_counts_as_steady_only_for_the_time_its_frames_moved() {
-        let mut host = hosted(WHEP_PAIR, 0, false);
+        let mut host = buffering(hosted(WHEP_PAIR, 0, false));
         played(&mut host, MAIN_CHANNEL, 500, 9_000, |_| 0);
         assert_eq!(host.state.reconnect_attempts(MAIN_RECEIVER), 1);
         let moving = |from: u64, until: u64| {
@@ -2186,7 +2252,7 @@ mod tests {
 
     #[test]
     fn a_buffered_twin_that_never_plays_hands_the_camera_back_to_webrtc() {
-        let mut host = hosted(WHEP_PAIR, 0, false);
+        let mut host = buffering(hosted(WHEP_PAIR, 0, false));
         played(&mut host, MAIN_CHANNEL, 500, 21_000, |_| 0);
         assert_eq!(
             endpoints(&host, MAIN_CHANNEL),
@@ -2223,7 +2289,7 @@ mod tests {
 
     #[test]
     fn after_one_camera_fell_back_to_buffered_the_next_camera_can_fall_back_too() {
-        let mut host = hosted(WHEP_PAIR, 0, false);
+        let mut host = buffering(hosted(WHEP_PAIR, 0, false));
         played(&mut host, MAIN_CHANNEL, 500, 21_000, |_| 0);
         assert_eq!(endpoints(&host, MAIN_CHANNEL).1, json!(FRONT_HLS));
         let outs = host.state.on_settings(Settings {
@@ -2247,7 +2313,7 @@ mod tests {
 
     #[test]
     fn try_low_latency_gives_webrtc_one_attempt_on_the_channel_asked_and_falls_straight_back() {
-        let mut host = hosted(WHEP_PAIR, 0, true);
+        let mut host = buffering(hosted(WHEP_PAIR, 0, true));
         played(&mut host, PIP_CHANNEL, 500, 21_000, |_| 0);
         assert_eq!(endpoints(&host, PIP_CHANNEL).1, json!(BELLY_HLS));
         try_low_latency(&mut host, PIP_CHANNEL, 21_500);
